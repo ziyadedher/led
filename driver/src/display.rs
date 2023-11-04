@@ -40,15 +40,9 @@ pub struct MarqueeOptions {
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
-pub struct TwinkleOptions {
-    pub speed: u32,
-}
-
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct TextEntryOptions {
     pub color: TextEntryColor,
     pub marquee: MarqueeOptions,
-    pub twinkle: TwinkleOptions,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
