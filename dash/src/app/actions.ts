@@ -13,7 +13,7 @@ type TextEntry = {
 };
 
 const addEntry = async (entry: TextEntry) => {
-  const res = await fetch("http://127.0.0.1:3001/entries", {
+  const res = await fetch("http://driver.led.ziyadedher.com:9000/entries", {
     method: "POST",
     cache: "no-store",
     headers: {
@@ -26,7 +26,7 @@ const addEntry = async (entry: TextEntry) => {
 };
 
 const clearEntries = async () => {
-  const res = await fetch("http://127.0.0.1:3001/entries", {
+  const res = await fetch("http://driver.led.ziyadedher.com:9000/entries", {
     method: "DELETE",
     cache: "no-store",
   });
