@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use axum::{Router, Server};
 use display::TextEntry;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 mod display;
 mod routes;
@@ -20,6 +21,13 @@ async fn main() -> anyhow::Result<()> {
     let service = Server::try_bind(&"0.0.0.0:3001".parse()?)?.serve(
         Router::new()
             .merge(construct_routes(entries.clone()))
+            .layer(TraceLayer::new_for_http())
+            .layer(
+                CorsLayer::new()
+                    .allow_origin("*")
+                    .allow_methods("*")
+                    .allow_headers("*"),
+            )
             .into_make_service(),
     );
 
