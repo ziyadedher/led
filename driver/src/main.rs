@@ -9,6 +9,7 @@ use tower_http::{
     cors::{self, CorsLayer},
     trace::TraceLayer,
 };
+use tracing_subscriber::prelude::*;
 
 mod display;
 mod routes;
@@ -17,7 +18,10 @@ use crate::{display::drive_display, routes::construct_routes};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
 
     let entries = Arc::new(Mutex::new(Vec::<TextEntry>::new()));
 
