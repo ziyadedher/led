@@ -5,7 +5,10 @@ use std::sync::{Arc, Mutex};
 
 use axum::{Router, Server};
 use display::TextEntry;
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tower_http::{
+    cors::{self, CorsLayer},
+    trace::TraceLayer,
+};
 
 mod display;
 mod routes;
@@ -24,9 +27,9 @@ async fn main() -> anyhow::Result<()> {
             .layer(TraceLayer::new_for_http())
             .layer(
                 CorsLayer::new()
-                    .allow_origin("*")
-                    .allow_methods("*")
-                    .allow_headers("*"),
+                    .allow_origin(cors::Any)
+                    .allow_methods(cors::Any)
+                    .allow_headers(cors::Any),
             )
             .into_make_service(),
     );
