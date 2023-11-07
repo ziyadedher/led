@@ -13,6 +13,7 @@ import {
 } from "@heroicons/react/20/solid";
 
 import { addEntry, clearEntries } from "@/app/actions";
+import Status from "@/app/status";
 
 const SHORT_LENGTH = 12;
 const MAX_LENGTH = 64;
@@ -46,7 +47,7 @@ export default function RootPage() {
   const isValid = useMemo(() => text.length <= MAX_LENGTH, [text]);
   const isSubmitable = useMemo(
     () => isValid && text.length > 0,
-    [isValid, text]
+    [isValid, text],
   );
   const isLong = useMemo(() => text.length > SHORT_LENGTH, [text]);
   useEffect(() => {
@@ -63,16 +64,21 @@ export default function RootPage() {
   const [marqueeSpeed, setMarqueeSpeed] = useState(5);
 
   return (
-    <div className="relative h-full p-8 flex flex-col gap-12 justify-center items-center">
-      <div className="w-full max-w-2xl flex flex-col gap-8">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-4xl text-center">c&apos;mon, write something</h1>
-          <h2 className="text-xs text-center text-gray-400">
-            and maybe sign your name too
-          </h2>
+    <div className="relative flex h-full flex-col items-center justify-center gap-12 p-8">
+      <div className="flex w-full max-w-2xl flex-col items-center gap-8">
+        <div className="flex flex-col items-center gap-4">
+          <Status />
+          <div className="flex flex-col gap-1">
+            <h1 className="text-center text-4xl">
+              c&apos;mon, write something
+            </h1>
+            <h2 className="text-center text-xs text-gray-400">
+              and maybe sign your name too
+            </h2>
+          </div>
         </div>
         <form
-          className="flex flex-col gap-8 items-center"
+          className="flex w-full flex-col items-center gap-8"
           onSubmit={(e) => {
             e.preventDefault();
 
@@ -96,27 +102,27 @@ export default function RootPage() {
             setText("");
           }}
         >
-          <div className="w-full flex flex-col gap-3 items-center">
-            <div className="w-full flex flex-row">
+          <div className="flex w-full flex-col items-center gap-3">
+            <div className="flex w-full flex-row">
               <div className="relative w-full">
                 <input
                   type="text"
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   className={cx(
-                    "block w-full h-12 rounded-l-md border-0 pr-10 py-1.5 ring-inset ring-1 text-sm leading-6 focus:ring-2 focus:ring-inset",
+                    "block h-12 w-full rounded-l-md border-0 py-1.5 pr-10 text-sm leading-6 ring-1 ring-inset focus:ring-2 focus:ring-inset",
                     isValid
                       ? isSubmitable
                         ? "text-gray-900 ring-gray-200 placeholder:text-gray-400 focus:ring-green-600"
                         : "text-gray-900 ring-gray-200 placeholder:text-gray-400 focus:ring-gray-300"
-                      : "text-red-900 ring-red-300 placeholder:text-red-300 focus:ring-red-500"
+                      : "text-red-900 ring-red-300 placeholder:text-red-300 focus:ring-red-500",
                   )}
                   placeholder="your cool message"
                 />
                 <div
                   className={cx(
                     "pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3",
-                    isValid ? "invisible" : "visible"
+                    isValid ? "invisible" : "visible",
                   )}
                 >
                   <ExclamationCircleIcon className="h-5 w-5 text-red-500" />
@@ -131,7 +137,7 @@ export default function RootPage() {
                     ? isSubmitable
                       ? "bg-green-600 hover:bg-green-500 focus-visible:outline-green-600"
                       : "bg-gray-200"
-                    : "bg-red-600"
+                    : "bg-red-600",
                 )}
               >
                 <CheckCircleIcon className="h-5 w-5" />
@@ -160,9 +166,9 @@ export default function RootPage() {
         className="w-full max-w-lg justify-center"
       >
         <Tabs.Item active title="Color" icon={HiSwatch}>
-          <div className="h-48 flex flex-col gap-4 items-center">
-            <div className="relative mt-2 rounded-md shadow-sm bg-white overflow-hidden">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center p-3 bg-gray-100">
+          <div className="flex h-48 flex-col items-center gap-4">
+            <div className="relative mt-2 overflow-hidden rounded-md bg-white shadow-sm">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center bg-gray-100 p-3">
                 <span className="text-md text-gray-400">#</span>
               </div>
               <input
@@ -170,11 +176,11 @@ export default function RootPage() {
                 name="price"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
-                className="block relative z-10 w-full rounded-md border-0 py-1.5 px-12 bg-transparent text-sm leading-6 text-gray-900 ring-1 ring-inset ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600"
+                className="relative z-10 block w-full rounded-md border-0 bg-transparent px-12 py-1.5 text-sm leading-6 text-gray-900 ring-1 ring-inset ring-gray-200 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600"
                 placeholder="ffffff"
               />
               <div
-                className="pointer-events-none absolute inset-y-0 right-0 flex p-4 items-center"
+                className="pointer-events-none absolute inset-y-0 right-0 flex items-center p-4"
                 style={{ backgroundColor: `#${color}` }}
               />
             </div>
@@ -187,7 +193,7 @@ export default function RootPage() {
           </div>
         </Tabs.Item>
         <Tabs.Item title="Rainbow" icon={PiRainbowBold}>
-          <fieldset className="h-48 flex flex-col gap-4">
+          <fieldset className="flex h-48 flex-col gap-4">
             <div className="flex flex-row items-center gap-2">
               <Checkbox
                 id="rainbow-per-letter"
@@ -208,8 +214,8 @@ export default function RootPage() {
         </Tabs.Item>
       </Tabs.Group>
 
-      <div className="flex flex-col gap-4 items-center">
-        <h2 className="text-xs text-gray-500 border-b border-gray-300 pb-2">
+      <div className="flex flex-col items-center gap-4">
+        <h2 className="border-b border-gray-300 pb-2 text-xs text-gray-500">
           Make it special
         </h2>
         <fieldset className="flex flex-col gap-4">
