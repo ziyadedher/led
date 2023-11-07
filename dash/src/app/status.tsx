@@ -27,9 +27,7 @@ const Status = () => {
   if (error)
     return (
       <Tooltip
-        content={`Failed to load the health of the LED server: ${JSON.stringify(
-          error,
-        )}`}
+        content={`Failed to load the health of the LED server, it probably won't work.`}
       >
         <Badge color="failure" icon={HiExclamationCircle}>
           Error
@@ -39,7 +37,7 @@ const Status = () => {
 
   if (!data || !data.is_healthy)
     return (
-      <Tooltip content="The LED server is not healthy.">
+      <Tooltip content="The LED server is not healthy, it probably won't work.">
         <Badge color="warning" icon={HiExclamationTriangle}>
           Unhealthy
         </Badge>
