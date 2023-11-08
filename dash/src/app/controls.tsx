@@ -146,7 +146,7 @@ const ScrollButton = ({ direction }: { direction: "Up" | "Down" }) => {
           onClick={async () => {
             await scrollEntrySelection(direction);
             await mutate({
-              scroll: data.scroll + (direction === "Up" ? 1 : -1),
+              scroll: data.scroll + (direction === "Up" ? -1 : 1),
             });
           }}
         >
