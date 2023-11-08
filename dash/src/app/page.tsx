@@ -2,15 +2,16 @@
 
 import cx from "classnames";
 import { Button, Checkbox, Label, Tabs, Tooltip } from "flowbite-react";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { CirclePicker } from "react-color";
-import { HiSwatch } from "react-icons/hi2";
-import { PiRainbowBold } from "react-icons/pi";
 import {
-  CheckCircleIcon,
-  ExclamationCircleIcon,
-  TrashIcon,
-} from "@heroicons/react/20/solid";
+  HiSwatch,
+  HiTrash,
+  HiCheckCircle,
+  HiExclamationCircle,
+  HiPaperAirplane,
+} from "react-icons/hi2";
+import { PiRainbowBold } from "react-icons/pi";
 
 import { addEntry, clearEntries } from "@/app/actions";
 import Status from "@/app/status";
@@ -63,6 +64,35 @@ export default function RootPage() {
 
   const [marqueeSpeed, setMarqueeSpeed] = useState(5);
 
+  const handleSubmit = useCallback(() => {
+    if (!isValid) return;
+
+    addEntry({
+      text,
+      options: {
+        color:
+          colorMode === 0
+            ? { Rgb: hexToRgb(color) }
+            : {
+                Rainbow: {
+                  is_per_letter: isRainbowPerLetter,
+                  speed: rainbowSpeed,
+                },
+              },
+        marquee: { speed: marqueeSpeed },
+      },
+    });
+    setText("");
+  }, [
+    isValid,
+    text,
+    color,
+    colorMode,
+    isRainbowPerLetter,
+    rainbowSpeed,
+    marqueeSpeed,
+  ]);
+
   return (
     <div className="relative flex h-full flex-col items-center justify-center gap-12 p-8">
       <div className="flex w-full max-w-2xl flex-col items-center gap-8">
@@ -81,25 +111,7 @@ export default function RootPage() {
           className="flex w-full flex-col items-center gap-8"
           onSubmit={(e) => {
             e.preventDefault();
-
-            if (!isValid) return;
-
-            addEntry({
-              text,
-              options: {
-                color:
-                  colorMode === 0
-                    ? { Rgb: hexToRgb(color) }
-                    : {
-                        Rainbow: {
-                          is_per_letter: isRainbowPerLetter,
-                          speed: rainbowSpeed,
-                        },
-                      },
-                marquee: { speed: marqueeSpeed },
-              },
-            });
-            setText("");
+            handleSubmit();
           }}
         >
           <div className="flex w-full flex-col items-center gap-3">
@@ -114,7 +126,7 @@ export default function RootPage() {
                     isValid
                       ? isSubmitable
                         ? "text-gray-900 ring-gray-200 placeholder:text-gray-400 focus:ring-green-600"
-                        : "text-gray-900 ring-gray-200 placeholder:text-gray-400 focus:ring-gray-300"
+                        : "text-gray-900 ring-gray-200 placeholder:text-gray-400 focus:ring-gray-200"
                       : "text-red-900 ring-red-300 placeholder:text-red-300 focus:ring-red-500",
                   )}
                   placeholder="your cool message"
@@ -125,7 +137,7 @@ export default function RootPage() {
                     isValid ? "invisible" : "visible",
                   )}
                 >
-                  <ExclamationCircleIcon className="h-5 w-5 text-red-500" />
+                  <HiExclamationCircle className="h-5 w-5 text-red-500" />
                 </div>
               </div>
               <button
@@ -140,7 +152,7 @@ export default function RootPage() {
                     : "bg-red-600",
                 )}
               >
-                <CheckCircleIcon className="h-5 w-5" />
+                <HiCheckCircle className="h-5 w-5" />
               </button>
             </div>
             <p className="text-xs">
@@ -244,15 +256,27 @@ export default function RootPage() {
       </div>
 
       <div className="flex flex-col">
-        <Button
-          color="failure"
-          onClick={() => {
-            clearEntries();
-          }}
-        >
-          <TrashIcon className="mr-2 h-5 w-5" />
-          Clear all entries
-        </Button>
+        <div className="flex flex-row gap-2">
+          <Button
+            color="gray"
+            disabled={!isSubmitable}
+            onClick={() => {
+              handleSubmit();
+            }}
+          >
+            <HiPaperAirplane className="mr-2 h-5 w-5" />
+            Submit
+          </Button>
+          <Button
+            color="failure"
+            onClick={() => {
+              clearEntries();
+            }}
+          >
+            <HiTrash className="mr-2 h-5 w-5" />
+            Clear all entries
+          </Button>
+        </div>
       </div>
     </div>
   );
