@@ -1,4 +1,5 @@
 import { Button, Spinner, Tooltip } from "flowbite-react";
+import { useMemo } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import {
   HiMiniArrowDown,
@@ -13,7 +14,6 @@ import { z } from "zod";
 
 import { clearEntries, scrollEntrySelection, setPause } from "@/app/actions";
 import { constructFetcherWithSchema } from "@/utils/fetcher";
-import { useMemo } from "react";
 
 const PauseButton = () => {
   const { data, error, isLoading, mutate } = useSWR(
@@ -146,7 +146,7 @@ const ScrollButton = ({ direction }: { direction: "Up" | "Down" }) => {
           onClick={async () => {
             await scrollEntrySelection(direction);
             await mutate({
-              scroll: data.scroll + (direction === "Up" ? 1 : -1),
+              scroll: data.scroll + (direction === "Up" ? -1 : 1),
             });
           }}
         >
