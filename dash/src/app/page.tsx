@@ -1,23 +1,19 @@
 "use client";
 
 import cx from "classnames";
-import { Button, Checkbox, Label, Tabs, Tooltip } from "flowbite-react";
+import { Checkbox, Label, Tabs, Tooltip } from "flowbite-react";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { CirclePicker } from "react-color";
-import {
-  HiSwatch,
-  HiTrash,
-  HiCheckCircle,
-  HiExclamationCircle,
-  HiPaperAirplane,
-} from "react-icons/hi2";
+import { HiSwatch } from "react-icons/hi2";
 import { PiRainbowBold } from "react-icons/pi";
+import { useSWRConfig } from "swr";
 
-import { addEntry, clearEntries } from "@/app/actions";
-import Status from "@/app/status";
+import { addEntry } from "@/app/actions";
+import Box from "@/app/box";
+import Controls from "@/app/controls";
+import Entries from "@/app/entries";
 
 const SHORT_LENGTH = 12;
-const MAX_LENGTH = 64;
 
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
   if (hex.startsWith("#")) {
@@ -44,12 +40,10 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
 };
 
 export default function RootPage() {
+  const { mutate } = useSWRConfig();
+
   const [text, setText] = useState("");
-  const isValid = useMemo(() => text.length <= MAX_LENGTH, [text]);
-  const isSubmitable = useMemo(
-    () => isValid && text.length > 0,
-    [isValid, text],
-  );
+  const isSubmitable = useMemo(() => text.length > 0, [text]);
   const isLong = useMemo(() => text.length > SHORT_LENGTH, [text]);
   useEffect(() => {
     if (isLong) {
@@ -64,10 +58,8 @@ export default function RootPage() {
 
   const [marqueeSpeed, setMarqueeSpeed] = useState(5);
 
-  const handleSubmit = useCallback(() => {
-    if (!isValid) return;
-
-    addEntry({
+  const handleSubmit = useCallback(async () => {
+    await addEntry({
       text,
       options: {
         color:
@@ -83,94 +75,28 @@ export default function RootPage() {
       },
     });
     setText("");
+
+    mutate("/entries");
+    mutate("/entries/scroll");
+    mutate("/pause");
   }, [
-    isValid,
     text,
     color,
     colorMode,
     isRainbowPerLetter,
     rainbowSpeed,
     marqueeSpeed,
+    mutate,
   ]);
 
   return (
     <div className="relative flex h-full flex-col items-center justify-center gap-12 p-8">
-      <div className="flex w-full max-w-2xl flex-col items-center gap-8">
-        <div className="flex flex-col items-center gap-4">
-          <Status />
-          <div className="flex flex-col gap-1">
-            <h1 className="text-center text-4xl">
-              c&apos;mon, write something
-            </h1>
-            <h2 className="text-center text-xs text-gray-400">
-              and maybe sign your name too
-            </h2>
-          </div>
-        </div>
-        <form
-          className="flex w-full flex-col items-center gap-8"
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSubmit();
-          }}
-        >
-          <div className="flex w-full flex-col items-center gap-3">
-            <div className="flex w-full flex-row">
-              <div className="relative w-full">
-                <input
-                  type="text"
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  className={cx(
-                    "block h-12 w-full rounded-l-md border-0 py-1.5 pr-10 text-sm leading-6 ring-1 ring-inset focus:ring-2 focus:ring-inset",
-                    isValid
-                      ? isSubmitable
-                        ? "text-gray-900 ring-gray-200 placeholder:text-gray-400 focus:ring-green-600"
-                        : "text-gray-900 ring-gray-200 placeholder:text-gray-400 focus:ring-gray-200"
-                      : "text-red-900 ring-red-300 placeholder:text-red-300 focus:ring-red-500",
-                  )}
-                  placeholder="your cool message"
-                />
-                <div
-                  className={cx(
-                    "pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3",
-                    isValid ? "invisible" : "visible",
-                  )}
-                >
-                  <HiExclamationCircle className="h-5 w-5 text-red-500" />
-                </div>
-              </div>
-              <button
-                type="submit"
-                disabled={!isSubmitable}
-                className={cx(
-                  "rounded-r-md px-3 py-2 text-sm font-semibold text-white shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
-                  isValid
-                    ? isSubmitable
-                      ? "bg-green-600 hover:bg-green-500 focus-visible:outline-green-600"
-                      : "bg-gray-200"
-                    : "bg-red-600",
-                )}
-              >
-                <HiCheckCircle className="h-5 w-5" />
-              </button>
-            </div>
-            <p className="text-xs">
-              {isValid ? (
-                isSubmitable ? (
-                  <span className="text-gray-400">Hit enter to submit...</span>
-                ) : (
-                  <span className="text-gray-400">Use the text box.</span>
-                )
-              ) : (
-                <span className="text-red-500">
-                  Let&apos;s keep it under {MAX_LENGTH} characters, eh?
-                </span>
-              )}
-            </p>
-          </div>
-        </form>
-      </div>
+      <Box
+        text={text}
+        onChange={setText}
+        disabled={!isSubmitable}
+        onSubmit={handleSubmit}
+      />
 
       <Tabs.Group
         onActiveTabChange={(tab) => setColorMode(tab)}
@@ -255,29 +181,9 @@ export default function RootPage() {
         </fieldset>
       </div>
 
-      <div className="flex flex-col">
-        <div className="flex flex-row gap-2">
-          <Button
-            color="gray"
-            disabled={!isSubmitable}
-            onClick={() => {
-              handleSubmit();
-            }}
-          >
-            <HiPaperAirplane className="mr-2 h-5 w-5" />
-            Submit
-          </Button>
-          <Button
-            color="failure"
-            onClick={() => {
-              clearEntries();
-            }}
-          >
-            <HiTrash className="mr-2 h-5 w-5" />
-            Clear all entries
-          </Button>
-        </div>
-      </div>
+      <Controls isSubmitable={isSubmitable} handleSubmit={handleSubmit} />
+
+      <Entries />
     </div>
   );
 }
