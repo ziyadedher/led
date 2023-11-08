@@ -3,7 +3,8 @@
 
 use std::sync::{Arc, Mutex};
 
-use axum::{Router, Server};
+use axum::Router;
+use axum_server::tls_rustls::RustlsConfig;
 use display::State;
 use tower_http::{
     cors::{self, CorsLayer},
@@ -25,7 +26,12 @@ async fn main() -> anyhow::Result<()> {
 
     let state = Arc::new(Mutex::new(State::default()));
 
-    let service = Server::try_bind(&"0.0.0.0:3001".parse()?)?.serve(
+    let rustls_config = RustlsConfig::from_pem_file(
+        "/etc/letsencrypt/live/driver.led.ziyadedher.com/fullchain.pem",
+        "/etc/letsencrypt/live/driver.led.ziyadedher.com/privkey.pem",
+    )
+    .await?;
+    let service = axum_server::bind_rustls("0.0.0.0:3001".parse()?, rustls_config).serve(
         Router::new()
             .merge(construct_routes(state.clone()))
             .layer(TraceLayer::new_for_http())
