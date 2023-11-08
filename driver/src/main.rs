@@ -4,7 +4,7 @@
 use std::sync::{Arc, Mutex};
 
 use axum::{Router, Server};
-use display::TextEntry;
+use display::State;
 use tower_http::{
     cors::{self, CorsLayer},
     trace::TraceLayer,
@@ -23,11 +23,11 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let entries = Arc::new(Mutex::new(Vec::<TextEntry>::new()));
+    let state = Arc::new(Mutex::new(State::default()));
 
     let service = Server::try_bind(&"0.0.0.0:3001".parse()?)?.serve(
         Router::new()
-            .merge(construct_routes(entries.clone()))
+            .merge(construct_routes(state.clone()))
             .layer(TraceLayer::new_for_http())
             .layer(
                 CorsLayer::new()
@@ -38,7 +38,7 @@ async fn main() -> anyhow::Result<()> {
             .into_make_service(),
     );
 
-    let driver_task = tokio::spawn(drive_display(entries.clone()));
+    let driver_task = tokio::spawn(drive_display(state.clone()));
     let server_task = tokio::spawn(service);
 
     let (driver_res, server_res) = tokio::join!(driver_task, server_task);

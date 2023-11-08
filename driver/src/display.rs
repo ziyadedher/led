@@ -51,7 +51,15 @@ pub struct TextEntry {
     pub options: TextEntryOptions,
 }
 
-pub async fn drive_display(entries: Arc<Mutex<Vec<TextEntry>>>) -> anyhow::Result<()> {
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+pub struct State {
+    pub entries: Vec<TextEntry>,
+    /// The number of lines to scroll the display by. In practice, this is the index of the first entry that will be displayed.
+    pub scroll: i32,
+    pub is_paused: bool,
+}
+
+pub async fn drive_display(state: Arc<Mutex<State>>) -> anyhow::Result<()> {
     let config: RGBMatrixConfig = argh::from_env();
 
     let (mut matrix, mut canvas) =
@@ -59,13 +67,14 @@ pub async fn drive_display(entries: Arc<Mutex<Vec<TextEntry>>>) -> anyhow::Resul
 
     let font = ascii::FONT_5X8;
 
-    for step in 0.. {
-        // We clone all the entries here so we can get rid of the lock as soon as possible.
-        let entries = entries.lock().unwrap().clone();
+    let mut step: usize = 0;
+    for _ in 0.. {
+        // We clone the state here so we can get rid of the lock as soon as possible.
+        let state = state.lock().unwrap().clone();
 
         canvas.clear(Rgb888::BLACK)?;
 
-        for (i, entry) in entries.iter().enumerate() {
+        for (i, entry) in state.entries.iter().enumerate() {
             let marquee_offset = if entry.options.marquee.speed > 0 {
                 let text_size: i32 = entry.text.len() as i32
                     * (font.character_size.width + font.character_spacing) as i32;
@@ -80,7 +89,8 @@ pub async fn drive_display(entries: Arc<Mutex<Vec<TextEntry>>>) -> anyhow::Resul
                 0
             };
 
-            let line_offset = (i as i32 + 1) * (font.character_size.height as i32 + 1);
+            let line_offset =
+                (i as i32 + 1 - state.scroll) * (font.character_size.height as i32 + 1) - 1;
 
             match entry.options.color {
                 TextEntryColor::Rgb(ref rgb) => {
@@ -168,6 +178,10 @@ pub async fn drive_display(entries: Arc<Mutex<Vec<TextEntry>>>) -> anyhow::Resul
         }
 
         canvas = matrix.update_on_vsync(canvas);
+
+        if !state.is_paused {
+            step += 1;
+        }
     }
 
     Ok(())
