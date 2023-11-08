@@ -19,7 +19,7 @@ const driverCall = async (
   method: "GET" | "POST" | "PUT" | "DELETE",
   json?: any,
 ) => {
-  const res = await fetch(`http://driver.led.ziyadedher.com:9000${key}`, {
+  const res = await fetch(`https://driver.led.ziyadedher.com:9000${key}`, {
     method,
     cache: "no-store",
     headers: {

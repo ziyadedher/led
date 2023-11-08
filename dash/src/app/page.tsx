@@ -90,7 +90,7 @@ export default function RootPage() {
   ]);
 
   return (
-    <div className="relative flex h-full flex-col items-center justify-center gap-12 p-8">
+    <div className="relative flex min-h-full flex-col items-center justify-center gap-12 p-8">
       <Box
         text={text}
         onChange={setText}

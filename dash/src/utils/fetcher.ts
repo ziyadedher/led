@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const fetcher = async (key: string) =>
-  await fetch(`http://driver.led.ziyadedher.com:9000${key}`, {
+  await fetch(`https://driver.led.ziyadedher.com:9000${key}`, {
     cache: "no-store",
   });
 
