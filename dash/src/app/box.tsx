@@ -1,8 +1,8 @@
 import cx from "classnames";
+import { useState } from "react";
 import { HiCheckCircle } from "react-icons/hi2";
 
 import Status from "@/app/status";
-import { useState } from "react";
 
 const Box = ({
   text,
