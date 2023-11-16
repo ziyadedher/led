@@ -1,6 +1,4 @@
 import { Button, Spinner, Tooltip } from "flowbite-react";
-import { useMemo } from "react";
-import { useSWRConfig } from "swr";
 import {
   HiMiniArrowDown,
   HiMiniArrowUp,
@@ -10,6 +8,8 @@ import {
   HiPlay,
   HiPlayPause,
 } from "react-icons/hi2";
+import { useMemo } from "react";
+import { useSWRConfig } from "swr";
 
 import { entries, pause } from "@/utils/actions";
 
