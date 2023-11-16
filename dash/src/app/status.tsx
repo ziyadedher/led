@@ -5,23 +5,11 @@ import {
   HiMiniExclamationCircle,
   HiMiniExclamationTriangle,
 } from "react-icons/hi2";
-import useSWR from "swr";
 
-import { constructFetcherWithSchema } from "@/utils/fetcher";
-import { z } from "zod";
+import { health } from "@/utils/actions";
 
 const Status = () => {
-  const {
-    data: status,
-    error,
-    isLoading,
-  } = useSWR(
-    "/health",
-    constructFetcherWithSchema(z.object({ is_healthy: z.boolean() })),
-    {
-      refreshInterval: 1000,
-    },
-  );
+  const { data: status, error, isLoading } = health.get.useSWR();
 
   if (isLoading)
     return (

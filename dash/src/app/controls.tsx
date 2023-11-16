@@ -1,6 +1,4 @@
 import { Button, Spinner, Tooltip } from "flowbite-react";
-import { useMemo } from "react";
-import useSWR, { useSWRConfig } from "swr";
 import {
   HiMiniArrowDown,
   HiMiniArrowUp,
@@ -10,19 +8,13 @@ import {
   HiPlay,
   HiPlayPause,
 } from "react-icons/hi2";
-import { z } from "zod";
+import { useMemo } from "react";
+import { useSWRConfig } from "swr";
 
-import { clearEntries, scrollEntrySelection, setPause } from "@/app/actions";
-import { constructFetcherWithSchema } from "@/utils/fetcher";
+import { entries, pause } from "@/utils/actions";
 
 const PauseButton = () => {
-  const { data, error, isLoading, mutate } = useSWR(
-    "/pause",
-    constructFetcherWithSchema(z.object({ is_paused: z.boolean() })),
-    {
-      refreshInterval: 1000,
-    },
-  );
+  const { data, error, isLoading, mutate } = pause.get.useSWR();
 
   if (isLoading) {
     return (
@@ -49,7 +41,7 @@ const PauseButton = () => {
       <Tooltip content="Unpause all time-based effects (e.g. rainbow and marquee)">
         <Button
           onClick={async () => {
-            await setPause(false);
+            await pause.set.call(false);
             await mutate({ is_paused: false });
           }}
         >
@@ -62,7 +54,7 @@ const PauseButton = () => {
       <Tooltip content="Pause all time-based effects (e.g. rainbow and marquee)">
         <Button
           onClick={async () => {
-            await setPause(true);
+            await pause.set.call(true);
             await mutate({ is_paused: true });
           }}
         >
@@ -74,27 +66,9 @@ const PauseButton = () => {
 };
 
 const ScrollButton = ({ direction }: { direction: "Up" | "Down" }) => {
-  const { data, error, isLoading, mutate } = useSWR(
-    "/entries/scroll",
-    constructFetcherWithSchema(z.object({ scroll: z.number() })),
-    {
-      refreshInterval: 1000,
-    },
-  );
+  const { data, error, isLoading, mutate } = entries.scroll.get.useSWR();
 
-  const entriesResults = useSWR(
-    "/entries",
-    constructFetcherWithSchema(
-      z.object({
-        entries: z
-          .object({
-            text: z.string(),
-          })
-          .array(),
-      }),
-    ),
-    { refreshInterval: 1000 },
-  );
+  const entriesResults = entries.get.useSWR();
   const numEntries = useMemo(
     () => entriesResults.data?.entries.length ?? 0,
     [entriesResults.data],
@@ -144,7 +118,7 @@ const ScrollButton = ({ direction }: { direction: "Up" | "Down" }) => {
       >
         <Button
           onClick={async () => {
-            await scrollEntrySelection(direction);
+            await entries.scroll.post.call(direction);
             await mutate({
               scroll: data.scroll + (direction === "Up" ? -1 : 1),
             });
@@ -201,7 +175,7 @@ const Controls = ({
           <Button
             color="failure"
             onClick={async () => {
-              await clearEntries();
+              await entries.clear.call();
               await mutate("/entries", { entries: [] });
               await mutate("/entries/scroll");
             }}

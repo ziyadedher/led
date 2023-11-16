@@ -1,80 +1,52 @@
-import useSWR from "swr";
-import { z } from "zod";
-
-import { constructFetcherWithSchema } from "@/utils/fetcher";
-import { Spinner, Table, Tooltip } from "flowbite-react";
+import { Spinner, Table } from "flowbite-react";
 import { HiOutlineExclamationCircle, HiOutlineXCircle } from "react-icons/hi2";
+
+import { entries } from "@/utils/actions";
 
 const SCROLL_CONTEXT_SIZE = 7;
 
-const Entry = ({ text, shown: isShown }: { text: string; shown: boolean }) => (
-  <Table.Row className={isShown ? "bg-blue-50" : "bg-white"}>
-    <Table.Cell className="whitespace-nowrap font-medium text-gray-900">
-      {text}
-    </Table.Cell>
-  </Table.Row>
-);
-
 const EntriesTable = () => {
-  const entriesData = useSWR(
-    "/entries",
-    constructFetcherWithSchema(
-      z.object({
-        entries: z
-          .object({
-            text: z.string(),
-          })
-          .array(),
-      }),
-    ),
-    { refreshInterval: 1000 },
-  );
-  const scrollData = useSWR(
-    "/entries/scroll",
-    constructFetcherWithSchema(z.object({ scroll: z.number() })),
-    {
-      refreshInterval: 1000,
-    },
-  );
+  const entriesData = entries.get.useSWR();
+  const scrollData = entries.scroll.get.useSWR();
 
   if (entriesData.isLoading) {
     return (
-      <Tooltip theme={{ target: "w-full h-full" }} content="Loading entries...">
-        <div className="flex h-96 w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-lg bg-gray-50">
-          <Spinner className="h-12 w-12" />
-          <p className="text-sm text-gray-300">Loading entries...</p>
-        </div>
-      </Tooltip>
+      <div className="flex h-96 w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-lg bg-gray-50">
+        <Spinner className="h-10 w-10 text-gray-300" />
+        <p className="text-base text-gray-300">Loading entries...</p>
+      </div>
     );
   }
 
   if (entriesData.error || !entriesData.data) {
     return (
-      <div className="flex h-96 w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-lg bg-gray-50">
+      <div className="flex h-96 w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-lg bg-gray-50">
         <HiOutlineExclamationCircle className="h-12 w-12 text-gray-300" />
-        <p className="text-sm text-gray-300">Failed to load entries.</p>
+        <p className="text-base text-gray-300">Failed to load entries.</p>
       </div>
     );
   }
 
-  return (
-    <Table
-      theme={{
-        root: {
-          shadow: "",
-          wrapper: "w-full rounded-lg overflow-hidden",
-        },
-      }}
-    >
-      <Table.Head>
-        <Table.HeadCell>Entry text</Table.HeadCell>
-      </Table.Head>
-      {entriesData.data.entries.length === 0 ? (
-        <Table.Body className="flex h-96 w-full flex-col items-center justify-center gap-2">
-          <HiOutlineXCircle className="h-12 w-12 text-gray-300" />
-          <p className="text-sm text-gray-300">No entries, yet.</p>
-        </Table.Body>
-      ) : (
+  if (entriesData.data.entries.length === 0) {
+    return (
+      <div className="flex h-96 w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-lg bg-gray-50">
+        <HiOutlineXCircle className="h-12 w-12 text-gray-300" />
+        <p className="text-base text-gray-300">No entries, yet.</p>
+      </div>
+    );
+  } else {
+    return (
+      <Table
+        theme={{
+          root: {
+            shadow: "",
+            wrapper: "w-full rounded-lg overflow-hidden",
+          },
+        }}
+      >
+        <Table.Head>
+          <Table.HeadCell>Entry text</Table.HeadCell>
+        </Table.Head>
         <Table.Body className="flex max-h-[48rem] w-full flex-col divide-y overflow-y-auto">
           {entriesData.data.entries.map((entry, i) => {
             const scroll = scrollData.data?.scroll;
@@ -84,13 +56,20 @@ const EntriesTable = () => {
               i < scroll + SCROLL_CONTEXT_SIZE;
 
             return (
-              <Entry key={i + entry.text} text={entry.text} shown={isShown} />
+              <Table.Row
+                key={i + entry.text}
+                className={isShown ? "bg-blue-50" : "bg-white"}
+              >
+                <Table.Cell className="whitespace-nowrap font-medium text-gray-900">
+                  {entry.text}
+                </Table.Cell>
+              </Table.Row>
             );
           })}
         </Table.Body>
-      )}
-    </Table>
-  );
+      </Table>
+    );
+  }
 };
 
 const Entries = () => {
