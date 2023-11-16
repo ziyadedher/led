@@ -8,10 +8,10 @@ import { HiSwatch } from "react-icons/hi2";
 import { PiRainbowBold } from "react-icons/pi";
 import { useSWRConfig } from "swr";
 
-import { addEntry } from "@/app/actions";
 import Box from "@/app/box";
 import Controls from "@/app/controls";
 import Entries from "@/app/entries";
+import { entries } from "@/utils/actions";
 
 const SHORT_LENGTH = 12;
 
@@ -59,7 +59,7 @@ export default function RootPage() {
   const [marqueeSpeed, setMarqueeSpeed] = useState(5);
 
   const handleSubmit = useCallback(async () => {
-    await addEntry({
+    await entries.add.call({
       text,
       options: {
         color:
@@ -104,7 +104,7 @@ export default function RootPage() {
         className="w-full max-w-lg justify-center"
       >
         <Tabs.Item active title="Color" icon={HiSwatch}>
-          <div className="flex h-48 flex-col items-center gap-4">
+          <div className="flex flex-col items-center gap-4">
             <div className="relative mt-2 overflow-hidden rounded-md bg-white shadow-sm">
               <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center bg-gray-100 p-3">
                 <span className="text-md text-gray-400">#</span>
@@ -131,7 +131,7 @@ export default function RootPage() {
           </div>
         </Tabs.Item>
         <Tabs.Item title="Rainbow" icon={PiRainbowBold}>
-          <fieldset className="flex h-48 flex-col gap-4">
+          <fieldset className="flex flex-col gap-4">
             <div className="flex flex-row items-center gap-2">
               <Checkbox
                 id="rainbow-per-letter"
