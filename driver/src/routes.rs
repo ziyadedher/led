@@ -5,7 +5,7 @@ use std::{
 
 use axum::{
     extract::State as RouterState,
-    routing::{any, get},
+    routing::{any, get, patch},
     Json, Router,
 };
 
@@ -97,18 +97,83 @@ async fn add_entries(
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
-struct ClearEntriesResponse {
+enum DeleteEntriesChoice {
+    All,
+    Single(usize),
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct DeleteEntriesRequest {
+    choice: DeleteEntriesChoice,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct DeleteEntriesResponse {
     num_removed: usize,
 }
 
-async fn clear_entries(RouterState(state): AppState) -> Json<ClearEntriesResponse> {
-    let num_removed = state.lock().unwrap().entries.len();
+async fn delete_entries(
+    RouterState(state): AppState,
+    Json(DeleteEntriesRequest { choice }): Json<DeleteEntriesRequest>,
+) -> Json<DeleteEntriesResponse> {
+    let num_removed = match choice {
+        DeleteEntriesChoice::All => {
+            log::info!("Clearing all entries...");
+            let num_removed = state.lock().unwrap().entries.len();
+            state.lock().unwrap().entries.clear();
+            state.lock().unwrap().scroll = 0;
+            num_removed
+        }
+        DeleteEntriesChoice::Single(index) => {
+            log::info!("Removing entry at index {index}...");
+            state.lock().unwrap().entries.remove(index);
+            1
+        }
+    };
 
-    log::info!("Clearing {num_removed} entries...");
-    state.lock().unwrap().entries.clear();
-    state.lock().unwrap().scroll = 0;
+    Json(DeleteEntriesResponse { num_removed })
+}
 
-    Json(ClearEntriesResponse { num_removed })
+#[derive(serde::Deserialize, serde::Serialize)]
+enum ReorderDirection {
+    Up,
+    Down,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct ReorderEntryRequest {
+    entry: usize,
+    direction: ReorderDirection,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct ReorderEntryResponse {}
+
+async fn reorder_entry(
+    RouterState(state): AppState,
+    Json(ReorderEntryRequest { entry, direction }): Json<ReorderEntryRequest>,
+) -> Json<ReorderEntryResponse> {
+    let new_index = match direction {
+        ReorderDirection::Up => {
+            if entry == 0 {
+                return Json(ReorderEntryResponse {});
+            }
+            entry - 1
+        }
+        ReorderDirection::Down => {
+            if entry == state.lock().unwrap().entries.len() - 1 {
+                return Json(ReorderEntryResponse {});
+            }
+            entry + 1
+        }
+    };
+
+    log::info!("Reordering entry {entry} to {new_index}...");
+
+    let entry = state.lock().unwrap().entries.remove(entry);
+    state.lock().unwrap().entries.insert(new_index, entry);
+
+    Json(ReorderEntryResponse {})
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -162,8 +227,9 @@ pub fn construct_routes(state: Arc<Mutex<State>>) -> Router {
         .route("/pause", get(get_pause).put(set_pause))
         .route(
             "/entries",
-            get(get_entries).post(add_entries).delete(clear_entries),
+            get(get_entries).post(add_entries).delete(delete_entries),
         )
+        .route("/entries/order", patch(reorder_entry))
         .route(
             "/entries/scroll",
             get(get_entries_scroll).post(scroll_entries),

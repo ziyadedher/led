@@ -15,10 +15,10 @@ export type TextEntry = {
 
 const driverCall = async (
   key: string,
-  method: "GET" | "POST" | "PUT" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
   json?: any,
-) =>
-  await fetch(`https://driver.led.ziyadedher.com:9000${key}`, {
+) => {
+  const res = await fetch(`https://driver.led.ziyadedher.com:9000${key}`, {
     method,
     cache: "no-store",
     headers: {
@@ -26,6 +26,17 @@ const driverCall = async (
     },
     body: JSON.stringify(json),
   });
+
+  if (!res.ok) {
+    throw new Error(
+      `Failed to fetch ${method} ${key} with status ${
+        res.status
+      }: ${await res.text()}`,
+    );
+  }
+
+  return res;
+};
 
 const constructDriverFetcherWithSchema =
   <Output>(schema: z.ZodSchema<Output>): ((key: string) => Promise<Output>) =>
@@ -105,14 +116,29 @@ export const entries = {
     },
   },
 
-  clear: {
+  delete: {
     schema: z.object({
       num_removed: z.number(),
     }),
 
-    call: async () => {
-      const res = await driverCall("/entries", "DELETE");
-      return await entries.clear.schema.parseAsync(await res.json());
+    call: async (choice: "All" | number) => {
+      const json = typeof choice === "number" ? { Single: choice } : choice;
+      const res = await driverCall("/entries", "DELETE", { choice: json });
+      return await entries.delete.schema.parseAsync(await res.json());
+    },
+  },
+
+  order: {
+    patch: {
+      schema: z.object({}),
+
+      call: async (entry: number, direction: "Up" | "Down") => {
+        const res = await driverCall("/entries/order", "PATCH", {
+          entry,
+          direction,
+        });
+        return await entries.order.patch.schema.parseAsync(await res.json());
+      },
     },
   },
 
