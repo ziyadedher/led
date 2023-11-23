@@ -54,7 +54,7 @@ export default function RootPage() {
   const [colorMode, setColorMode] = useState(0);
   const [color, setColor] = useState("ffffff");
   const [isRainbowPerLetter, setIsRainbowPerLetter] = useState(false);
-  const [rainbowSpeed, setRainbowSpeed] = useState(5);
+  const [rainbowSpeed, setRainbowSpeed] = useState(10);
 
   const [marqueeSpeed, setMarqueeSpeed] = useState(5);
 
@@ -131,7 +131,23 @@ export default function RootPage() {
           </div>
         </Tabs.Item>
         <Tabs.Item title="Rainbow" icon={PiRainbowBold}>
-          <fieldset className="flex flex-col gap-4">
+          <fieldset className="flex flex-col items-center gap-4">
+            <div className="flex flex-row items-center gap-2">
+              <Label htmlFor="rainbow-speed" className="text-gray-500">
+                Slow
+              </Label>
+              <input
+                id="rainbow-speed"
+                type="range"
+                min="1"
+                max="50"
+                value={rainbowSpeed}
+                onChange={(e) => setRainbowSpeed(Number(e.target.value))}
+              />
+              <Label htmlFor="rainbow-speed" className="text-gray-500">
+                Fast
+              </Label>
+            </div>
             <div className="flex flex-row items-center gap-2">
               <Checkbox
                 id="rainbow-per-letter"
@@ -152,32 +168,56 @@ export default function RootPage() {
         </Tabs.Item>
       </Tabs.Group>
 
-      <div className="flex flex-col items-center gap-4">
+      <div className="flex max-w-lg flex-col items-center gap-4">
         <h2 className="border-b border-gray-300 pb-2 text-xs text-gray-500">
           Make it special
         </h2>
-        <fieldset className="flex flex-col gap-4">
-          <Tooltip
-            content={`Marquee is force-enabled when the text is longer than ${SHORT_LENGTH} characters.`}
-          >
-            <div className="flex flex-row items-center gap-2">
-              <Checkbox
-                id="marquee"
-                disabled={isLong}
-                checked={marqueeSpeed > 0}
-                onChange={(e) => setMarqueeSpeed(e.target.checked ? 5 : 0)}
-                className={cx(isLong ? "cursor-not-allowed" : "cursor-pointer")}
-              />
-              <Label
-                htmlFor="marquee"
-                disabled={isLong}
-                className={cx(isLong ? "cursor-not-allowed" : "cursor-pointer")}
-              >
-                <span className="font-medium text-gray-900">Marquee</span>{" "}
-                <span className="text-gray-500">makes it sliiiide over.</span>
-              </Label>
-            </div>
-          </Tooltip>
+        <fieldset className="flex flex-col items-center gap-4">
+          <div className="flex flex-col items-center gap-2">
+            <Tooltip
+              content={`Marquee is force-enabled when the text is longer than ${SHORT_LENGTH} characters.`}
+            >
+              <div className="flex flex-row items-center gap-2">
+                <Checkbox
+                  id="marquee"
+                  disabled={isLong}
+                  checked={marqueeSpeed > 0}
+                  onChange={(e) => setMarqueeSpeed(e.target.checked ? 5 : 0)}
+                  className={cx(
+                    isLong ? "cursor-not-allowed" : "cursor-pointer",
+                  )}
+                />
+                <Label
+                  htmlFor="marquee"
+                  disabled={isLong}
+                  className={cx(
+                    isLong ? "cursor-not-allowed" : "cursor-pointer",
+                  )}
+                >
+                  <span className="font-medium text-gray-900">Marquee</span>{" "}
+                  <span className="text-gray-500">makes it sliiiide over.</span>
+                </Label>
+              </div>
+            </Tooltip>
+            {marqueeSpeed > 0 ? (
+              <div className="flex flex-row items-center gap-2">
+                <Label htmlFor="marquee-speed" className="text-gray-500">
+                  Slow
+                </Label>
+                <input
+                  id="marquee-speed"
+                  type="range"
+                  min="1"
+                  max="15"
+                  value={marqueeSpeed}
+                  onChange={(e) => setMarqueeSpeed(Number(e.target.value))}
+                />
+                <Label htmlFor="marquee-speed" className="text-gray-500">
+                  Fast
+                </Label>
+              </div>
+            ) : null}
+          </div>
         </fieldset>
       </div>
 
