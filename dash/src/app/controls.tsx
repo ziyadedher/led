@@ -175,7 +175,7 @@ const Controls = ({
           <Button
             color="failure"
             onClick={async () => {
-              await entries.clear.call();
+              await entries.delete.call("All");
               await mutate("/entries", { entries: [] });
               await mutate("/entries/scroll");
             }}
