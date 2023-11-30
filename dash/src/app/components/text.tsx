@@ -2,9 +2,9 @@ import cx from "classnames";
 import { useState } from "react";
 import { HiCheckCircle } from "react-icons/hi2";
 
-import Status from "@/app/status";
+import Status from "@/app/components/status";
 
-const Box = ({
+const Text = ({
   text,
   onChange,
   disabled: isDisabled,
@@ -72,4 +72,4 @@ const Box = ({
   );
 };
 
-export default Box;
+export default Text;
