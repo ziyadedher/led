@@ -70,29 +70,33 @@ const Effects = ({
           </div>
         </Tooltip>
         {effectOptions.marquee.speed > 0 ? (
-          <div className="flex flex-row items-center gap-2">
-            <Label htmlFor="marquee-speed" className="text-gray-500">
-              Slow
-            </Label>
-            <input
-              id="marquee-speed"
-              type="range"
-              min="1"
-              max="15"
-              value={effectOptions.marquee.speed}
-              onChange={(e) =>
-                setEffectOptions((effectOptions) => ({
-                  ...effectOptions,
-                  marquee: {
-                    ...effectOptions.marquee,
-                    speed: Number(e.target.value),
-                  },
-                }))
-              }
-            />
-            <Label htmlFor="marquee-speed" className="text-gray-500">
-              Fast
-            </Label>
+          <div className="flex flex-row items-center gap-4">
+            <Label htmlFor="marquee-speed">Marquee Speed</Label>
+            <div className="flex flex-col">
+              <input
+                id="marquee-speed"
+                type="range"
+                min="1"
+                max="15"
+                value={effectOptions.marquee.speed}
+                onChange={(e) => {
+                  setEffectOptions((effectOptions) => ({
+                    ...effectOptions,
+                    marquee: {
+                      ...effectOptions.marquee,
+                      speed: Number(e.target.value),
+                    },
+                  }));
+                }}
+              />
+              <Label
+                htmlFor="marquee-speed"
+                className="flex w-full flex-row justify-between text-xs font-light text-gray-500"
+              >
+                <span>Slow</span>
+                <span>Fast</span>
+              </Label>
+            </div>
           </div>
         ) : null}
       </div>

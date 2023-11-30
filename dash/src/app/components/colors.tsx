@@ -9,7 +9,7 @@ export const rgbToHex = (rgb: RGBColor) => {
     return hex.length === 1 ? `0${hex}` : hex;
   };
 
-  return `#${hex(rgb.r)}${hex(rgb.g)}${hex(rgb.b)}`;
+  return `${hex(rgb.r)}${hex(rgb.g)}${hex(rgb.b)}`;
 };
 
 export const hexToRgb = (hex: string): RGBColor => {
@@ -37,7 +37,7 @@ export const hexToRgb = (hex: string): RGBColor => {
 };
 
 export const generateRandomColorOptions = (): ColorOptions => ({
-  mode: Math.random() > 0.5 ? "color" : "rainbow",
+  mode: "color",
   color: {
     r: Math.floor(Math.random() * 255),
     g: Math.floor(Math.random() * 255),
@@ -109,27 +109,31 @@ const Colors = ({
         <p className="text-sm text-gray-400">
           you&apos;ve chosen to make the text rainbow
         </p>
-        <div className="flex flex-row items-center gap-2">
-          <Label htmlFor="rainbow-speed" className="text-gray-500">
-            Slow
-          </Label>
-          <input
-            id="rainbow-speed"
-            type="range"
-            min="1"
-            max="50"
-            value={colorOptions.rainbowSpeed}
-            onChange={(e) => {
-              setColorOptions((colorOptions) => ({
-                ...colorOptions,
-                mode: "rainbow",
-                rainbowSpeed: Number(e.target.value),
-              }));
-            }}
-          />
-          <Label htmlFor="rainbow-speed" className="text-gray-500">
-            Fast
-          </Label>
+        <div className="flex flex-row items-center gap-4">
+          <Label htmlFor="rainbow-speed">Rainbow Speed</Label>
+          <div className="flex flex-col">
+            <input
+              id="rainbow-speed"
+              type="range"
+              min="1"
+              max="50"
+              value={colorOptions.rainbowSpeed}
+              onChange={(e) => {
+                setColorOptions((colorOptions) => ({
+                  ...colorOptions,
+                  mode: "rainbow",
+                  rainbowSpeed: Number(e.target.value),
+                }));
+              }}
+            />
+            <Label
+              htmlFor="rainbow-speed"
+              className="flex w-full flex-row justify-between text-xs font-light text-gray-500"
+            >
+              <span>Slow</span>
+              <span>Fast</span>
+            </Label>
+          </div>
         </div>
         <div className="flex flex-row items-center gap-2">
           <Checkbox
