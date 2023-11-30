@@ -48,16 +48,14 @@ export default function RootPage() {
   }, [text, colorOptions, effectOptions, mutate]);
 
   useEffect(() => {
-    if (text.length >= FORCE_ENABLE_MARQUEE_LENGTH) {
-      setEffectOptions((effectOptions) => ({
-        ...effectOptions,
-        marquee: {
-          ...effectOptions.marquee,
-          isForced: true,
-        },
-      }));
-    }
-  }, [text, effectOptions]);
+    setEffectOptions((effectOptions) => ({
+      ...effectOptions,
+      marquee: {
+        ...effectOptions.marquee,
+        isForced: text.length >= FORCE_ENABLE_MARQUEE_LENGTH,
+      },
+    }));
+  }, [text]);
 
   return (
     <div className="relative flex min-h-full flex-col items-center justify-center gap-12 p-8">

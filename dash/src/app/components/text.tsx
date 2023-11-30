@@ -1,8 +1,18 @@
 import cx from "classnames";
 import { useState } from "react";
-import { HiCheckCircle } from "react-icons/hi2";
 
 import Status from "@/app/components/status";
+
+const PLACEHOLDERS = [
+  "your cool message",
+  "hello, world!",
+  "type something here",
+  "type something clever",
+  "think real hard",
+];
+
+const getRandomPlaceholder = () =>
+  PLACEHOLDERS[Math.floor(Math.random() * PLACEHOLDERS.length)];
 
 const Text = ({
   text,
@@ -18,18 +28,18 @@ const Text = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   return (
-    <div className="flex w-full max-w-2xl flex-col items-center gap-8">
+    <div className="flex w-full max-w-2xl flex-col items-center gap-20">
       <div className="flex flex-col items-center gap-4">
         <Status />
         <div className="flex flex-col gap-1">
-          <h1 className="text-center text-4xl">c&apos;mon, write something</h1>
+          <h1 className="text-center text-2xl">c&apos;mon, write something</h1>
           <h2 className="text-center text-xs text-gray-400">
             and maybe sign your name too
           </h2>
         </div>
       </div>
       <form
-        className="flex w-full flex-col items-center gap-8"
+        className="mb-8 flex w-full flex-col items-center gap-8"
         onSubmit={async (e) => {
           e.preventDefault();
           setIsSubmitting(true);
@@ -39,32 +49,20 @@ const Text = ({
       >
         <div className="flex w-full flex-col items-center gap-3">
           <div className="flex w-full flex-row">
-            <div className="relative w-full">
+            <div className="relative w-full border-0 border-b-2">
               <input
                 type="text"
                 value={text}
                 onChange={(e) => onChange(e.target.value)}
                 className={cx(
-                  "block h-12 w-full rounded-l-md border-0 py-1.5 pr-10 text-sm leading-6 ring-1 ring-inset focus:ring-2 focus:ring-inset",
+                  "mb-2 block h-12 w-full border-none py-1.5 pr-10 text-center font-mono text-4xl font-light tracking-wider placeholder:font-mono placeholder:text-gray-200 focus:ring-0",
                   isDisabled || isSubmitting
-                    ? "text-gray-900 ring-gray-200 placeholder:text-gray-400 focus:ring-gray-200"
-                    : "text-gray-900 ring-gray-200 placeholder:text-gray-400 focus:ring-green-600",
+                    ? "border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-gray-200"
+                    : "border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-green-600",
                 )}
-                placeholder="your cool message"
+                placeholder={getRandomPlaceholder()}
               />
             </div>
-            <button
-              type="submit"
-              disabled={isDisabled || isSubmitting}
-              className={cx(
-                "rounded-r-md px-3 py-2 text-sm font-semibold text-white shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
-                isDisabled || isSubmitting
-                  ? "bg-gray-200"
-                  : "bg-green-600 hover:bg-green-500 focus-visible:outline-green-600",
-              )}
-            >
-              <HiCheckCircle className="h-5 w-5" />
-            </button>
           </div>
         </div>
       </form>
