@@ -67,7 +67,7 @@ const EntriesTable = () => {
                 key={i + entry.text}
                 className={isShown ? "bg-blue-50" : "bg-white"}
               >
-                <Table.Cell className="flex flex-row items-center whitespace-nowrap font-medium text-gray-900 hover:bg-gray-50">
+                <Table.Cell className="flex flex-row items-center whitespace-nowrap font-medium text-gray-900 hover:shadow-inner">
                   <span className="mr-4 flex flex-row gap-1 text-gray-400">
                     <button
                       className={cx(
