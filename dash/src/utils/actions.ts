@@ -169,3 +169,30 @@ export const entries = {
     },
   },
 };
+
+export const flash = {
+  get: {
+    schema: z.object({
+      is_flashing: z.boolean(),
+    }),
+
+    call: async () => {
+      const res = await driverCall("/flash", "GET");
+      return await flash.get.schema.parseAsync(await res.json());
+    },
+
+    useSWR: () => useSWRForDriver("/flash", flash.get.schema),
+  },
+
+  post: {
+    schema: z.object({}),
+
+    call: async () => {
+      const res = await driverCall("/flash", "POST", {
+        on_steps: 10,
+        total_steps: 50,
+      });
+      return await flash.post.schema.parseAsync(await res.json());
+    },
+  },
+};

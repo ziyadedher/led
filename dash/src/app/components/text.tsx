@@ -1,5 +1,5 @@
 import cx from "classnames";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import Status from "@/app/components/status";
 
@@ -26,6 +26,7 @@ const Text = ({
   onSubmit: () => void | Promise<void>;
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const placeholder = useMemo(() => getRandomPlaceholder(), []);
 
   return (
     <div className="flex w-full max-w-2xl flex-col items-center gap-20">
@@ -60,7 +61,7 @@ const Text = ({
                     ? "border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-gray-200"
                     : "border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-green-600",
                 )}
-                placeholder={getRandomPlaceholder()}
+                placeholder={placeholder}
               />
             </div>
           </div>
