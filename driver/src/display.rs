@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
 use embedded_graphics::{
@@ -52,14 +52,28 @@ pub struct TextEntry {
 }
 
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
-pub struct State {
-    pub entries: Vec<TextEntry>,
-    /// The number of lines to scroll the display by. In practice, this is the index of the first entry that will be displayed.
-    pub scroll: i32,
-    pub is_paused: bool,
+pub struct FlashState {
+    /// True if and only if the display is currently flashing.
+    pub is_active: bool,
+    /// Number of steps to flash on for before turning off.
+    pub on_steps: usize,
+    /// Total number of steps a flash cycle lasts.
+    pub total_steps: usize,
 }
 
-pub async fn drive_display(state: Arc<Mutex<State>>) -> anyhow::Result<()> {
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+pub struct State {
+    /// List of text entries currently loaded on the display. Note that not all of them may be visible at once.
+    pub entries: Vec<TextEntry>,
+    /// Number of lines to scroll the display by. In practice, this is the index of the first entry that will be
+    /// displayed.
+    pub scroll: i32,
+    /// True if and only if the display has all effects paused (e.g. marquee and rainbow).
+    pub is_paused: bool,
+    pub flash: FlashState,
+}
+
+pub async fn drive_display(state: Arc<RwLock<State>>) -> anyhow::Result<()> {
     let config: RGBMatrixConfig = argh::from_env();
 
     let (mut matrix, mut canvas) =
@@ -70,7 +84,7 @@ pub async fn drive_display(state: Arc<Mutex<State>>) -> anyhow::Result<()> {
     let mut step: usize = 0;
     for _ in 0.. {
         // We clone the state here so we can get rid of the lock as soon as possible.
-        let state = state.lock().unwrap().clone();
+        let state = state.read().unwrap().clone();
 
         canvas.clear(Rgb888::BLACK)?;
 
@@ -174,6 +188,17 @@ pub async fn drive_display(state: Arc<Mutex<State>>) -> anyhow::Result<()> {
                     );
                     text.draw(canvas.as_mut())?;
                 }
+            }
+        }
+
+        // We have `!state.is_paused` here even though time (step) doesn't move forward when paused since we might
+        // end up in a situation where we are at a "step duration boundary" and we don't want the display to, when
+        // paused, end up in a pure white state.
+        if state.flash.is_active && !state.is_paused {
+            let flash_progress = step % state.flash.total_steps;
+            let flash_on = flash_progress < state.flash.on_steps;
+            if flash_on {
+                canvas.fill(255, 255, 255);
             }
         }
 

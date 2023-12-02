@@ -1,6 +1,6 @@
 use std::{
-    sync::{Arc, Mutex},
-    time::{SystemTime, UNIX_EPOCH},
+    sync::{Arc, RwLock},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
@@ -11,7 +11,7 @@ use axum::{
 
 use crate::display::{State, TextEntry};
 
-type AppState = RouterState<Arc<Mutex<State>>>;
+type AppState = RouterState<Arc<RwLock<State>>>;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 struct HealthResponse {
@@ -36,7 +36,7 @@ struct GetPauseResponse {
 }
 
 async fn get_pause(RouterState(state): AppState) -> Json<GetPauseResponse> {
-    let is_paused = state.lock().unwrap().is_paused;
+    let is_paused = state.read().unwrap().is_paused;
 
     log::info!("Getting pause status...");
     Json(GetPauseResponse { is_paused })
@@ -56,10 +56,10 @@ async fn set_pause(
     RouterState(state): AppState,
     Json(SetPauseRequest { should_pause }): Json<SetPauseRequest>,
 ) -> Json<SetPauseResponse> {
-    let is_paused = state.lock().unwrap().is_paused;
+    let is_paused = state.read().unwrap().is_paused;
 
     log::info!("Pausing: {should_pause}...");
-    state.lock().unwrap().is_paused = should_pause;
+    state.write().unwrap().is_paused = should_pause;
 
     Json(SetPauseResponse { is_paused })
 }
@@ -70,11 +70,11 @@ struct GetEntriesResponse {
 }
 
 async fn get_entries(
-    RouterState(state): RouterState<Arc<Mutex<State>>>,
+    RouterState(state): RouterState<Arc<RwLock<State>>>,
 ) -> Json<GetEntriesResponse> {
     log::info!("Getting all entries...");
     Json(GetEntriesResponse {
-        entries: state.lock().unwrap().entries.clone(),
+        entries: state.read().unwrap().entries.clone(),
     })
 }
 
@@ -91,7 +91,7 @@ async fn add_entries(
     Json(AddEntriesRequest { entries }): Json<AddEntriesRequest>,
 ) -> Json<AddEntriesResponse> {
     log::info!("Adding {} entries...", entries.len());
-    state.lock().unwrap().entries.extend(entries);
+    state.write().unwrap().entries.extend(entries);
 
     Json(AddEntriesResponse {})
 }
@@ -119,14 +119,14 @@ async fn delete_entries(
     let num_removed = match choice {
         DeleteEntriesChoice::All => {
             log::info!("Clearing all entries...");
-            let num_removed = state.lock().unwrap().entries.len();
-            state.lock().unwrap().entries.clear();
-            state.lock().unwrap().scroll = 0;
+            let num_removed = state.read().unwrap().entries.len();
+            state.write().unwrap().entries.clear();
+            state.write().unwrap().scroll = 0;
             num_removed
         }
         DeleteEntriesChoice::Single(index) => {
             log::info!("Removing entry at index {index}...");
-            state.lock().unwrap().entries.remove(index);
+            state.write().unwrap().entries.remove(index);
             1
         }
     };
@@ -161,7 +161,7 @@ async fn reorder_entry(
             entry - 1
         }
         ReorderDirection::Down => {
-            if entry == state.lock().unwrap().entries.len() - 1 {
+            if entry == state.read().unwrap().entries.len() - 1 {
                 return Json(ReorderEntryResponse {});
             }
             entry + 1
@@ -170,8 +170,8 @@ async fn reorder_entry(
 
     log::info!("Reordering entry {entry} to {new_index}...");
 
-    let entry = state.lock().unwrap().entries.remove(entry);
-    state.lock().unwrap().entries.insert(new_index, entry);
+    let entry = state.write().unwrap().entries.remove(entry);
+    state.write().unwrap().entries.insert(new_index, entry);
 
     Json(ReorderEntryResponse {})
 }
@@ -182,7 +182,7 @@ struct GetEntriesScrollResponse {
 }
 
 async fn get_entries_scroll(RouterState(state): AppState) -> Json<GetEntriesScrollResponse> {
-    let scroll = state.lock().unwrap().scroll;
+    let scroll = state.read().unwrap().scroll;
 
     log::info!("Getting scroll...");
     Json(GetEntriesScrollResponse { scroll })
@@ -208,7 +208,7 @@ async fn scroll_entries(
     RouterState(state): AppState,
     Json(ScrollEntriesRequest { direction }): Json<ScrollEntriesRequest>,
 ) -> Json<ScrollEntriesResponse> {
-    let current_scroll = state.lock().unwrap().scroll;
+    let current_scroll = state.read().unwrap().scroll;
 
     let new_scroll = match direction {
         ScrollDirection::Up => current_scroll - 1,
@@ -216,12 +216,56 @@ async fn scroll_entries(
     };
 
     log::info!("Scrolling from {current_scroll} to {new_scroll}...");
-    state.lock().unwrap().scroll = new_scroll;
+    state.write().unwrap().scroll = new_scroll;
 
     Json(ScrollEntriesResponse { scroll: new_scroll })
 }
 
-pub fn construct_routes(state: Arc<Mutex<State>>) -> Router {
+#[derive(serde::Deserialize, serde::Serialize)]
+struct GetFlashResponse {
+    is_flashing: bool,
+}
+
+async fn get_flash(RouterState(state): AppState) -> Json<GetFlashResponse> {
+    log::info!("Getting flash status...");
+    let is_flashing = state.read().unwrap().flash.is_active;
+    Json(GetFlashResponse { is_flashing })
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct ActivateFlashRequest {
+    on_steps: usize,
+    total_steps: usize,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct ActivateFlashResponse {}
+
+async fn activate_flash(
+    RouterState(state): AppState,
+    Json(ActivateFlashRequest {
+        on_steps,
+        total_steps,
+    }): Json<ActivateFlashRequest>,
+) -> Json<ActivateFlashResponse> {
+    log::info!("Activating flash...");
+
+    {
+        let flash = &mut state.write().unwrap().flash;
+        flash.on_steps = on_steps;
+        flash.total_steps = total_steps;
+        flash.is_active = true;
+    }
+
+    tokio::task::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        state.write().unwrap().flash.is_active = false;
+    });
+
+    Json(ActivateFlashResponse {})
+}
+
+pub fn construct_routes(state: Arc<RwLock<State>>) -> Router {
     Router::new()
         .route("/health", any(health))
         .route("/pause", get(get_pause).put(set_pause))
@@ -234,5 +278,6 @@ pub fn construct_routes(state: Arc<Mutex<State>>) -> Router {
             "/entries/scroll",
             get(get_entries_scroll).post(scroll_entries),
         )
+        .route("/flash", get(get_flash).post(activate_flash))
         .with_state(state.clone())
 }
