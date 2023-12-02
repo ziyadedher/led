@@ -1,7 +1,7 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::cargo)]
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use axum::Router;
 use axum_server::tls_rustls::RustlsConfig;
@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let state = Arc::new(Mutex::new(State::default()));
+    let state = Arc::new(RwLock::new(State::default()));
 
     let rustls_config = RustlsConfig::from_pem_file(
         "/etc/letsencrypt/live/driver.led.ziyadedher.com/fullchain.pem",

@@ -8,10 +8,11 @@ import {
   HiPlay,
   HiPlayPause,
 } from "react-icons/hi2";
+import { PiLightning, PiLightningSlash } from "react-icons/pi";
 import { useMemo } from "react";
 import { useSWRConfig } from "swr";
 
-import { entries, pause } from "@/utils/actions";
+import { entries, pause, flash } from "@/utils/actions";
 
 const PauseButton = () => {
   const { data, error, isLoading, mutate } = pause.get.useSWR();
@@ -141,6 +142,47 @@ const ScrollButton = ({ direction }: { direction: "Up" | "Down" }) => {
   }
 };
 
+const FlashButton = () => {
+  const { mutate: mutateFlash, data: flashData } = flash.get.useSWR();
+
+  if (flashData === undefined) {
+    return (
+      <Tooltip content="Loading the flash status of the LED server...">
+        <Button color="blue" disabled>
+          <Spinner className="mr-2 h-6 w-6" />
+          loading flash...
+        </Button>
+      </Tooltip>
+    );
+  }
+
+  if (flashData.is_flashing) {
+    return (
+      <Tooltip content="The LED server is currently flashing, please wait before flashing again. There is a limit on how often you can flash.">
+        <Button color="blue" disabled>
+          <PiLightningSlash className="mr-2 h-6 w-6" />
+          Flashing!
+        </Button>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tooltip content="Flash the LED server (i.e. make it blink to get attention).">
+      <Button
+        color="blue"
+        onClick={async () => {
+          await flash.post.call();
+          await mutateFlash({ is_flashing: true });
+        }}
+      >
+        <PiLightning className="mr-2 h-6 w-6" />
+        Flash!!
+      </Button>
+    </Tooltip>
+  );
+};
+
 const Controls = ({
   isSubmitable,
   handleSubmit,
@@ -149,6 +191,8 @@ const Controls = ({
   handleSubmit: () => void;
 }) => {
   const { mutate } = useSWRConfig();
+
+  const { mutate: mutateFlash, data: flashData } = flash.get.useSWR();
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -183,6 +227,9 @@ const Controls = ({
             <HiMiniTrash className="mr-2 h-5 w-5" />
             Clear all entries
           </Button>
+        </div>
+        <div className="flex">
+          <FlashButton />
         </div>
       </div>
     </div>

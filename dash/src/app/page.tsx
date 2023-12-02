@@ -19,9 +19,11 @@ export default function RootPage() {
   const [text, setText] = useState("");
   const isSubmitable = useMemo(() => text.length > 0, [text]);
 
-  const [colorOptions, setColorOptions] = useState(generateRandomColorOptions);
+  const [colorOptions, setColorOptions] = useState(
+    generateRandomColorOptions(),
+  );
   const [effectOptions, setEffectOptions] = useState(
-    generateRandomEffectOptions,
+    generateRandomEffectOptions(),
   );
 
   const handleSubmit = useCallback(async () => {
@@ -46,6 +48,13 @@ export default function RootPage() {
     await mutate("/entries/scroll");
     await mutate("/pause");
   }, [text, colorOptions, effectOptions, mutate]);
+
+  useEffect(() => {
+    setColorOptions(generateRandomColorOptions());
+  }, []);
+  useEffect(() => {
+    setEffectOptions(generateRandomEffectOptions());
+  }, []);
 
   useEffect(() => {
     setEffectOptions((effectOptions) => ({
