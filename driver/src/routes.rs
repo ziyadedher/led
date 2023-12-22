@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -8,6 +8,7 @@ use axum::{
     routing::{any, get, patch},
     Json, Router,
 };
+use tokio::sync::RwLock;
 
 use crate::display::{State, TextEntry};
 
@@ -36,7 +37,7 @@ struct GetPauseResponse {
 }
 
 async fn get_pause(RouterState(state): AppState) -> Json<GetPauseResponse> {
-    let is_paused = state.read().unwrap().is_paused;
+    let is_paused = state.read().await.is_paused;
 
     log::info!("Getting pause status...");
     Json(GetPauseResponse { is_paused })
@@ -56,10 +57,10 @@ async fn set_pause(
     RouterState(state): AppState,
     Json(SetPauseRequest { should_pause }): Json<SetPauseRequest>,
 ) -> Json<SetPauseResponse> {
-    let is_paused = state.read().unwrap().is_paused;
+    let is_paused = state.read().await.is_paused;
 
     log::info!("Pausing: {should_pause}...");
-    state.write().unwrap().is_paused = should_pause;
+    state.write().await.is_paused = should_pause;
 
     Json(SetPauseResponse { is_paused })
 }
@@ -74,7 +75,7 @@ async fn get_entries(
 ) -> Json<GetEntriesResponse> {
     log::info!("Getting all entries...");
     Json(GetEntriesResponse {
-        entries: state.read().unwrap().entries.clone(),
+        entries: state.read().await.entries.clone(),
     })
 }
 
@@ -91,7 +92,7 @@ async fn add_entries(
     Json(AddEntriesRequest { entries }): Json<AddEntriesRequest>,
 ) -> Json<AddEntriesResponse> {
     log::info!("Adding {} entries...", entries.len());
-    state.write().unwrap().entries.extend(entries);
+    state.write().await.entries.extend(entries);
 
     Json(AddEntriesResponse {})
 }
@@ -119,14 +120,14 @@ async fn delete_entries(
     let num_removed = match choice {
         DeleteEntriesChoice::All => {
             log::info!("Clearing all entries...");
-            let num_removed = state.read().unwrap().entries.len();
-            state.write().unwrap().entries.clear();
-            state.write().unwrap().scroll = 0;
+            let num_removed = state.read().await.entries.len();
+            state.write().await.entries.clear();
+            state.write().await.scroll = 0;
             num_removed
         }
         DeleteEntriesChoice::Single(index) => {
             log::info!("Removing entry at index {index}...");
-            state.write().unwrap().entries.remove(index);
+            state.write().await.entries.remove(index);
             1
         }
     };
@@ -161,7 +162,7 @@ async fn reorder_entry(
             entry - 1
         }
         ReorderDirection::Down => {
-            if entry == state.read().unwrap().entries.len() - 1 {
+            if entry == state.read().await.entries.len() - 1 {
                 return Json(ReorderEntryResponse {});
             }
             entry + 1
@@ -170,8 +171,8 @@ async fn reorder_entry(
 
     log::info!("Reordering entry {entry} to {new_index}...");
 
-    let entry = state.write().unwrap().entries.remove(entry);
-    state.write().unwrap().entries.insert(new_index, entry);
+    let entry = state.write().await.entries.remove(entry);
+    state.write().await.entries.insert(new_index, entry);
 
     Json(ReorderEntryResponse {})
 }
@@ -182,7 +183,7 @@ struct GetEntriesScrollResponse {
 }
 
 async fn get_entries_scroll(RouterState(state): AppState) -> Json<GetEntriesScrollResponse> {
-    let scroll = state.read().unwrap().scroll;
+    let scroll = state.read().await.scroll;
 
     log::info!("Getting scroll...");
     Json(GetEntriesScrollResponse { scroll })
@@ -208,7 +209,7 @@ async fn scroll_entries(
     RouterState(state): AppState,
     Json(ScrollEntriesRequest { direction }): Json<ScrollEntriesRequest>,
 ) -> Json<ScrollEntriesResponse> {
-    let current_scroll = state.read().unwrap().scroll;
+    let current_scroll = state.read().await.scroll;
 
     let new_scroll = match direction {
         ScrollDirection::Up => current_scroll - 1,
@@ -216,7 +217,7 @@ async fn scroll_entries(
     };
 
     log::info!("Scrolling from {current_scroll} to {new_scroll}...");
-    state.write().unwrap().scroll = new_scroll;
+    state.write().await.scroll = new_scroll;
 
     Json(ScrollEntriesResponse { scroll: new_scroll })
 }
@@ -228,7 +229,7 @@ struct GetFlashResponse {
 
 async fn get_flash(RouterState(state): AppState) -> Json<GetFlashResponse> {
     log::info!("Getting flash status...");
-    let is_flashing = state.read().unwrap().flash.is_active;
+    let is_flashing = state.read().await.flash.is_active;
     Json(GetFlashResponse { is_flashing })
 }
 
@@ -251,7 +252,7 @@ async fn activate_flash(
     log::info!("Activating flash...");
 
     {
-        let flash = &mut state.write().unwrap().flash;
+        let flash = &mut state.write().await.flash;
         flash.on_steps = on_steps;
         flash.total_steps = total_steps;
         flash.is_active = true;
@@ -259,7 +260,7 @@ async fn activate_flash(
 
     tokio::task::spawn(async move {
         tokio::time::sleep(Duration::from_secs(2)).await;
-        state.write().unwrap().flash.is_active = false;
+        state.write().await.flash.is_active = false;
     });
 
     Json(ActivateFlashResponse {})
