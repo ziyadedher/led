@@ -8,10 +8,11 @@ use std::{
 };
 
 use anyhow::Context;
+use argh::FromArgs;
 use axum::Router;
 use axum_server::tls_rustls::RustlsConfig;
-use clap::Parser;
 use human_panic::setup_panic;
+use rpi_led_panel::{LedSequence, RGBMatrixConfig};
 use serde::{Deserialize, Serialize};
 use tokio::{fs, join, spawn, sync::RwLock};
 use tower_http::{
@@ -25,19 +26,12 @@ use led_driver::{
     routes::construct,
 };
 
-#[derive(Debug, Parser)]
-#[command(author, version, about, long_about = None)]
+/// Configuration for the LED driver.
+#[derive(Debug, FromArgs)]
 struct Args {
-    /// Path to the cache file
-    #[arg(long, default_value = "~/.cache/led/led.json")]
+    /// path to the cache file
+    #[argh(option)]
     cache_path: PathBuf,
-}
-
-fn expand_homedir(path: &Path) -> anyhow::Result<PathBuf> {
-    Ok(path
-        .to_string_lossy()
-        .replace('~', &env::var("HOME")?)
-        .into())
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -109,13 +103,16 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let args = Args::parse();
+    let config = RGBMatrixConfig {
+        led_sequence: LedSequence::Bgr,
+        ..Default::default()
+    };
+    let Args { cache_path } = argh::from_env();
 
-    let cache = load_cache(&args.cache_path).await?;
+    let cache = load_cache(&cache_path).await?;
     let state = Arc::new(RwLock::new(cache.state.unwrap_or_default()));
 
     let save_state = {
-        let cache_path = expand_homedir(&args.cache_path)?;
         let state = state.clone();
 
         async move {
@@ -151,7 +148,7 @@ async fn main() -> anyhow::Result<()> {
             .into_make_service(),
     );
 
-    let driver_task = spawn(drive(state));
+    let driver_task = spawn(drive(config, state));
     let server_task = spawn(server);
     let save_state_task = spawn(save_state);
 

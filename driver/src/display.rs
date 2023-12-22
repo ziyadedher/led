@@ -81,9 +81,7 @@ pub struct State {
 #[allow(clippy::cast_sign_loss)]
 #[allow(clippy::cast_lossless)]
 #[allow(clippy::cast_precision_loss)]
-pub async fn drive(state: Arc<RwLock<State>>) -> anyhow::Result<()> {
-    let config: RGBMatrixConfig = argh::from_env();
-
+pub async fn drive(config: RGBMatrixConfig, state: Arc<RwLock<State>>) -> anyhow::Result<()> {
     let (mut matrix, mut canvas) =
         RGBMatrix::new(config, 0).context("Matrix initialization failed")?;
 
