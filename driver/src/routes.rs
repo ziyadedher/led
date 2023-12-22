@@ -265,7 +265,7 @@ async fn activate_flash(
     Json(ActivateFlashResponse {})
 }
 
-pub fn construct_routes(state: Arc<RwLock<State>>) -> Router {
+pub fn construct(state: Arc<RwLock<State>>) -> Router {
     Router::new()
         .route("/health", any(health))
         .route("/pause", get(get_pause).put(set_pause))
@@ -279,5 +279,5 @@ pub fn construct_routes(state: Arc<RwLock<State>>) -> Router {
             get(get_entries_scroll).post(scroll_entries),
         )
         .route("/flash", get(get_flash).post(activate_flash))
-        .with_state(state.clone())
+        .with_state(state)
 }

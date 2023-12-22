@@ -73,7 +73,13 @@ pub struct State {
     pub flash: FlashState,
 }
 
-pub async fn drive_display(state: Arc<RwLock<State>>) -> anyhow::Result<()> {
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_possible_wrap)]
+#[allow(clippy::cast_sign_loss)]
+#[allow(clippy::cast_lossless)]
+#[allow(clippy::cast_precision_loss)]
+pub async fn drive(state: Arc<RwLock<State>>) -> anyhow::Result<()> {
     let config: RGBMatrixConfig = argh::from_env();
 
     let (mut matrix, mut canvas) =
