@@ -5,17 +5,13 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.80"
-argh = "0.1.12"
-axum = "0.7.4"
-axum-server = { version = "0.6.0", features = ["tls-rustls"] }
 embedded-graphics = "0.8.1"
 env_logger = "0.11.2"
 human-panic = "1.2.3"
 log = "0.4.20"
+postgrest = "1.6.0"
+reqwest = { version = "0.11.24", features = ["json", "rustls", "rustls-tls", "tokio-rustls"], default-features = false }
 rpi-led-panel = "0.5.1"
 serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.114"
 tokio = { version = "1.36.0", features = ["full"] }
-tower-http = { version = "0.5.2", features = ["trace", "cors"] }
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

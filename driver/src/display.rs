@@ -11,6 +11,8 @@ use rpi_led_panel::{Canvas, RGBMatrix, RGBMatrixConfig};
 use serde::{Deserialize, Serialize};
 use tokio::{sync::RwLock, task::block_in_place};
 
+use crate::state::State;
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Rgb {
     pub r: u8,
@@ -64,9 +66,7 @@ pub struct FlashState {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct State {
-    /// List of text entries currently loaded on the display. Note that not all of them may be visible at once.
-    pub entries: Vec<TextEntry>,
+pub struct Panel {
     /// Number of lines to scroll the display by. In practice, this is the index of the first entry that will be
     /// displayed.
     pub scroll: i32,
@@ -82,6 +82,7 @@ pub struct State {
 #[allow(clippy::cast_lossless)]
 #[allow(clippy::cast_precision_loss)]
 pub async fn drive(config: RGBMatrixConfig, state: Arc<RwLock<State>>) -> anyhow::Result<()> {
+    log::info!("Initializing display...");
     let (mut matrix, mut canvas) =
         RGBMatrix::new(config, 0).context("Matrix initialization failed")?;
 
@@ -89,6 +90,7 @@ pub async fn drive(config: RGBMatrixConfig, state: Arc<RwLock<State>>) -> anyhow
 
     let mut step: usize = 0;
     for _ in 0.. {
+        log::debug!("Staring display loop iteration...");
         // We clone the state here so we can get rid of the lock as soon as possible.
         let state = state.read().await.clone();
 
@@ -110,8 +112,9 @@ pub async fn drive(config: RGBMatrixConfig, state: Arc<RwLock<State>>) -> anyhow
                     0
                 };
 
-                let line_offset =
-                    (i as i32 + 1 - state.scroll) * (font.character_size.height as i32 + 1) - 1;
+                let line_offset = (i as i32 + 1 - state.panel.scroll)
+                    * (font.character_size.height as i32 + 1)
+                    - 1;
 
                 match entry.options.color {
                     TextEntryColor::Rgb(ref rgb) => {
@@ -203,15 +206,15 @@ pub async fn drive(config: RGBMatrixConfig, state: Arc<RwLock<State>>) -> anyhow
             // We have `!state.is_paused` here even though time (step) doesn't move forward when paused since we might
             // end up in a situation where we are at a "step duration boundary" and we don't want the display to, when
             // paused, end up in a pure white state.
-            if state.flash.is_active && !state.is_paused {
-                let flash_progress = step % state.flash.total_steps;
-                let flash_on = flash_progress < state.flash.on_steps;
+            if state.panel.flash.is_active && !state.panel.is_paused {
+                let flash_progress = step % state.panel.flash.total_steps;
+                let flash_on = flash_progress < state.panel.flash.on_steps;
                 if flash_on {
                     canvas.fill(255, 255, 255);
                 }
             }
 
-            if !state.is_paused {
+            if !state.panel.is_paused {
                 step += 1;
             }
 
@@ -219,5 +222,6 @@ pub async fn drive(config: RGBMatrixConfig, state: Arc<RwLock<State>>) -> anyhow
         })?;
     }
 
+    log::error!("Display loop ended unexpectedly");
     Ok(())
 }
