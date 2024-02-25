@@ -1,0 +1,11 @@
+[Unit]
+Description=LED Driver Service
+After=network.target
+
+[Service]
+Type=simple
+#Environment="RUST_LOG=trace" --> too slow!
+ExecStart=/opt/led/led-driver
+
+[Install]
+WantedBy=multi-user.target
