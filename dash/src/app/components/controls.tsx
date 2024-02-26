@@ -3,14 +3,12 @@ import {
   HiMiniArrowDown,
   HiMiniArrowUp,
   HiMiniPaperAirplane,
-  HiMiniTrash,
   HiPause,
   HiPlay,
   HiPlayPause,
 } from "react-icons/hi2";
 import { PiLightning, PiLightningSlash } from "react-icons/pi";
 import { useMemo } from "react";
-import { useSWRConfig } from "swr";
 
 import { entries, pause, flash } from "@/utils/actions";
 
@@ -113,9 +111,8 @@ const ScrollButton = ({ direction }: { direction: "Up" | "Down" }) => {
   if (canScroll) {
     return (
       <Tooltip
-        content={`Scroll entry selection ${direction.toLowerCase()} (i.e. show ${
-          direction === "Up" ? "older" : "newer"
-        } entries)`}
+        content={`Scroll entry selection ${direction.toLowerCase()} (i.e. show ${direction === "Up" ? "older" : "newer"
+          } entries)`}
       >
         <Button
           onClick={async () => {
@@ -132,9 +129,8 @@ const ScrollButton = ({ direction }: { direction: "Up" | "Down" }) => {
   } else {
     return (
       <Tooltip
-        content={`Cannot scroll entry selection ${direction.toLowerCase()} (i.e. show ${
-          direction === "Up" ? "older" : "newer"
-        } entries), likely due to the scroll being at the limit.`}
+        content={`Cannot scroll entry selection ${direction.toLowerCase()} (i.e. show ${direction === "Up" ? "older" : "newer"
+          } entries), likely due to the scroll being at the limit.`}
       >
         <Button disabled>{arrow}</Button>
       </Tooltip>
@@ -156,7 +152,7 @@ const FlashButton = () => {
     );
   }
 
-  if (flashData.is_flashing) {
+  if (flashData.is_active) {
     return (
       <Tooltip content="The LED server is currently flashing, please wait before flashing again. There is a limit on how often you can flash.">
         <Button color="blue" disabled>
@@ -172,8 +168,11 @@ const FlashButton = () => {
       <Button
         color="blue"
         onClick={async () => {
-          await flash.post.call();
-          await mutateFlash({ is_flashing: true });
+          await flash.post.call(true);
+          await mutateFlash({ ...flashData, is_active: true, });
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await flash.post.call(false);
+          await mutateFlash({ ...flashData, is_active: false, });
         }}
       >
         <PiLightning className="mr-2 h-6 w-6" />
@@ -190,10 +189,6 @@ const Controls = ({
   isSubmitable: boolean;
   handleSubmit: () => void;
 }) => {
-  const { mutate } = useSWRConfig();
-
-  const { mutate: mutateFlash, data: flashData } = flash.get.useSWR();
-
   return (
     <div className="flex flex-col items-center gap-4">
       <h2 className="border-b border-gray-300 pb-2 text-xs text-gray-500">
@@ -215,17 +210,6 @@ const Controls = ({
           >
             <HiMiniPaperAirplane className="mr-2 h-5 w-5" />
             Submit
-          </Button>
-          <Button
-            color="failure"
-            onClick={async () => {
-              await entries.delete.call("All");
-              await mutate("/entries", { entries: [] });
-              await mutate("/entries/scroll");
-            }}
-          >
-            <HiMiniTrash className="mr-2 h-5 w-5" />
-            Clear all entries
           </Button>
         </div>
         <div className="flex">

@@ -5,7 +5,6 @@ import {
   HiOutlineArrowUp,
   HiOutlineExclamationCircle,
   HiOutlineXCircle,
-  HiOutlineXMark,
 } from "react-icons/hi2";
 
 import { entries } from "@/utils/actions";
@@ -115,19 +114,6 @@ const EntriesTable = () => {
                     </button>
                   </span>
                   <span className="flex-grow text-ellipsis">{entry.text}</span>
-                  <button
-                    className="ml-4 text-gray-400 hover:text-gray-600"
-                    onClick={async () => {
-                      await entries.delete.call(i);
-                      const remaining_entries =
-                        entriesData.data === undefined
-                          ? []
-                          : entriesData.data.entries.filter((_, j) => j !== i);
-                      await entriesData.mutate({ entries: remaining_entries });
-                    }}
-                  >
-                    <HiOutlineXMark className="h-4 w-4" />
-                  </button>
                 </Table.Cell>
               </Table.Row>
             );
