@@ -211,8 +211,6 @@ const Controls = ({
             <HiMiniPaperAirplane className="mr-2 h-5 w-5" />
             Submit
           </Button>
-        </div>
-        <div className="flex">
           <FlashButton />
         </div>
       </div>

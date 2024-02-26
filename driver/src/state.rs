@@ -7,6 +7,7 @@ use tokio::{sync::RwLock, time::Instant};
 use crate::display::{Panel, TextEntry};
 
 const SUPABASE_POSTGREST_URL: &str = "https://ohowojanrhlzhgwuwkrd.supabase.co/rest/v1";
+const SUPABASE_REALTIME_URL: &str = "wss://ohowojanrhlzhgwuwkrd.supabase.co/realtime/v1";
 const SUPABASE_ANON_KEY: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ob3dvamFucmhsemhnd3V3a3JkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDg4ODIzOTQsImV4cCI6MjAyNDQ1ODM5NH0.cXhxyPzLcClJlbeOF9QbQ2txI7IJWrpifAK7esTt8Zc";
 
 const REFRESH_PERIOD: Duration = Duration::from_millis(2500);
@@ -55,6 +56,17 @@ async fn download(client: &Postgrest) -> anyhow::Result<State> {
         .iter()
         .map(|x| x.data.clone())
         .collect();
+
+    log::debug!("Setting liveness...");
+    client
+        .from("panels")
+        .update(format!(
+            "{{ \"last_seen\": \"{}\" }}",
+            chrono::Utc::now().to_rfc3339()
+        ))
+        .eq("id", "75097deb-6b35-4db2-a49e-ad638de4256c")
+        .execute()
+        .await?;
 
     log::info!("Downloaded state, got {} entries", entries.len());
     log::debug!("Downloaded state in {:?}", now.elapsed());

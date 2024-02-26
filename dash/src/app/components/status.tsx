@@ -31,7 +31,7 @@ const Status = () => {
       </Tooltip>
     );
 
-  if (!status.isHealthy)
+  if (!status.is_healthy)
     return (
       <Tooltip content="The LED server is not healthy, it probably won't work.">
         <Badge
