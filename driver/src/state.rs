@@ -9,7 +9,7 @@ use crate::display::{Panel, TextEntry};
 const SUPABASE_POSTGREST_URL: &str = "https://ohowojanrhlzhgwuwkrd.supabase.co/rest/v1";
 const SUPABASE_ANON_KEY: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ob3dvamFucmhsemhnd3V3a3JkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDg4ODIzOTQsImV4cCI6MjAyNDQ1ODM5NH0.cXhxyPzLcClJlbeOF9QbQ2txI7IJWrpifAK7esTt8Zc";
 
-const REFRESH_PERIOD: Duration = Duration::from_millis(500);
+const REFRESH_PERIOD: Duration = Duration::from_millis(2500);
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct State {
@@ -24,7 +24,7 @@ struct TextEntryResponse {
     data: TextEntry,
 }
 
-async fn download(client: Postgrest) -> anyhow::Result<State> {
+async fn download(client: &Postgrest) -> anyhow::Result<State> {
     log::info!("Downloading state...");
     let now = Instant::now();
 
@@ -47,6 +47,7 @@ async fn download(client: Postgrest) -> anyhow::Result<State> {
         .from("entries")
         .select("*")
         .eq("panel_id", "75097deb-6b35-4db2-a49e-ad638de4256c")
+        .order("order.asc")
         .execute()
         .await?
         .json::<Vec<TextEntryResponse>>()
@@ -60,6 +61,7 @@ async fn download(client: Postgrest) -> anyhow::Result<State> {
     Ok(State { panel, entries })
 }
 
+#[tracing::instrument]
 pub async fn sync(state: Arc<RwLock<State>>) -> anyhow::Result<()> {
     log::info!("Initializing state sync...");
     let client = Postgrest::new(SUPABASE_POSTGREST_URL).insert_header("apikey", SUPABASE_ANON_KEY);
@@ -71,7 +73,7 @@ pub async fn sync(state: Arc<RwLock<State>>) -> anyhow::Result<()> {
     let mut interval = tokio::time::interval(REFRESH_PERIOD);
     loop {
         interval.tick().await;
-        match download(client.clone()).await {
+        match download(&client).await {
             Ok(new_state) => {
                 *state.write().await = new_state;
             }
