@@ -1,10 +1,22 @@
+import { createClient } from "@supabase/supabase-js";
 import useSWR from "swr";
-import { z } from "zod";
+
+import { Database } from "@/types/supabase";
+
+
+const PANEL_ID = "75097deb-6b35-4db2-a49e-ad638de4256c";
+
+
+type FlashOptions = {
+  is_active: boolean;
+  on_steps: number;
+  total_steps: number;
+}
 
 type TextEntryOptions = {
   color:
-    | { Rgb: { r: number; g: number; b: number } }
-    | { Rainbow: { is_per_letter: boolean; speed: number } };
+  | { Rgb: { r: number; g: number; b: number } }
+  | { Rainbow: { is_per_letter: boolean; speed: number } };
   marquee: { speed: number };
 };
 
@@ -13,158 +25,97 @@ export type TextEntry = {
   options: TextEntryOptions;
 };
 
-const driverCall = async (
-  key: string,
-  method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
-  json?: any,
-) => {
-  const res = await fetch(`https://driver.led.ziyadedher.com:9000${key}`, {
-    method,
-    cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(json),
-  });
 
-  if (!res.ok) {
-    throw new Error(
-      `Failed to fetch ${method} ${key} with status ${
-        res.status
-      }: ${await res.text()}`,
-    );
+const supabase = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
+
+
+const getPanel = async (id: string) => {
+  const { data, error } = await supabase.from("panels").select("*").eq("id", id).maybeSingle().throwOnError();
+  if (data === null || error) {
+    throw error;
   }
+  return data;
+}
 
-  return res;
-};
+type TypedEntry = Omit<Database["public"]["Tables"]["entries"]["Row"], "data"> & { data: TextEntry };
 
-const constructDriverFetcherWithSchema =
-  <Output>(schema: z.ZodSchema<Output>): ((key: string) => Promise<Output>) =>
-  async (key: string) =>
-    await schema.parseAsync(await (await driverCall(key, "GET")).json());
+const getEntries = async (panel_id: string) => {
+  const { data, error } = await supabase.from("entries").select("*").eq("panel_id", panel_id).order("order", { ascending: true }).throwOnError();
+  if (data === null || error) {
+    throw error;
+  }
+  return data as TypedEntry[];
+}
 
-const useSWRForDriver = <Output>(
-  key: string,
-  schema: z.ZodSchema<Output>,
-  refreshInterval: number = 500,
-) =>
-  useSWR(key, constructDriverFetcherWithSchema(schema), {
-    refreshInterval,
-  });
+const useSWRFactory = <Result>(key: string, func: () => Promise<Result>, { refreshInterval = 500 }: { refreshInterval?: number } = {}) => useSWR(key, func, {
+  refreshInterval,
+});
 
 export const health = {
   get: {
-    schema: z.object({
-      is_healthy: z.boolean(),
-    }),
-
-    call: async () => {
-      const res = await driverCall("/health", "GET");
-      return await health.get.schema.parseAsync(await res.json());
-    },
-
-    useSWR: () => useSWRForDriver("/health", health.get.schema),
+    call: async () => ({ isHealthy: (await getPanel(PANEL_ID)).id === PANEL_ID }),
+    useSWR: () => useSWRFactory("/health", health.get.call),
   },
 };
 
 export const pause = {
   get: {
-    schema: z.object({
-      is_paused: z.boolean(),
-    }),
-
-    call: async () => {
-      const res = await driverCall("/pause", "GET");
-      return await pause.get.schema.parseAsync(await res.json());
-    },
-
-    useSWR: () => useSWRForDriver("/pause", pause.get.schema),
+    call: async () => ({ is_paused: (await getPanel(PANEL_ID)).is_paused }),
+    useSWR: () => useSWRFactory("/pause", pause.get.call),
   },
 
   set: {
-    schema: z.object({
-      is_paused: z.boolean(),
-    }),
-
-    call: async (should_pause: boolean) => {
-      const res = await driverCall("/pause", "PUT", { should_pause });
-      return await pause.set.schema.parseAsync(await res.json());
-    },
+    call: async (should_pause: boolean) =>
+      await supabase.from("panels").update({ is_paused: should_pause }).eq("id", PANEL_ID).throwOnError(),
   },
 };
 
 export const entries = {
   get: {
-    schema: z.object({
-      entries: z.array(z.object({ text: z.string() })),
-    }),
-
-    call: async () => {
-      const res = await driverCall("/entries", "GET");
-      return await entries.get.schema.parseAsync(await res.json());
-    },
-
-    useSWR: () => useSWRForDriver("/entries", entries.get.schema),
+    call: async () => ({ entries: (await getEntries(PANEL_ID)).map((entry) => entry.data) }),
+    useSWR: () => useSWRFactory("/entries", entries.get.call),
   },
 
   add: {
-    schema: z.object({}),
-
     call: async (entry: TextEntry) => {
-      const res = await driverCall("/entries", "POST", { entries: [entry] });
-      return await entries.add.schema.parseAsync(await res.json());
-    },
-  },
-
-  delete: {
-    schema: z.object({
-      num_removed: z.number(),
-    }),
-
-    call: async (choice: "All" | number) => {
-      const json = typeof choice === "number" ? { Single: choice } : choice;
-      const res = await driverCall("/entries", "DELETE", { choice: json });
-      return await entries.delete.schema.parseAsync(await res.json());
+      const entries = await getEntries(PANEL_ID);
+      await supabase.from("entries").insert({ panel_id: PANEL_ID, data: entry, order: entries.length }).throwOnError()
     },
   },
 
   order: {
     patch: {
-      schema: z.object({}),
-
       call: async (entry: number, direction: "Up" | "Down") => {
-        const res = await driverCall("/entries/order", "PATCH", {
-          entry,
-          direction,
-        });
-        return await entries.order.patch.schema.parseAsync(await res.json());
+        const order = entry;
+        const replaced_order = direction === "Up" ? order - 1 : order + 1;
+        const entries = await getEntries(PANEL_ID);
+
+        const entryToMove = entries.find((entry) => entry.order === order);
+        const replacedEntry = entries.find((entry) => entry.order === replaced_order);
+        if (entryToMove === undefined || replacedEntry === undefined) {
+          throw new Error("Entry not found");
+        }
+
+        await supabase.from("entries").update({ order: replaced_order }).eq("id", entryToMove.id).throwOnError();
+        await supabase.from("entries").update({ order }).eq("id", replacedEntry.id).throwOnError();
       },
     },
   },
 
   scroll: {
     get: {
-      schema: z.object({
-        scroll: z.number(),
-      }),
-
-      call: async () => {
-        const res = await driverCall("/entries/scroll", "GET");
-        return await entries.scroll.get.schema.parseAsync(await res.json());
-      },
-
-      useSWR: () =>
-        useSWRForDriver("/entries/scroll", entries.scroll.get.schema),
+      call: async () => ({ scroll: (await getPanel(PANEL_ID)).scroll }),
+      useSWR: () => useSWRFactory("/entries/scroll", entries.scroll.get.call),
     },
 
     post: {
-      schema: z.object({
-        scroll: z.number(),
-      }),
-
       call: async (direction: "Up" | "Down") => {
-        const res = await driverCall("/entries/scroll", "POST", { direction });
-        return await entries.scroll.post.schema.parseAsync(await res.json());
+        const scroll = (await getPanel(PANEL_ID)).scroll;
+        const newScroll = direction === "Up" ? scroll - 1 : scroll + 1;
+        await supabase.from("panels").update({ scroll: newScroll }).eq("id", PANEL_ID).throwOnError();
       },
     },
   },
@@ -172,27 +123,18 @@ export const entries = {
 
 export const flash = {
   get: {
-    schema: z.object({
-      is_flashing: z.boolean(),
-    }),
-
-    call: async () => {
-      const res = await driverCall("/flash", "GET");
-      return await flash.get.schema.parseAsync(await res.json());
-    },
-
-    useSWR: () => useSWRForDriver("/flash", flash.get.schema),
+    call: async () => (await getPanel(PANEL_ID)).flash as FlashOptions,
+    useSWR: () => useSWRFactory("/flash", flash.get.call),
   },
 
   post: {
-    schema: z.object({}),
-
-    call: async () => {
-      const res = await driverCall("/flash", "POST", {
+    call: async (isActive: boolean) => {
+      const flash = {
+        is_active: isActive,
         on_steps: 10,
         total_steps: 50,
-      });
-      return await flash.post.schema.parseAsync(await res.json());
+      }
+      await supabase.from("panels").update({ flash }).eq("id", PANEL_ID).throwOnError();
     },
   },
 };
