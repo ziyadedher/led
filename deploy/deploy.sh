@@ -6,7 +6,7 @@ set -o pipefail
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 pushd ${SCRIPT_DIR}/../driver
-cross build --target arm-unknown-linux-gnueabihf --release
+CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS="--cfg tokio_unstable" cross build --target arm-unknown-linux-gnueabihf --release
 popd
 
 ssh led@led.local 'bash -s' < ${SCRIPT_DIR}/bootstrap.sh

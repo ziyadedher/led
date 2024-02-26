@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-#Environment="RUST_LOG=trace" --> too slow!
+# Environment="RUST_LOG=trace"
 ExecStart=/opt/led/led-driver
 
 [Install]
