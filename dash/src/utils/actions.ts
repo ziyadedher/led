@@ -56,7 +56,12 @@ const useSWRFactory = <Result>(key: string, func: () => Promise<Result>, { refre
 
 export const health = {
   get: {
-    call: async () => ({ isHealthy: (await getPanel(PANEL_ID)).id === PANEL_ID }),
+    call: async () => {
+      const panel = await getPanel(PANEL_ID);
+      const has_right_id = panel.id === PANEL_ID;
+      const has_been_seen_recently = Date.now() - new Date(panel.last_seen).getTime() < 10000;
+      return { is_healthy: has_right_id && has_been_seen_recently }
+    },
     useSWR: () => useSWRFactory("/health", health.get.call),
   },
 };

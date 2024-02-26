@@ -9,7 +9,7 @@ use embedded_graphics::{
 };
 use rpi_led_panel::{RGBMatrix, RGBMatrixConfig};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
+use tokio::{sync::RwLock, task::block_in_place};
 
 use crate::state::State;
 
@@ -214,6 +214,6 @@ pub async fn drive(config: RGBMatrixConfig, state: Arc<RwLock<State>>) -> anyhow
             step += 1;
         }
 
-        matrix.update_on_vsync(canvas);
+        block_in_place(|| matrix.update_on_vsync(canvas));
     }
 }

@@ -11,9 +11,10 @@ use led_driver::{
     state::{self, State},
 };
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::main]
 async fn main() -> anyhow::Result<()> {
     setup_panic!();
+    env_logger::init();
 
     log::info!("Setting up configuration...");
     let config = RGBMatrixConfig {
