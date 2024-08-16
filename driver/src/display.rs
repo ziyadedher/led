@@ -81,7 +81,6 @@ pub struct Panel {
 #[allow(clippy::cast_sign_loss)]
 #[allow(clippy::cast_lossless)]
 #[allow(clippy::cast_precision_loss)]
-#[tracing::instrument]
 pub async fn drive(config: RGBMatrixConfig, state: Arc<RwLock<State>>) -> anyhow::Result<()> {
     log::info!("Initializing display...");
     let (mut matrix, canvas) = RGBMatrix::new(config, 0).context("Matrix initialization failed")?;
