@@ -1,55 +1,74 @@
-import { Badge, Tooltip } from "flowbite-react";
 import {
-  HiMiniCheck,
-  HiMiniClock,
-  HiMiniExclamationCircle,
-  HiMiniExclamationTriangle,
-} from "react-icons/hi2";
+  CheckIcon,
+  ClockIcon,
+  ExclamationCircleIcon,
+  ExclamationTriangleIcon,
+} from "@heroicons/react/16/solid";
 
+import { Badge } from "@/components/badge";
 import { health } from "@/utils/actions";
+
+const StatusBadge = ({
+  color,
+  title,
+  icon: Icon,
+  children,
+}: {
+  color: "zinc" | "red" | "amber" | "green";
+  title: string;
+  icon: React.ComponentType<React.ComponentProps<"svg">>;
+  children: React.ReactNode;
+}) => (
+  <Badge className="flex flex-row items-center" color={color} title={title}>
+    <Icon className="h-3" />
+    {children}
+  </Badge>
+);
 
 const Status = () => {
   const { data: status, error, isLoading } = health.get.useSWR();
 
   if (isLoading)
     return (
-      <Tooltip content="Loading the health of the LED server...">
-        <Badge color="gray" icon={HiMiniClock} className="px-3">
-          Loading...
-        </Badge>
-      </Tooltip>
+      <StatusBadge
+        color="zinc"
+        title="Loading the health of the LED server..."
+        icon={ClockIcon}
+      >
+        Loading...
+      </StatusBadge>
     );
 
   if (error || !status)
     return (
-      <Tooltip
-        content={`Failed to load the health of the LED server, it probably won't work.`}
+      <StatusBadge
+        color="red"
+        title="Failed to load the health of the LED server, it probably won't work."
+        icon={ExclamationCircleIcon}
       >
-        <Badge color="failure" icon={HiMiniExclamationCircle} className="px-3">
-          Error
-        </Badge>
-      </Tooltip>
+        Error
+      </StatusBadge>
     );
 
   if (!status.is_healthy)
     return (
-      <Tooltip content="The LED server is not healthy, it probably won't work.">
-        <Badge
-          color="warning"
-          icon={HiMiniExclamationTriangle}
-          className="px-3"
-        >
-          Unhealthy
-        </Badge>
-      </Tooltip>
+      <StatusBadge
+        color="amber"
+        title="The LED server is not healthy, it probably won't work."
+        icon={ExclamationTriangleIcon}
+      >
+        Unhealthy
+      </StatusBadge>
     );
 
   return (
-    <Tooltip content="The LED server is healthy.">
-      <Badge color="success" icon={HiMiniCheck} className="px-3">
-        Healthy
-      </Badge>
-    </Tooltip>
+    <StatusBadge
+      color="green"
+      title="The LED server is healthy."
+      icon={CheckIcon}
+    >
+      Healthy
+    </StatusBadge>
   );
 };
 

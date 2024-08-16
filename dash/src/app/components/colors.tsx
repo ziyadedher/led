@@ -1,10 +1,18 @@
-import { Checkbox, Label, Tabs } from "flowbite-react";
 import { useEffect, useState } from "react";
-import { CirclePicker, RGBColor } from "react-color";
-import { HiSwatch } from "react-icons/hi2";
-import { PiRainbowBold } from "react-icons/pi";
+import { SwatchIcon, RectangleStackIcon } from "@heroicons/react/24/outline";
+import clsx from "clsx";
 
-export const rgbToHex = (rgb: RGBColor) => {
+import { Checkbox } from "@/components/checkbox";
+import { Label, Fieldset } from "@/components/fieldset";
+import { Input } from "@/components/input";
+
+type RgbColor = {
+  r: number;
+  g: number;
+  b: number;
+};
+
+export const rgbToHex = (rgb: RgbColor) => {
   const hex = (c: number) => {
     const hex = c.toString(16);
     return hex.length === 1 ? `0${hex}` : hex;
@@ -13,7 +21,7 @@ export const rgbToHex = (rgb: RGBColor) => {
   return `${hex(rgb.r)}${hex(rgb.g)}${hex(rgb.b)}`;
 };
 
-export const hexToRgb = (hex: string): RGBColor | null => {
+export const hexToRgb = (hex: string): RgbColor | null => {
   if (hex.startsWith("#")) {
     hex = hex.slice(1);
   }
@@ -50,7 +58,7 @@ export const generateRandomColorOptions = (): ColorOptions => ({
 
 export type ColorOptions = {
   mode: "color" | "rainbow";
-  color: RGBColor;
+  color: RgbColor;
   isRainbowPerLetter: boolean;
   rainbowSpeed: number;
 };
@@ -65,14 +73,82 @@ const Colors = ({
   ) => void;
 }) => {
   const [colorHex, setColorHex] = useState(rgbToHex(colorOptions.color));
+  const [activeTab, setActiveTab] = useState<"color" | "rainbow">("color");
+
+  useEffect(() => {
+    setColorHex(rgbToHex(colorOptions.color).toUpperCase());
+  }, [colorOptions.color]);
 
   return (
-    <Tabs.Group style="underline" className="w-full max-w-lg justify-center">
-      <Tabs.Item active title="Color" icon={HiSwatch}>
-        <div className="flex flex-col items-center gap-4">
-          <p className="text-sm text-gray-400">
-            you&apos;ve chosen to select a specific color for the text
-          </p>
+    <div className="flex w-full max-w-2xl flex-col">
+      <div className="mb-4 flex w-full flex-row justify-center gap-2 rounded-lg bg-zinc-100 p-1">
+        <button
+          className={clsx(
+            "flex items-center rounded-md px-4 py-2 hover:bg-zinc-200",
+            activeTab === "color" && "bg-white shadow",
+          )}
+          onClick={() => setActiveTab("color")}
+        >
+          <SwatchIcon className="mr-2 h-5 w-5" />
+          Color
+        </button>
+        <button
+          className={clsx(
+            "flex items-center rounded-md px-4 py-2 hover:bg-zinc-200",
+            activeTab === "rainbow" && "bg-white shadow",
+          )}
+          onClick={() => setActiveTab("rainbow")}
+        >
+          <RectangleStackIcon className="mr-2 h-5 w-5" />
+          Rainbow
+        </button>
+      </div>
+      {activeTab === "color" && (
+        <div className="flex h-64 flex-col items-center gap-4">
+          <div className="grid grid-cols-6 gap-2 rounded-lg bg-zinc-100 p-4">
+            {[
+              "#FF0000",
+              "#FF4500",
+              "#FFA500",
+              "#FFD700",
+              "#FFFF00",
+              "#ADFF2F",
+              "#00FF00",
+              "#00FA9A",
+              "#00FFFF",
+              "#1E90FF",
+              "#0000FF",
+              "#8A2BE2",
+              "#FF00FF",
+              "#FF69B4",
+              "#FFC0CB",
+              "#FFB6C1",
+              "#F0E68C",
+              "#E6E6FA",
+              "#87CEEB",
+              "#40E0D0",
+              "#98FB98",
+              "#DDA0DD",
+              "#D3D3D3",
+              "#FFFFFF",
+            ].map((color) => (
+              <button
+                key={color}
+                className="h-8 w-8 rounded-full shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                style={{ backgroundColor: color }}
+                onClick={() => {
+                  const rgb = hexToRgb(color);
+                  if (rgb) {
+                    setColorOptions((prev) => ({
+                      ...prev,
+                      mode: "color",
+                      color: rgb,
+                    }));
+                  }
+                }}
+              />
+            ))}
+          </div>
           <div className="relative mt-2 overflow-hidden rounded-md bg-white shadow-sm">
             <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center bg-gray-100 p-3">
               <span className="text-md text-gray-400">#</span>
@@ -81,7 +157,6 @@ const Colors = ({
               type="text"
               value={colorHex}
               onChange={(e) => {
-                setColorHex(e.target.value);
                 setColorOptions((colorOptions) => {
                   let color = hexToRgb(e.target.value);
                   if (color === null) {
@@ -103,31 +178,17 @@ const Colors = ({
               style={{ backgroundColor: `#${rgbToHex(colorOptions.color)}` }}
             />
           </div>
-          <CirclePicker
-            color={colorOptions.color}
-            onChange={(c) => {
-              setColorOptions((colorOptions) => ({
-                ...colorOptions,
-                mode: "color",
-                color: c.rgb,
-              }));
-            }}
-          />
         </div>
-      </Tabs.Item>
-      <Tabs.Item title="Rainbow" icon={PiRainbowBold}>
-        <fieldset className="flex flex-col items-center gap-4">
-          <p className="text-sm text-gray-400">
-            you&apos;ve chosen to make the text rainbow
-          </p>
+      )}
+      {activeTab === "rainbow" && (
+        <Fieldset className="flex h-64 flex-col items-center gap-4">
           <div className="flex flex-row items-center gap-4">
-            <Label htmlFor="rainbow-speed">Rainbow Speed</Label>
-            <div className="flex flex-col">
-              <input
+            <div className="flex flex-col gap-1">
+              <Input
                 id="rainbow-speed"
                 type="range"
-                min="1"
-                max="50"
+                min={1}
+                max={50}
                 value={colorOptions.rainbowSpeed}
                 onChange={(e) => {
                   setColorOptions((colorOptions) => ({
@@ -139,10 +200,13 @@ const Colors = ({
               />
               <Label
                 htmlFor="rainbow-speed"
-                className="flex w-full flex-row justify-between text-xs font-light text-gray-500"
+                className="flex w-full flex-row justify-between"
               >
-                <span>Slow</span>
-                <span>Fast</span>
+                <span className="text-xs text-zinc-400">Slow</span>
+                <span className="text-xs text-zinc-400">
+                  {colorOptions.rainbowSpeed}
+                </span>
+                <span className="text-xs text-zinc-400">Fast</span>
               </Label>
             </div>
           </div>
@@ -150,27 +214,30 @@ const Colors = ({
             <Checkbox
               id="rainbow-per-letter"
               checked={colorOptions.isRainbowPerLetter}
-              onChange={(e) => {
+              onChange={(isChecked) => {
                 setColorOptions((colorOptions) => ({
                   ...colorOptions,
                   mode: "rainbow",
-                  isRainbowPerLetter: e.target.checked,
+                  isRainbowPerLetter: isChecked,
                 }));
               }}
               className="cursor-pointer"
             />
-            <Label htmlFor="rainbow-per-letter" className="cursor-pointer">
+            <Label
+              htmlFor="rainbow-per-letter"
+              className="flex cursor-pointer flex-row items-center gap-2"
+            >
               <span className="font-medium text-gray-900">
                 Rainbow per letter
               </span>{" "}
-              <span className="text-gray-500">
+              <span className="text-xs text-zinc-400">
                 makes each letter glow a different color.
               </span>
             </Label>
           </div>
-        </fieldset>
-      </Tabs.Item>
-    </Tabs.Group>
+        </Fieldset>
+      )}
+    </div>
   );
 };
 

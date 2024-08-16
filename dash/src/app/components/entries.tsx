@@ -1,13 +1,22 @@
-import cx from "classnames";
-import { Spinner, Table } from "flowbite-react";
 import {
-  HiOutlineArrowDown,
-  HiOutlineArrowUp,
-  HiOutlineExclamationCircle,
-  HiOutlineXCircle,
-} from "react-icons/hi2";
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ExclamationCircleIcon,
+  XCircleIcon,
+} from "@heroicons/react/16/solid";
+import clsx from "clsx";
 
 import { entries } from "@/utils/actions";
+import { Badge } from "@/components/badge";
+import {
+  Table,
+  TableHead,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableCell,
+} from "@/components/table";
+import { Text } from "@/components/text";
 
 const SCROLL_CONTEXT_SIZE = 7;
 
@@ -18,8 +27,8 @@ const EntriesTable = () => {
   if (entriesData.isLoading) {
     return (
       <div className="flex h-96 w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-lg bg-gray-50">
-        <Spinner className="h-10 w-10 text-gray-300" />
-        <p className="text-base text-gray-300">Loading entries...</p>
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600"></div>
+        <Text className="text-gray-300">Loading entries...</Text>
       </div>
     );
   }
@@ -27,109 +36,124 @@ const EntriesTable = () => {
   if (entriesData.error || !entriesData.data) {
     return (
       <div className="flex h-96 w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-lg bg-gray-50">
-        <HiOutlineExclamationCircle className="h-12 w-12 text-gray-300" />
-        <p className="text-base text-gray-300">Failed to load entries.</p>
+        <ExclamationCircleIcon className="h-12 w-12 text-gray-300" />
+        <Text className="text-gray-300">Failed to load entries.</Text>
       </div>
     );
   }
 
+  const entriesCount = entriesData.data.entries.length;
+
   if (entriesData.data.entries.length === 0) {
     return (
       <div className="flex h-96 w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-lg bg-gray-50">
-        <HiOutlineXCircle className="h-12 w-12 text-gray-300" />
-        <p className="text-base text-gray-300">No entries, yet.</p>
+        <XCircleIcon className="h-12 w-12 text-gray-300" />
+        <Text className="text-gray-300">No entries, yet.</Text>
       </div>
     );
   } else {
     return (
-      <Table
-        theme={{
-          root: {
-            shadow: "",
-            wrapper: "w-full rounded-lg overflow-hidden",
-          },
-        }}
-      >
-        <Table.Head>
-          <Table.HeadCell>Entry text</Table.HeadCell>
-        </Table.Head>
-        <Table.Body className="flex max-h-[48rem] w-full flex-col divide-y overflow-y-auto">
-          {entriesData.data.entries.map((entry, i) => {
-            const scroll = scrollData.data?.scroll;
-            const isShown =
-              scroll !== undefined &&
-              i >= scroll &&
-              i < scroll + SCROLL_CONTEXT_SIZE;
-
-            return (
-              <Table.Row
-                key={i + entry.text}
-                className={isShown ? "bg-blue-50" : "bg-white"}
-              >
-                <Table.Cell className="flex flex-row items-center whitespace-nowrap font-medium text-gray-900 hover:shadow-inner">
-                  <span className="mr-4 flex flex-row gap-1 text-gray-400">
-                    <button
-                      className={cx(
-                        "hover:text-gray-600",
-                        i === 0 ? "invisible" : "",
-                      )}
-                      onClick={async () => {
-                        await entries.order.patch.call(i, "Up");
-                        const new_entries =
-                          entriesData.data === undefined
-                            ? []
-                            : entriesData.data.entries;
-                        new_entries[i] = new_entries.splice(
-                          i - 1,
-                          1,
-                          new_entries[i],
-                        )[0];
-                        await entriesData.mutate({ entries: new_entries });
-                      }}
-                    >
-                      <HiOutlineArrowUp className="h-4 w-4" />
-                    </button>
-                    <button
-                      className={cx(
-                        "hover:text-gray-600",
-                        i + 1 === entriesData.data?.entries.length
-                          ? "invisible"
-                          : "",
-                      )}
-                      onClick={async () => {
-                        await entries.order.patch.call(i, "Down");
-                        const new_entries =
-                          entriesData.data === undefined
-                            ? []
-                            : entriesData.data.entries;
-                        new_entries[i] = new_entries.splice(
-                          i + 1,
-                          1,
-                          new_entries[i],
-                        )[0];
-                        await entriesData.mutate({ entries: new_entries });
-                      }}
-                    >
-                      <HiOutlineArrowDown className="h-4 w-4" />
-                    </button>
-                  </span>
-                  <span className="flex-grow text-ellipsis">{entry.text}</span>
-                </Table.Cell>
-              </Table.Row>
-            );
-          })}
-        </Table.Body>
+      <Table className="overflow-y-auto rounded-lg">
+        <TableBody className="divide-y overflow-y-auto">
+          {entriesData.data.entries.map((entry, i) => (
+            <EntryTableRow
+              key={i + entry.text}
+              entry={entry}
+              index={i}
+              entriesData={entriesData}
+              scrollData={scrollData}
+              totalEntries={entriesCount}
+            />
+          ))}
+        </TableBody>
       </Table>
     );
   }
 };
 
+const EntryTableRow = ({
+  entry,
+  index,
+  entriesData,
+  scrollData,
+  totalEntries,
+}: {
+  entry: {
+    text: string;
+  };
+  index: number;
+  entriesData: ReturnType<typeof entries.get.useSWR>;
+  scrollData: ReturnType<typeof entries.scroll.get.useSWR>;
+  totalEntries: number;
+}) => {
+  const scroll = scrollData.data?.scroll;
+  const isShown =
+    scroll !== undefined &&
+    index >= scroll &&
+    index < scroll + SCROLL_CONTEXT_SIZE;
+
+  return (
+    <TableRow className={isShown ? "bg-blue-50" : "bg-white"}>
+      <TableCell className="mx-2 flex flex-row items-center gap-4 whitespace-nowrap">
+        <span className="flex flex-row gap-1 text-zinc-400">
+          <button
+            className={clsx(
+              "hover:text-zinc-600",
+              index === 0 ? "invisible" : "",
+            )}
+            onClick={async () => {
+              await entries.order.patch.call(index, "Up");
+              const new_entries =
+                entriesData.data === undefined ? [] : entriesData.data.entries;
+              new_entries[index] = new_entries.splice(
+                index - 1,
+                1,
+                new_entries[index],
+              )[0];
+              await entriesData.mutate({ entries: new_entries });
+            }}
+          >
+            <ArrowUpIcon className="h-4 w-4" />
+          </button>
+          <button
+            className={clsx(
+              "hover:text-zinc-600",
+              index + 1 === totalEntries ? "invisible" : "",
+            )}
+            onClick={async () => {
+              await entries.order.patch.call(index, "Down");
+              const new_entries =
+                entriesData.data === undefined ? [] : entriesData.data.entries;
+              new_entries[index] = new_entries.splice(
+                index + 1,
+                1,
+                new_entries[index],
+              )[0];
+              await entriesData.mutate({ entries: new_entries });
+            }}
+          >
+            <ArrowDownIcon className="h-4 w-4" />
+          </button>
+        </span>
+        <span
+          className="w-0 flex-grow overflow-hidden text-ellipsis"
+          title={entry.text}
+        >
+          {entry.text}
+        </span>
+        {isShown && (
+          <Badge color="blue" className="ml-2">
+            Visible
+          </Badge>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+};
+
 const Entries = () => {
   return (
-    <div className="flex w-full max-w-2xl flex-col items-center gap-4">
-      <h2 className="border-b border-gray-300 pb-2 text-xs text-gray-500">
-        Entries
-      </h2>
+    <div className="flex w-full max-w-4xl flex-col">
       <EntriesTable />
     </div>
   );
