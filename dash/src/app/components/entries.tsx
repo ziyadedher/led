@@ -18,7 +18,7 @@ import {
   TableCell,
 } from "@/components/table";
 import { Text } from "@/components/text";
-import { PanelContext } from "@/app/page";
+import { PanelContext } from "@/app/context";
 
 const SCROLL_CONTEXT_SIZE = 7;
 
