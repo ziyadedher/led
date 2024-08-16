@@ -1,18 +1,18 @@
 use std::{sync::Arc, time::Duration};
 
+use parking_lot::RwLock;
 use postgrest::Postgrest;
 use serde::{Deserialize, Serialize};
-use tokio::{sync::RwLock, time::Instant};
+use tokio::time::Instant;
 
 use crate::display::{Panel, TextEntry};
 
 const SUPABASE_POSTGREST_URL: &str = "https://ohowojanrhlzhgwuwkrd.supabase.co/rest/v1";
-const SUPABASE_REALTIME_URL: &str = "wss://ohowojanrhlzhgwuwkrd.supabase.co/realtime/v1";
 const SUPABASE_ANON_KEY: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ob3dvamFucmhsemhnd3V3a3JkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDg4ODIzOTQsImV4cCI6MjAyNDQ1ODM5NH0.cXhxyPzLcClJlbeOF9QbQ2txI7IJWrpifAK7esTt8Zc";
 
 const REFRESH_PERIOD: Duration = Duration::from_millis(2500);
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct State {
     /// Panel configuration.
     pub panel: Panel,
@@ -25,7 +25,7 @@ struct TextEntryResponse {
     data: TextEntry,
 }
 
-async fn download(client: &Postgrest) -> anyhow::Result<State> {
+async fn maybe_download(last_updated: String, client: &Postgrest) -> anyhow::Result<Option<State>> {
     log::info!("Downloading state...");
     let now = Instant::now();
     log::debug!("Downloading panel information...");
@@ -43,6 +43,11 @@ async fn download(client: &Postgrest) -> anyhow::Result<State> {
         .into_iter()
         .next()
         .ok_or_else(|| anyhow::anyhow!("No panel found"))?;
+
+    if panel.last_updated == last_updated {
+        log::debug!("State is up to date, skipping download");
+        return Ok(None);
+    }
 
     log::debug!("Downloading text entries...");
     let entries: Vec<TextEntry> = serde_json::from_str::<Vec<TextEntryResponse>>(
@@ -73,7 +78,7 @@ async fn download(client: &Postgrest) -> anyhow::Result<State> {
 
     log::info!("Downloaded state, got {} entries", entries.len());
     log::debug!("Downloaded state in {:?}", now.elapsed());
-    Ok(State { panel, entries })
+    Ok(Some(State { panel, entries }))
 }
 
 pub async fn sync(state: Arc<RwLock<State>>) -> anyhow::Result<()> {
@@ -87,9 +92,12 @@ pub async fn sync(state: Arc<RwLock<State>>) -> anyhow::Result<()> {
     let mut interval = tokio::time::interval(REFRESH_PERIOD);
     loop {
         interval.tick().await;
-        match download(&client).await {
-            Ok(new_state) => {
-                *state.write().await = new_state;
+        let last_updated = state.read().panel.last_updated.clone();
+        match maybe_download(last_updated, &client).await {
+            Ok(None) => {}
+            Ok(Some(new_state)) => {
+                let mut state_write = state.write();
+                *state_write = new_state;
             }
             Err(err) => {
                 log::warn!("Failed to download state: {}, trying again...", err);

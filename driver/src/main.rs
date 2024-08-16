@@ -5,8 +5,9 @@
 use std::{env, path::PathBuf, sync::Arc};
 
 use clap::Parser;
+use parking_lot::RwLock;
 use rpi_led_panel::{LedSequence, RGBMatrixConfig};
-use tokio::{sync::RwLock, task::JoinSet};
+use tokio::task::JoinSet;
 
 use led_driver::{
     display::drive,

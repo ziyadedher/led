@@ -7,9 +7,10 @@ use embedded_graphics::{
     prelude::*,
     text::Text,
 };
+use parking_lot::RwLock;
 use rpi_led_panel::{RGBMatrix, RGBMatrixConfig};
 use serde::{Deserialize, Serialize};
-use tokio::{sync::RwLock, task::block_in_place};
+use tokio::task::block_in_place;
 
 use crate::state::State;
 
@@ -26,36 +27,36 @@ impl From<Rgb> for Rgb888 {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
 pub struct RainbowOptions {
     pub is_per_letter: bool,
     pub speed: u32,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
 pub enum TextEntryColor {
     Rgb(Rgb),
     Rainbow(RainbowOptions),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
 pub struct MarqueeOptions {
     pub speed: u32,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
 pub struct TextEntryOptions {
     pub color: TextEntryColor,
     pub marquee: MarqueeOptions,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
 pub struct TextEntry {
     pub text: String,
     pub options: TextEntryOptions,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct FlashState {
     /// True if and only if the display is currently flashing.
     pub is_active: bool,
@@ -65,14 +66,21 @@ pub struct FlashState {
     pub total_steps: usize,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Panel {
-    /// Number of lines to scroll the display by. In practice, this is the index of the first entry that will be
-    /// displayed.
+    /// Number of lines to scroll the display by.
+    ///
+    /// In practice, this is the index of the first entry that will be displayed.
     pub scroll: i32,
     /// True if and only if the display has all effects paused (e.g. marquee and rainbow).
     pub is_paused: bool,
+    /// The current state of the flash effect.
     pub flash: FlashState,
+    /// When the panel was last updated.
+    ///
+    /// This is used to determine when to pull the entries again. We don't care what the actual value is here, we just
+    /// want to know if it has changed.
+    pub last_updated: String,
 }
 
 #[allow(clippy::too_many_lines)]
@@ -90,10 +98,11 @@ pub async fn drive(config: RGBMatrixConfig, state: Arc<RwLock<State>>) -> anyhow
     let mut step: usize = 0;
     loop {
         log::debug!("Starting display loop iteration...");
-        let state = state.read().await;
-        let mut canvas = canvas.clone();
 
+        let mut canvas = canvas.clone();
         canvas.clear(Rgb888::BLACK)?;
+
+        let state = state.read().clone();
 
         for (i, entry) in state.entries.iter().enumerate() {
             let marquee_offset = if entry.options.marquee.speed > 0 {
