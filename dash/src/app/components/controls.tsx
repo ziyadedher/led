@@ -13,7 +13,7 @@ import { useMemo, useContext } from "react";
 import { Button } from "@/components/button";
 
 import { entries, pause, flash } from "@/utils/actions";
-import { PanelContext } from "@/app/page";
+import { PanelContext } from "@/app/context";
 
 const PauseButton = () => {
   const panelId = useContext(PanelContext);

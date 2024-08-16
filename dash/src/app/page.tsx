@@ -1,16 +1,10 @@
 "use client";
 
-import {
-  useState,
-  useMemo,
-  useCallback,
-  useEffect,
-  createContext,
-} from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useSWRConfig } from "swr";
 
+import { PanelContext } from "@/app/context";
 import Message from "@/app/components/message";
-import Status from "@/app/components/status";
 import Panels from "@/app/components/panels";
 import Colors, {
   type ColorOptions,
@@ -25,8 +19,6 @@ import Entries from "@/app/components/entries";
 import { entries, panels } from "@/utils/actions";
 import { Divider } from "@/components/divider";
 import { StackedLayout } from "@/components/stacked-layout";
-
-export const PanelContext = createContext<string>("");
 
 export default function RootPage() {
   const { mutate } = useSWRConfig();
