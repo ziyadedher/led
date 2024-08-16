@@ -73,6 +73,9 @@ enum Commands {
         /// The configuration file path for the LED driver.
         #[clap(long, value_parser, default_value = "/usr/local/etc/led/config.toml")]
         config_path: PathBuf,
+        /// Whether to start the systemd service after upgrading.
+        #[clap(long, default_value = "true")]
+        start_service: bool,
     },
 }
 
@@ -337,7 +340,7 @@ WantedBy=multi-user.target
     Ok(())
 }
 
-async fn upgrade(config_path: &Path, use_debug: bool) -> anyhow::Result<()> {
+async fn upgrade(config_path: &Path, use_debug: bool, restart_service: bool) -> anyhow::Result<()> {
     ensure_running_as_root()?;
 
     log::info!("Checking for driver upgrades...");
@@ -348,14 +351,22 @@ async fn upgrade(config_path: &Path, use_debug: bool) -> anyhow::Result<()> {
 
     if latest_version != current_version {
         log::info!("New version available: {}, upgrading...", latest_version);
-        download_and_install_release(&latest_version, &config.install_path).await?;
-        log::debug!("Upgraded to version {}", latest_version);
 
-        log::debug!("Restarting led-driver service...");
+        log::debug!("Stopping led-driver service...");
         Command::new("systemctl")
-            .args(&["restart", "led-driver.service"])
+            .args(&["stop", "led-driver.service"])
             .status()?;
-        log::debug!("Restarted led-driver service");
+
+        download_and_install_release(&latest_version, &config.install_path).await?;
+
+        if restart_service {
+            log::debug!("Starting led-driver service...");
+            Command::new("systemctl")
+                .args(&["start", "led-driver.service"])
+                .status()?;
+        } else {
+            log::info!("Skipping service restart as requested");
+        }
 
         log::info!("Successfully upgraded to version {}", latest_version);
     } else {
@@ -379,16 +390,17 @@ async fn run(args: Args) -> anyhow::Result<()> {
             watch,
             check_frequency,
             config_path,
+            start_service,
         } => {
             if *watch {
                 loop {
-                    if let Err(e) = upgrade(config_path, args.use_debug).await {
+                    if let Err(e) = upgrade(config_path, args.use_debug, *start_service).await {
                         log::error!("Error during upgrade: {}", e);
                     }
                     thread::sleep(Duration::from_secs(*check_frequency));
                 }
             } else {
-                upgrade(config_path, args.use_debug).await
+                upgrade(config_path, args.use_debug, *start_service).await
             }
         }
     }
