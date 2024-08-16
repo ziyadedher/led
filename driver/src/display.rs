@@ -68,6 +68,11 @@ pub struct FlashState {
 
 #[derive(PartialEq, Eq, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Panel {
+    /// Unique identifier of the panel.
+    #[serde(skip_serializing)]
+    pub id: String,
+    /// Human-readable name for the panel.
+    pub name: String,
     /// Number of lines to scroll the display by.
     ///
     /// In practice, this is the index of the first entry that will be displayed.
@@ -80,6 +85,7 @@ pub struct Panel {
     ///
     /// This is used to determine when to pull the entries again. We don't care what the actual value is here, we just
     /// want to know if it has changed.
+    #[serde(skip_serializing)]
     pub last_updated: String,
 }
 

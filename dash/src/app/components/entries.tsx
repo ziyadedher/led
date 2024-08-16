@@ -5,6 +5,7 @@ import {
   XCircleIcon,
 } from "@heroicons/react/16/solid";
 import clsx from "clsx";
+import { useContext } from "react";
 
 import { entries } from "@/utils/actions";
 import { Badge } from "@/components/badge";
@@ -17,12 +18,14 @@ import {
   TableCell,
 } from "@/components/table";
 import { Text } from "@/components/text";
+import { PanelContext } from "@/app/page";
 
 const SCROLL_CONTEXT_SIZE = 7;
 
 const EntriesTable = () => {
-  const entriesData = entries.get.useSWR();
-  const scrollData = entries.scroll.get.useSWR();
+  const panelId = useContext(PanelContext);
+  const entriesData = entries.get.useSWR(panelId);
+  const scrollData = entries.scroll.get.useSWR(panelId);
 
   if (entriesData.isLoading) {
     return (
@@ -63,6 +66,7 @@ const EntriesTable = () => {
               entriesData={entriesData}
               scrollData={scrollData}
               totalEntries={entriesCount}
+              panelId={panelId}
             />
           ))}
         </TableBody>
@@ -77,6 +81,7 @@ const EntryTableRow = ({
   entriesData,
   scrollData,
   totalEntries,
+  panelId,
 }: {
   entry: {
     text: string;
@@ -85,6 +90,7 @@ const EntryTableRow = ({
   entriesData: ReturnType<typeof entries.get.useSWR>;
   scrollData: ReturnType<typeof entries.scroll.get.useSWR>;
   totalEntries: number;
+  panelId: string;
 }) => {
   const scroll = scrollData.data?.scroll;
   const isShown =
@@ -102,7 +108,7 @@ const EntryTableRow = ({
               index === 0 ? "invisible" : "",
             )}
             onClick={async () => {
-              await entries.order.patch.call(index, "Up");
+              await entries.order.patch.call(panelId, index, "Up");
               const new_entries =
                 entriesData.data === undefined ? [] : entriesData.data.entries;
               new_entries[index] = new_entries.splice(
@@ -121,7 +127,7 @@ const EntryTableRow = ({
               index + 1 === totalEntries ? "invisible" : "",
             )}
             onClick={async () => {
-              await entries.order.patch.call(index, "Down");
+              await entries.order.patch.call(panelId, index, "Down");
               const new_entries =
                 entriesData.data === undefined ? [] : entriesData.data.entries;
               new_entries[index] = new_entries.splice(

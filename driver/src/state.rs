@@ -25,7 +25,53 @@ struct TextEntryResponse {
     data: TextEntry,
 }
 
-async fn maybe_download(last_updated: String, client: &Postgrest) -> anyhow::Result<Option<State>> {
+async fn get_panel_id(panel_name: &str, client: &Postgrest) -> anyhow::Result<String> {
+    log::debug!("Getting panel ID for name {}...", panel_name);
+    let panels: Vec<Panel> = serde_json::from_str(
+        &client
+            .from("panels")
+            .select("*")
+            .eq("name", panel_name)
+            .execute()
+            .await?
+            .text()
+            .await?,
+    )?;
+
+    match panels.len() {
+        0 => {
+            log::warn!("Panel not found, creating...");
+            let new_panel = Panel {
+                name: panel_name.to_string(),
+                ..Default::default()
+            };
+            let created_panel: Panel = serde_json::from_str(
+                &client
+                    .from("panels")
+                    .insert(serde_json::to_string(&new_panel)?)
+                    .execute()
+                    .await?
+                    .text()
+                    .await?,
+            )?;
+            Ok(created_panel.id)
+        }
+        1 => {
+            log::debug!("Panel found with ID {}", panels[0].id);
+            Ok(panels[0].id.clone())
+        }
+        _ => Err(anyhow::anyhow!(
+            "Multiple panels found with name {}",
+            panel_name
+        )),
+    }
+}
+
+async fn maybe_download(
+    panel_id: &str,
+    last_updated: &str,
+    client: &Postgrest,
+) -> anyhow::Result<Option<State>> {
     log::info!("Downloading state...");
     let now = Instant::now();
     log::debug!("Downloading panel information...");
@@ -33,7 +79,7 @@ async fn maybe_download(last_updated: String, client: &Postgrest) -> anyhow::Res
         &client
             .from("panels")
             .select("*")
-            .eq("id", "75097deb-6b35-4db2-a49e-ad638de4256c")
+            .eq("id", panel_id)
             .execute()
             .await?
             .text()
@@ -54,7 +100,7 @@ async fn maybe_download(last_updated: String, client: &Postgrest) -> anyhow::Res
         &client
             .from("entries")
             .select("*")
-            .eq("panel_id", "75097deb-6b35-4db2-a49e-ad638de4256c")
+            .eq("panel_id", panel_id)
             .order("order.asc")
             .execute()
             .await?
@@ -65,25 +111,17 @@ async fn maybe_download(last_updated: String, client: &Postgrest) -> anyhow::Res
     .map(|x| x.data.clone())
     .collect();
 
-    log::debug!("Setting liveness...");
-    client
-        .from("panels")
-        .update(format!(
-            "{{ \"last_seen\": \"{}\" }}",
-            chrono::Utc::now().to_rfc3339()
-        ))
-        .eq("id", "75097deb-6b35-4db2-a49e-ad638de4256c")
-        .execute()
-        .await?;
-
     log::info!("Downloaded state, got {} entries", entries.len());
     log::debug!("Downloaded state in {:?}", now.elapsed());
     Ok(Some(State { panel, entries }))
 }
 
-pub async fn sync(state: Arc<RwLock<State>>) -> anyhow::Result<()> {
+pub async fn sync(panel_name: String, state: Arc<RwLock<State>>) -> anyhow::Result<()> {
     log::info!("Initializing state sync...");
     let client = Postgrest::new(SUPABASE_POSTGREST_URL).insert_header("apikey", SUPABASE_ANON_KEY);
+
+    let panel_id = get_panel_id(&panel_name, &client).await?;
+    log::info!("Using panel ID: {}", panel_id);
 
     log::info!(
         "Starting state sync loop ({}ms refresh period)...",
@@ -92,8 +130,20 @@ pub async fn sync(state: Arc<RwLock<State>>) -> anyhow::Result<()> {
     let mut interval = tokio::time::interval(REFRESH_PERIOD);
     loop {
         interval.tick().await;
+
+        log::debug!("Setting liveness...");
+        client
+            .from("panels")
+            .update(format!(
+                "{{ \"last_seen\": \"{}\" }}",
+                chrono::Utc::now().to_rfc3339()
+            ))
+            .eq("id", &panel_id)
+            .execute()
+            .await?;
+
         let last_updated = state.read().panel.last_updated.clone();
-        match maybe_download(last_updated, &client).await {
+        match maybe_download(&panel_id, &last_updated, &client).await {
             Ok(None) => {}
             Ok(Some(new_state)) => {
                 let mut state_write = state.write();
