@@ -1,5 +1,8 @@
-import cx from "classnames";
-import { Checkbox, Label, Tooltip } from "flowbite-react";
+import clsx from "clsx";
+
+import { Checkbox } from "@/components/checkbox";
+import { Label, Fieldset } from "@/components/fieldset";
+import { Input } from "@/components/input";
 
 export const FORCE_ENABLE_MARQUEE_LENGTH = 12;
 
@@ -27,80 +30,75 @@ const Effects = ({
   ) => void;
 }) => (
   <div className="flex max-w-lg flex-col items-center gap-4">
-    <h2 className="border-b border-gray-300 pb-2 text-xs text-gray-500">
-      Make it special
-    </h2>
-    <fieldset className="flex flex-col items-center gap-4">
+    <Fieldset className="flex flex-col items-center gap-4">
       <div className="flex flex-col items-center gap-2">
-        <Tooltip
-          content={`Marquee is force-enabled when the text is longer than ${FORCE_ENABLE_MARQUEE_LENGTH} characters.`}
-        >
-          <div className="flex flex-row items-center gap-2">
-            <Checkbox
-              id="marquee"
-              disabled={effectOptions.marquee.isForced}
-              checked={effectOptions.marquee.speed > 0}
-              onChange={(e) =>
-                setEffectOptions((effectOptions) => ({
-                  ...effectOptions,
-                  marquee: {
-                    ...effectOptions.marquee,
-                    speed: e.target.checked ? 5 : 0,
-                  },
-                }))
-              }
-              className={cx(
-                effectOptions.marquee.isForced
-                  ? "cursor-not-allowed"
-                  : "cursor-pointer",
-              )}
-            />
-            <Label
-              htmlFor="marquee"
-              disabled={effectOptions.marquee.isForced}
-              className={cx(
-                effectOptions.marquee.isForced
-                  ? "cursor-not-allowed"
-                  : "cursor-pointer",
-              )}
-            >
-              <span className="font-medium text-gray-900">Marquee</span>{" "}
-              <span className="text-gray-500">makes it sliiiide over.</span>
-            </Label>
-          </div>
-        </Tooltip>
-        {effectOptions.marquee.speed > 0 ? (
-          <div className="flex flex-row items-center gap-4">
-            <Label htmlFor="marquee-speed">Marquee Speed</Label>
-            <div className="flex flex-col">
-              <input
-                id="marquee-speed"
-                type="range"
-                min="1"
-                max="15"
-                value={effectOptions.marquee.speed}
-                onChange={(e) => {
-                  setEffectOptions((effectOptions) => ({
-                    ...effectOptions,
-                    marquee: {
-                      ...effectOptions.marquee,
-                      speed: Number(e.target.value),
-                    },
-                  }));
-                }}
-              />
-              <Label
-                htmlFor="marquee-speed"
-                className="flex w-full flex-row justify-between text-xs font-light text-gray-500"
-              >
-                <span>Slow</span>
-                <span>Fast</span>
-              </Label>
-            </div>
-          </div>
-        ) : null}
+        <div className="flex flex-row items-center gap-2">
+          <Checkbox
+            id="marquee"
+            disabled={effectOptions.marquee.isForced}
+            checked={effectOptions.marquee.speed > 0}
+            onChange={(checked) =>
+              setEffectOptions((effectOptions) => ({
+                ...effectOptions,
+                marquee: {
+                  ...effectOptions.marquee,
+                  speed: checked ? 5 : 0,
+                },
+              }))
+            }
+            className={
+              effectOptions.marquee.isForced
+                ? "cursor-not-allowed"
+                : "cursor-pointer"
+            }
+          />
+          <Label
+            htmlFor="marquee"
+            className={clsx(
+              "flex flex-row items-center gap-2",
+              effectOptions.marquee.isForced
+                ? "cursor-not-allowed text-zinc-400 dark:text-zinc-500"
+                : "cursor-pointer text-zinc-900 dark:text-zinc-100",
+            )}
+          >
+            <span className="font-medium text-zinc-950 dark:text-white">
+              Marquee
+            </span>{" "}
+            <p className="text-xs text-zinc-400">makes it sliiiide over.</p>
+          </Label>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <Input
+            id="marquee-speed"
+            type="range"
+            min={1}
+            max={15}
+            value={effectOptions.marquee.speed}
+            onChange={(e) => {
+              setEffectOptions((effectOptions) => ({
+                ...effectOptions,
+                marquee: {
+                  ...effectOptions.marquee,
+                  speed: Number(e.target.value),
+                },
+              }));
+            }}
+            disabled={effectOptions.marquee.speed === 0}
+          />
+          <Label
+            htmlFor="marquee-speed"
+            className="flex w-full flex-row justify-between"
+          >
+            <span className="text-xs text-zinc-400">Slow</span>
+            <span className="text-xs text-zinc-400">
+              {effectOptions.marquee.speed}
+            </span>
+            <span className="text-xs text-zinc-400">Fast</span>
+          </Label>
+        </div>
       </div>
-    </fieldset>
+    </Fieldset>
   </div>
 );
 
