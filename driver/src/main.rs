@@ -56,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     log::info!("Setting up configuration...");
-    let config = RGBMatrixConfig {
+    let matrix_config = RGBMatrixConfig {
         led_sequence: LedSequence::Rgb,
         ..Default::default()
     };
@@ -66,8 +66,8 @@ async fn main() -> anyhow::Result<()> {
 
     log::info!("Spawning tasks...");
     let mut tasks = JoinSet::new();
-    tasks.spawn(drive(config, state.clone()));
-    tasks.spawn(state::sync(state.clone()));
+    tasks.spawn(drive(matrix_config, state.clone()));
+    tasks.spawn(state::sync(config.id, state.clone()));
 
     log::info!("Waiting for tasks...");
     while let Some(result) = tasks.join_next().await {

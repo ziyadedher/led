@@ -8,14 +8,16 @@ import {
   BoltIcon,
   BoltSlashIcon,
 } from "@heroicons/react/16/solid";
-import { useMemo } from "react";
+import { useMemo, useContext } from "react";
 
 import { Button } from "@/components/button";
 
 import { entries, pause, flash } from "@/utils/actions";
+import { PanelContext } from "@/app/page";
 
 const PauseButton = () => {
-  const { data, error, isLoading, mutate } = pause.get.useSWR();
+  const panelId = useContext(PanelContext);
+  const { data, error, isLoading, mutate } = pause.get.useSWR(panelId);
 
   if (isLoading) {
     return <Button disabled>?</Button>;
@@ -33,7 +35,7 @@ const PauseButton = () => {
     return (
       <Button
         onClick={async () => {
-          await pause.set.call(false);
+          await pause.set.call(panelId, false);
           await mutate({ is_paused: false });
         }}
       >
@@ -44,7 +46,7 @@ const PauseButton = () => {
     return (
       <Button
         onClick={async () => {
-          await pause.set.call(true);
+          await pause.set.call(panelId, true);
           await mutate({ is_paused: true });
         }}
       >
@@ -55,9 +57,10 @@ const PauseButton = () => {
 };
 
 const ScrollButton = ({ direction }: { direction: "Up" | "Down" }) => {
-  const { data, error, isLoading, mutate } = entries.scroll.get.useSWR();
+  const panelId = useContext(PanelContext);
+  const { data, error, isLoading, mutate } = entries.scroll.get.useSWR(panelId);
 
-  const entriesResults = entries.get.useSWR();
+  const entriesResults = entries.get.useSWR(panelId);
   const numEntries = useMemo(
     () => entriesResults.data?.entries.length ?? 0,
     [entriesResults.data],
@@ -92,7 +95,7 @@ const ScrollButton = ({ direction }: { direction: "Up" | "Down" }) => {
     return (
       <Button
         onClick={async () => {
-          await entries.scroll.post.call(direction);
+          await entries.scroll.post.call(panelId, direction);
           await mutate({
             scroll: data.scroll + (direction === "Up" ? -1 : 1),
           });
@@ -107,7 +110,8 @@ const ScrollButton = ({ direction }: { direction: "Up" | "Down" }) => {
 };
 
 const FlashButton = () => {
-  const { mutate: mutateFlash, data: flashData } = flash.get.useSWR();
+  const panelId = useContext(PanelContext);
+  const { mutate: mutateFlash, data: flashData } = flash.get.useSWR(panelId);
 
   if (flashData === undefined) {
     return (
@@ -130,10 +134,10 @@ const FlashButton = () => {
     <Button
       color="blue"
       onClick={async () => {
-        await flash.post.call(true);
+        await flash.post.call(panelId, true);
         await mutateFlash({ ...flashData, is_active: true });
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        await flash.post.call(false);
+        await flash.post.call(panelId, false);
         await mutateFlash({ ...flashData, is_active: false });
       }}
     >
