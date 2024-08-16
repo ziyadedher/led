@@ -36,6 +36,12 @@ struct Args {
     /// If set to true, the management utility will use the debug version of the LED driver for all operations.
     #[clap(long)]
     use_debug: bool,
+
+    /// The CPU architecture to use.
+    ///
+    /// If not specified, the architecture will be automatically detected.
+    #[clap(long)]
+    arch: Option<Architecture>,
 }
 
 /// Available subcommands for the LED driver management utility.
@@ -77,6 +83,46 @@ enum Commands {
         #[clap(long, default_value = "true")]
         start_service: bool,
     },
+}
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+enum Architecture {
+    Arm,
+    Aarch64,
+}
+
+impl Architecture {
+    fn target(&self) -> &'static str {
+        match self {
+            Architecture::Arm => "arm-unknown-linux-gnueabihf",
+            Architecture::Aarch64 => "aarch64-unknown-linux-musl",
+        }
+    }
+
+    fn binary_suffix(&self) -> &'static str {
+        match self {
+            Architecture::Arm => "arm",
+            Architecture::Aarch64 => "aarch64",
+        }
+    }
+
+    fn detect() -> anyhow::Result<Self> {
+        let arch = std::env::consts::ARCH;
+        match arch {
+            "arm" => Ok(Architecture::Arm),
+            "aarch64" => Ok(Architecture::Aarch64),
+            _ => Err(anyhow::anyhow!("Unsupported architecture: {}", arch)),
+        }
+    }
+}
+
+impl std::fmt::Display for Architecture {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Architecture::Arm => write!(f, "arm"),
+            Architecture::Aarch64 => write!(f, "aarch64"),
+        }
+    }
 }
 
 async fn create_s3_client() -> anyhow::Result<aws_sdk_s3::Client> {
@@ -146,15 +192,15 @@ fn get_current_running_version() -> anyhow::Result<String> {
     }
 }
 
-async fn get_latest_version(use_debug: bool) -> anyhow::Result<String> {
-    log::debug!("Getting latest version...");
+async fn get_latest_version(use_debug: bool, arch: &Architecture) -> anyhow::Result<String> {
+    log::debug!("Getting latest version for architecture {}...", arch);
     if use_debug {
         log::debug!("Got debug version");
         return Ok(String::from("debug"));
     }
 
     let latest_version = reqwest::get(
-        "https://ohowojanrhlzhgwuwkrd.supabase.co/storage/v1/object/public/releases/latest-version",
+        format!("https://ohowojanrhlzhgwuwkrd.supabase.co/storage/v1/object/public/releases/latest-version-{}", arch)
     )
     .await?
     .text()
@@ -166,9 +212,13 @@ async fn get_latest_version(use_debug: bool) -> anyhow::Result<String> {
     Ok(latest_version)
 }
 
-async fn download_release(version: &str) -> anyhow::Result<Vec<u8>> {
-    log::debug!("Downloading release version {}...", version);
-    let binary_name = format!("led-driver-{}", version);
+async fn download_release(version: &str, arch: &Architecture) -> anyhow::Result<Vec<u8>> {
+    log::debug!(
+        "Downloading release version {} for architecture {}...",
+        version,
+        arch
+    );
+    let binary_name = format!("led-driver-{}-{}", version, arch.binary_suffix());
     let url = format!(
         "https://ohowojanrhlzhgwuwkrd.supabase.co/storage/v1/object/public/releases/versions/{}",
         binary_name
@@ -177,12 +227,21 @@ async fn download_release(version: &str) -> anyhow::Result<Vec<u8>> {
     let response = reqwest::get(&url).await?;
     let bytes = response.bytes().await?.to_vec();
 
-    log::debug!("Downloaded {} bytes for version {}", bytes.len(), version);
+    log::debug!(
+        "Downloaded {} bytes for version {} and architecture {}",
+        bytes.len(),
+        version,
+        arch
+    );
     Ok(bytes)
 }
 
-async fn download_and_install_release(version: &str, install_path: &Path) -> anyhow::Result<()> {
-    let binary_data = download_release(version).await?;
+async fn download_and_install_release(
+    version: &str,
+    install_path: &Path,
+    arch: &Architecture,
+) -> anyhow::Result<()> {
+    let binary_data = download_release(version, arch).await?;
     if let Some(parent) = install_path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -195,16 +254,20 @@ async fn release(
     driver_folder: &Path,
     target_folder: &Path,
     use_debug: bool,
+    arch: &Architecture,
 ) -> anyhow::Result<()> {
     let version = get_build_version(driver_folder, use_debug)?;
-    let binary_name = format!("led-driver-{}", version);
+    let binary_name = format!("led-driver-{}-{}", version, arch.binary_suffix());
 
     log::info!("Releasing {}...", binary_name);
 
     log::debug!("Compiling latest driver...");
     let status = Command::new("cross")
         .env(
-            "CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS",
+            format!(
+                "CARGO_TARGET_{}_RUSTFLAGS",
+                arch.target().to_uppercase().replace("-", "_")
+            ),
             "--cfg tokio_unstable",
         )
         .args(&[
@@ -212,7 +275,7 @@ async fn release(
             "--package",
             "led-driver",
             "--target",
-            "arm-unknown-linux-gnueabihf",
+            arch.target(),
             "--release",
             "--target-dir",
             target_folder.to_str().unwrap(),
@@ -229,7 +292,7 @@ async fn release(
     let s3_client = create_s3_client().await?;
 
     log::debug!("Uploading binary to Supabase storage...");
-    let binary_path = target_folder.join("arm-unknown-linux-gnueabihf/release/led-driver");
+    let binary_path = target_folder.join(format!("{}/release/led-driver", arch.target()));
     s3_client
         .put_object()
         .bucket("releases")
@@ -237,21 +300,18 @@ async fn release(
         .body(ByteStream::from_path(&binary_path).await?)
         .send()
         .await?;
-    log::info!(
-        "Uploaded binary to Supabase storage: led-driver-{}",
-        version
-    );
+    log::info!("Uploaded binary to Supabase storage: {}", binary_name);
 
     log::debug!("Updating latest-version file...");
     if !use_debug {
         s3_client
             .put_object()
             .bucket("releases")
-            .key("latest-version")
+            .key(format!("latest-version-{}", arch))
             .body(ByteStream::from(version.as_bytes().to_vec()))
             .send()
             .await?;
-        log::debug!("Updated latest-version file to {}", version);
+        log::debug!("Updated latest-version-{} file to {}", arch, version);
     } else {
         log::debug!("Skipping latest-version update for debug version");
     }
@@ -264,6 +324,7 @@ async fn init(
     config_path: &Path,
     should_recreate_config: bool,
     use_debug: bool,
+    arch: &Architecture,
 ) -> anyhow::Result<()> {
     ensure_running_as_root()?;
 
@@ -305,8 +366,8 @@ async fn init(
     let config = load_config(&config_path)?;
 
     log::debug!("Downloading latest driver version...");
-    let latest_version = get_latest_version(use_debug).await?;
-    download_and_install_release(&latest_version, &config.install_path).await?;
+    let latest_version = get_latest_version(use_debug, arch).await?;
+    download_and_install_release(&latest_version, &config.install_path, arch).await?;
 
     log::debug!("Creating systemd service...");
     let service_content = format!(
@@ -340,13 +401,18 @@ WantedBy=multi-user.target
     Ok(())
 }
 
-async fn upgrade(config_path: &Path, use_debug: bool, restart_service: bool) -> anyhow::Result<()> {
+async fn upgrade(
+    config_path: &Path,
+    use_debug: bool,
+    restart_service: bool,
+    arch: &Architecture,
+) -> anyhow::Result<()> {
     ensure_running_as_root()?;
 
     log::info!("Checking for driver upgrades...");
 
     let config = load_config(config_path)?;
-    let latest_version = get_latest_version(use_debug).await?;
+    let latest_version = get_latest_version(use_debug, arch).await?;
     let current_version = get_current_running_version()?;
 
     if latest_version != current_version {
@@ -357,7 +423,7 @@ async fn upgrade(config_path: &Path, use_debug: bool, restart_service: bool) -> 
             .args(&["stop", "led-driver.service"])
             .status()?;
 
-        download_and_install_release(&latest_version, &config.install_path).await?;
+        download_and_install_release(&latest_version, &config.install_path, arch).await?;
 
         if restart_service {
             log::debug!("Starting led-driver service...");
@@ -376,16 +442,17 @@ async fn upgrade(config_path: &Path, use_debug: bool, restart_service: bool) -> 
 }
 
 async fn run(args: Args) -> anyhow::Result<()> {
+    let arch = args.arch.map(Ok).unwrap_or_else(Architecture::detect)?;
     match &args.command {
         Commands::Release {
             driver_folder,
             target_folder,
-        } => release(driver_folder, target_folder, args.use_debug).await,
+        } => release(driver_folder, target_folder, args.use_debug, &arch).await,
         Commands::Init {
             id,
             config_path,
             recreate_config,
-        } => init(id, config_path, *recreate_config, args.use_debug).await,
+        } => init(id, config_path, *recreate_config, args.use_debug, &arch).await,
         Commands::Upgrade {
             watch,
             check_frequency,
@@ -394,13 +461,15 @@ async fn run(args: Args) -> anyhow::Result<()> {
         } => {
             if *watch {
                 loop {
-                    if let Err(e) = upgrade(config_path, args.use_debug, *start_service).await {
+                    if let Err(e) =
+                        upgrade(config_path, args.use_debug, *start_service, &arch).await
+                    {
                         log::error!("Error during upgrade: {}", e);
                     }
                     thread::sleep(Duration::from_secs(*check_frequency));
                 }
             } else {
-                upgrade(config_path, args.use_debug, *start_service).await
+                upgrade(config_path, args.use_debug, *start_service, &arch).await
             }
         }
     }
