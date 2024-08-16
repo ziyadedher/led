@@ -1,8 +1,10 @@
+#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
+#![warn(clippy::cargo)]
 
-use std::{env, sync::Arc};
+use std::{env, path::PathBuf, sync::Arc};
 
-use human_panic::setup_panic;
+use clap::Parser;
 use rpi_led_panel::{LedSequence, RGBMatrixConfig};
 use tokio::{sync::RwLock, task::JoinSet};
 
@@ -10,11 +12,47 @@ use led_driver::{
     display::drive,
     state::{self, State},
 };
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
+
+/// LED driver for the Raspberry Pi.
+#[derive(Parser)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    /// The configuration file path for the LED driver.
+    #[clap(long, value_parser, default_value = "/usr/local/etc/led/config.toml")]
+    config: PathBuf,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    setup_panic!();
-    env_logger::init();
+    human_panic::setup_panic!();
+
+    let args = Args::parse();
+
+    let config = led_driver_common::config::load_config(&args.config)?;
+
+    let (non_blocking, _guard) = tracing_appender::non_blocking(tracing_appender::rolling::hourly(
+        &config.log_dir,
+        "led.log",
+    ));
+    let console_layer = tracing_subscriber::fmt::layer()
+        .with_writer(std::io::stderr)
+        .with_ansi(true)
+        .with_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+        );
+    let file_layer = tracing_subscriber::fmt::layer()
+        .with_writer(non_blocking)
+        .with_ansi(false)
+        .with_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        );
+    tracing_subscriber::registry()
+        .with(console_layer)
+        .with(file_layer)
+        .init();
 
     log::info!("Setting up configuration...");
     let config = RGBMatrixConfig {

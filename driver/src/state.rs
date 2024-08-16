@@ -28,34 +28,37 @@ struct TextEntryResponse {
 async fn download(client: &Postgrest) -> anyhow::Result<State> {
     log::info!("Downloading state...");
     let now = Instant::now();
-
     log::debug!("Downloading panel information...");
-    let panels: Vec<Panel> = client
-        .from("panels")
-        .select("*")
-        .eq("id", "75097deb-6b35-4db2-a49e-ad638de4256c")
-        .execute()
-        .await?
-        .json()
-        .await?;
+    let panels: Vec<Panel> = serde_json::from_str(
+        &client
+            .from("panels")
+            .select("*")
+            .eq("id", "75097deb-6b35-4db2-a49e-ad638de4256c")
+            .execute()
+            .await?
+            .text()
+            .await?,
+    )?;
     let panel = panels
         .into_iter()
         .next()
         .ok_or_else(|| anyhow::anyhow!("No panel found"))?;
 
     log::debug!("Downloading text entries...");
-    let entries: Vec<TextEntry> = client
-        .from("entries")
-        .select("*")
-        .eq("panel_id", "75097deb-6b35-4db2-a49e-ad638de4256c")
-        .order("order.asc")
-        .execute()
-        .await?
-        .json::<Vec<TextEntryResponse>>()
-        .await?
-        .iter()
-        .map(|x| x.data.clone())
-        .collect();
+    let entries: Vec<TextEntry> = serde_json::from_str::<Vec<TextEntryResponse>>(
+        &client
+            .from("entries")
+            .select("*")
+            .eq("panel_id", "75097deb-6b35-4db2-a49e-ad638de4256c")
+            .order("order.asc")
+            .execute()
+            .await?
+            .text()
+            .await?,
+    )?
+    .iter()
+    .map(|x| x.data.clone())
+    .collect();
 
     log::debug!("Setting liveness...");
     client
@@ -73,7 +76,6 @@ async fn download(client: &Postgrest) -> anyhow::Result<State> {
     Ok(State { panel, entries })
 }
 
-#[tracing::instrument]
 pub async fn sync(state: Arc<RwLock<State>>) -> anyhow::Result<()> {
     log::info!("Initializing state sync...");
     let client = Postgrest::new(SUPABASE_POSTGREST_URL).insert_header("apikey", SUPABASE_ANON_KEY);
