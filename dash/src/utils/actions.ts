@@ -54,7 +54,7 @@ const getEntries = async (panel_id: string) => {
   if (data === null || error) {
     throw error;
   }
-  return data as TypedEntry[];
+  return data as TextEntryItem[];
 };
 
 const useSWRFactory = <Result>(
