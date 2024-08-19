@@ -39,7 +39,7 @@ const getPanel = async (id: string) => {
   return data;
 };
 
-type TypedEntry = Omit<
+export type TextEntryItem = Omit<
   Database["public"]["Tables"]["entries"]["Row"],
   "data"
 > & { data: TextEntry };
@@ -129,7 +129,7 @@ export const pause = {
 export const entries = {
   get: {
     call: async (panelId: string) => ({
-      entries: (await getEntries(panelId)).map((entry) => entry.data),
+      entries: await getEntries(panelId),
     }),
     useSWR: (panelId: string) =>
       useSWRFactory(`/entries/${panelId}`, () => entries.get.call(panelId)),
@@ -141,6 +141,18 @@ export const entries = {
       await supabase
         .from("entries")
         .insert({ panel_id: panelId, data: entry, order: entries.length })
+        .throwOnError();
+      await updatePanelLastUpdated(panelId);
+    },
+  },
+
+  delete: {
+    call: async (panelId: string, entryId: string) => {
+      await supabase
+        .from("entries")
+        .delete()
+        .eq("id", entryId)
+        .eq("panel_id", panelId)
         .throwOnError();
       await updatePanelLastUpdated(panelId);
     },

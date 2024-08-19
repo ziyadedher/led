@@ -3,20 +3,14 @@ import {
   ArrowUpIcon,
   ExclamationCircleIcon,
   XCircleIcon,
+  TrashIcon,
 } from "@heroicons/react/16/solid";
 import clsx from "clsx";
-import { useContext } from "react";
+import { useContext, useCallback } from "react";
 
-import { entries } from "@/utils/actions";
+import { entries, type TextEntryItem } from "@/utils/actions";
 import { Badge } from "@/components/badge";
-import {
-  Table,
-  TableHead,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableCell,
-} from "@/components/table";
+import { Table, TableBody, TableRow, TableCell } from "@/components/table";
 import { Text } from "@/components/text";
 import { PanelContext } from "@/app/context";
 
@@ -60,7 +54,7 @@ const EntriesTable = () => {
         <TableBody className="divide-y overflow-y-auto">
           {entriesData.data.entries.map((entry, i) => (
             <EntryTableRow
-              key={i + entry.text}
+              key={entry.id}
               entry={entry}
               index={i}
               entriesData={entriesData}
@@ -83,9 +77,7 @@ const EntryTableRow = ({
   totalEntries,
   panelId,
 }: {
-  entry: {
-    text: string;
-  };
+  entry: TextEntryItem;
   index: number;
   entriesData: ReturnType<typeof entries.get.useSWR>;
   scrollData: ReturnType<typeof entries.scroll.get.useSWR>;
@@ -98,6 +90,13 @@ const EntryTableRow = ({
     index >= scroll &&
     index < scroll + SCROLL_CONTEXT_SIZE;
 
+  const handleDelete = useCallback(async () => {
+    await entries.delete.call(panelId, entry.id);
+    const newEntries =
+      entriesData.data?.entries.filter((e) => e.id !== entry.id) || [];
+    await entriesData.mutate({ entries: newEntries });
+  }, [panelId, entry.id, entriesData]);
+
   return (
     <TableRow className={isShown ? "bg-blue-50" : "bg-white"}>
       <TableCell className="mx-2 flex flex-row items-center gap-4 whitespace-nowrap">
@@ -108,7 +107,7 @@ const EntryTableRow = ({
               index === 0 ? "invisible" : "",
             )}
             onClick={async () => {
-              await entries.order.patch.call(panelId, index, "Up");
+              await entries.order.patch.call(panelId, entry.order, "Up");
               const new_entries =
                 entriesData.data === undefined ? [] : entriesData.data.entries;
               new_entries[index] = new_entries.splice(
@@ -127,7 +126,7 @@ const EntryTableRow = ({
               index + 1 === totalEntries ? "invisible" : "",
             )}
             onClick={async () => {
-              await entries.order.patch.call(panelId, index, "Down");
+              await entries.order.patch.call(panelId, entry.order, "Down");
               const new_entries =
                 entriesData.data === undefined ? [] : entriesData.data.entries;
               new_entries[index] = new_entries.splice(
@@ -143,15 +142,21 @@ const EntryTableRow = ({
         </span>
         <span
           className="w-0 flex-grow overflow-hidden text-ellipsis"
-          title={entry.text}
+          title={entry.data.text}
         >
-          {entry.text}
+          {entry.data.text}
         </span>
         {isShown && (
           <Badge color="blue" className="ml-2">
             Visible
           </Badge>
         )}
+        <button
+          onClick={handleDelete}
+          className="text-zinc-400 hover:text-red-500"
+        >
+          <TrashIcon className="h-4 w-4" />
+        </button>
       </TableCell>
     </TableRow>
   );
