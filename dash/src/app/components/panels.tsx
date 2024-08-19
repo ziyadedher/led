@@ -20,14 +20,6 @@ import {
 } from "@/components/dropdown";
 import { panels, health } from "@/utils/actions";
 
-const getPanelDescription = (panelName: string): string => {
-  const descriptions: { [key: string]: string } = {
-    alpha: "Little Raspberry Pi Zero panel.",
-    beta: "Big Raspberry Pi 3 panel.",
-  };
-  return descriptions[panelName] || "No description available";
-};
-
 const PanelsDropdown = ({
   panelId,
   setPanelId,
@@ -117,15 +109,13 @@ const PanelsDropdown = ({
               className="w-full"
             >
               <DropdownLabel>{panel.name}</DropdownLabel>
-              <DropdownDescription>
-                {getPanelDescription(panel.name)}
-              </DropdownDescription>
+              <DropdownDescription>{panel.description}</DropdownDescription>
             </DropdownItem>
           ))}
         </DropdownMenu>
       </Dropdown>
       <div className="text-xs text-zinc-500">
-        {getPanelDescription(selectedPanel?.name || "")}
+        {selectedPanel?.description || ""}
       </div>
     </div>
   );
