@@ -48,7 +48,8 @@ export default function RootPage() {
 
   useEffect(() => {
     if (panelsData && panelsData.length > 0 && !panelId) {
-      setPanelId(panelsData[0].id);
+      const officePanel = panelsData.find((panel) => panel.name === "office");
+      setPanelId(officePanel ? officePanel.id : panelsData[0].id);
     }
   }, [panelsData, panelId]);
 
