@@ -15,9 +15,11 @@ End-to-end bring-up of a new LED matrix Pi.
    Keys:
    - `SUPABASE_URL`, `SUPABASE_ANON_KEY` — driver runtime
    - `OTEL_ENDPOINT` (optional) — `http://infra:4318` for OTLP/HTTP to your tailnet collector
-   - `WIFI_SSID`, `WIFI_PSK`, `WIFI_COUNTRY` — first-boot WiFi config
+   - `WIFI_COUNTRY` — 2-letter ISO regdomain code (e.g. `CA`, `US`)
    - `TAILSCALE_AUTHKEY` — first-boot tailnet join
    - `SSH_AUTHORIZED_KEYS_FILE` (optional) — defaults to `~/.ssh/id_ed25519.pub`
+
+   *No WiFi SSID/PSK*: those are entered by the user from a phone/laptop on first boot via the captive-portal AP that the Pi brings up. See "First boot" below.
 4. **Workspace builds locally**: `just check`.
 
 ## Provisioning a new matrix
@@ -51,7 +53,15 @@ You'll be prompted to retype the device path before the destructive `dd`. The re
 
 ### 2. Insert the SD into the Pi and power on
 
-First boot takes ~2–3 min. The Pi runs `firstrun.sh`, which sets the hostname, configures WiFi (NetworkManager), installs Tailscale, joins the tailnet with the auth key, disables the system sshd, enables `led-driver.service`, then reboots into a normal boot. After that it's a regular tailnet host.
+First boot runs `firstrun.sh`, which applies hostname + SSH key, writes `/etc/led/init.env` with the runtime knobs, enables the boot-time services, and reboots. ~30s.
+
+After that reboot:
+
+1. **`led-wifi-setup.service`** runs first. If no WiFi connection is configured yet, the Pi brings up an open AP named `led-setup-<id>` and serves a captive-portal page on `http://10.42.0.1`.
+2. Connect a phone/laptop to `led-setup-<id>`. iOS/Android usually auto-open the captive portal; if not, open `http://10.42.0.1` manually.
+3. Pick your network from the dropdown, enter the password, hit Connect. The Pi tears down the AP, applies the WiFi connection, and the service exits successfully when the connection comes up.
+4. **`led-tailscale-init.service`** runs next: `curl`-installs Tailscale, runs `tailscale up --auth-key=… --ssh`, disables the system sshd, then writes a marker file so it doesn't re-run.
+5. **`led-driver.service`** finally starts.
 
 Watch for it:
 
@@ -85,7 +95,8 @@ If `firstrun.sh` failed for any reason, log into the Pi locally (the `pi` user i
 - **Data plane**: the driver pulls panel state and text entries from Supabase PostgREST every ~2.5 s, keyed by `id`. Updates from the dash become visible on the matrix on the next sync tick.
 - **Observability**: the driver emits OTLP/HTTP metrics + logs to `OTEL_ENDPOINT` if set. `led.driver.heartbeat` is the liveness signal — query HyperDX/ClickHouse for it instead of polling `panels.last_seen` (which the driver no longer writes).
 - **Updates**: push-based via `just deploy`. There's no on-device polling; the matrix only changes when you push.
-- **WiFi changes after deploy**: SSH in over Tailscale, edit `/etc/NetworkManager/system-connections/led-wifi.nmconnection` (Bookworm) and `nmcli connection up led-wifi`. A captive-portal fallback is on the v2 list.
+- **WiFi changes after deploy**: SSH in over Tailscale and either edit `/etc/NetworkManager/system-connections/led-wifi.nmconnection` directly, or `rm /var/lib/led-wifi-setup/configured && systemctl restart led-wifi-setup` to re-arm the captive-portal flow.
+- **WiFi onboarding**: handled by the in-house `led-wifi-setup` Rust binary using NetworkManager shared-mode AP + a tiny axum captive portal. No SSID/PSK is baked at flash time; the user enters them on first boot from any phone/laptop browser. Source: `wifi-setup/`.
 
 ## Solder note
 

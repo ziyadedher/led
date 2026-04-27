@@ -1,0 +1,14 @@
+[Unit]
+Description=LED matrix WiFi onboarding (AP + captive portal until configured)
+After=NetworkManager.service
+Wants=NetworkManager.service
+Before=network-online.target led-tailscale-init.service led-driver.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/led/init.env
+ExecStart=/usr/local/bin/led-wifi-setup --id ${PANEL_ID} --country ${WIFI_COUNTRY}
+
+[Install]
+WantedBy=multi-user.target

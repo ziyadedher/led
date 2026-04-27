@@ -1,0 +1,29 @@
+#!/bin/bash
+# Installs Tailscale (if missing), joins the tailnet, and disables the system
+# sshd so all future access goes via Tailscale SSH. Idempotent: writes a
+# marker file at the end so the systemd unit won't re-run.
+set -euo pipefail
+
+: "${HOSTNAME:?HOSTNAME unset in /etc/led/init.env}"
+: "${TAILSCALE_AUTHKEY:?TAILSCALE_AUTHKEY unset in /etc/led/init.env}"
+
+if ! command -v tailscale >/dev/null; then
+    echo "[led-tailscale-init] installing tailscale"
+    curl -fsSL https://tailscale.com/install.sh | sh
+fi
+
+echo "[led-tailscale-init] joining tailnet as $HOSTNAME"
+tailscale up --auth-key="$TAILSCALE_AUTHKEY" --hostname="$HOSTNAME" --ssh
+
+echo "[led-tailscale-init] disabling system sshd (Tailscale SSH takes over)"
+systemctl disable --now ssh 2>/dev/null || true
+
+mkdir -p /var/lib/led-wifi-setup
+date -u +%FT%TZ > /var/lib/led-wifi-setup/tailscale-joined
+
+# The auth key is sensitive; once we've joined, scrub it from the env file.
+if grep -q '^TAILSCALE_AUTHKEY=' /etc/led/init.env; then
+    sed -i '/^TAILSCALE_AUTHKEY=/d' /etc/led/init.env
+fi
+
+echo "[led-tailscale-init] done"

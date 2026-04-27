@@ -1,6 +1,6 @@
 [Unit]
 Description=LED matrix driver
-After=network-online.target
+After=network-online.target led-tailscale-init.service
 Wants=network-online.target
 
 [Service]

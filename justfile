@@ -2,8 +2,9 @@
 # Override per-invocation: `just arch=aarch64-unknown-linux-musl build`.
 arch := "arm-unknown-linux-gnueabihf"
 
-# Local path of the cross-compiled binary for the current `arch`.
-bin := "target" / arch / "release" / "led-driver"
+# Local paths of the cross-compiled binaries for the current `arch`.
+driver_bin := "target" / arch / "release" / "led-driver"
+wifi_bin := "target" / arch / "release" / "led-wifi-setup"
 
 # Cache for downloaded Pi OS images.
 cache_dir := env_var_or_default("XDG_CACHE_HOME", env_var("HOME") + "/.cache") + "/led"
@@ -23,9 +24,10 @@ image_url := if arch == "arm-unknown-linux-gnueabihf" {
 default:
     @just --list
 
-# Cross-compile the driver. Requires `cross` (https://github.com/cross-rs/cross) and a running Docker daemon.
+# Cross-compile the driver and the WiFi onboarding binary. Requires `cross`
+# (https://github.com/cross-rs/cross) and a running Docker daemon.
 build:
-    cross build --package led-driver --target {{ arch }} --release
+    cross build --workspace --target {{ arch }} --release
 
 # Sanity: the workspace builds for the host arch (no cross involved).
 check:
@@ -66,8 +68,6 @@ flash-sd id host device: build
     set +a
     : "${SUPABASE_URL:?need SUPABASE_URL in secrets.sops.env}"
     : "${SUPABASE_ANON_KEY:?need SUPABASE_ANON_KEY in secrets.sops.env}"
-    : "${WIFI_SSID:?need WIFI_SSID}"
-    : "${WIFI_PSK:?need WIFI_PSK}"
     : "${WIFI_COUNTRY:?need WIFI_COUNTRY (e.g. US)}"
     : "${TAILSCALE_AUTHKEY:?need TAILSCALE_AUTHKEY}"
     SSH_AUTHORIZED_KEYS_FILE="${SSH_AUTHORIZED_KEYS_FILE:-${HOME}/.ssh/id_ed25519.pub}"
@@ -123,13 +123,13 @@ flash-sd id host device: build
     sudo mount "$boot_part" "$boot_mnt"
     sudo mount "$root_part" "$root_mnt"
 
-    # Per-host first-boot env (secrets land here, deleted on first boot).
+    # Per-host first-boot env (secrets land here; firstrun.sh translates into
+    # /etc/led/init.env on the rootfs and deletes the boot copy).
     env_tmp=$(mktemp)
     chmod 600 "$env_tmp"
     {
         printf 'HOSTNAME=%q\n' "{{ host }}"
-        printf 'WIFI_SSID=%q\n' "$WIFI_SSID"
-        printf 'WIFI_PSK=%q\n' "$WIFI_PSK"
+        printf 'PANEL_ID=%q\n' "{{ id }}"
         printf 'WIFI_COUNTRY=%q\n' "$WIFI_COUNTRY"
         printf 'TAILSCALE_AUTHKEY=%q\n' "$TAILSCALE_AUTHKEY"
         printf 'AUTHORIZED_KEYS=%q\n' "$(cat "$SSH_AUTHORIZED_KEYS_FILE")"
@@ -143,7 +143,7 @@ flash-sd id host device: build
     new_cmdline="$cmdline systemd.run=/boot/firmware/firstrun.sh systemd.run_success_action=reboot systemd.unit=kernel-command-line.target"
     echo "$new_cmdline" | sudo tee "$boot_mnt/cmdline.txt" > /dev/null
 
-    # Bake driver runtime artefacts into the rootfs.
+    # Bake driver + WiFi-onboarding runtime artefacts into the rootfs.
     cfg_tmp=$(mktemp)
     sed \
         -e "s|@@ID@@|{{ id }}|g" \
@@ -151,10 +151,14 @@ flash-sd id host device: build
         -e "s|@@SUPABASE_ANON_KEY@@|${SUPABASE_ANON_KEY}|g" \
         -e "s|@@OTEL_ENDPOINT@@|${OTEL_ENDPOINT:-}|g" \
         service/config.toml.tmpl > "$cfg_tmp"
-    sudo install -D -m 0644 "$cfg_tmp"                       "$root_mnt/usr/local/etc/led/config.toml"
-    sudo install -D -m 0755 "{{ bin }}"                      "$root_mnt/usr/local/bin/led-driver"
-    sudo install -D -m 0644 service/led-driver.service       "$root_mnt/etc/systemd/system/led-driver.service"
-    sudo install -D -m 0644 service/alsa-blacklist.conf      "$root_mnt/etc/modprobe.d/led-alsa-blacklist.conf"
+    sudo install -D -m 0644 "$cfg_tmp"                              "$root_mnt/usr/local/etc/led/config.toml"
+    sudo install -D -m 0755 "{{ driver_bin }}"                      "$root_mnt/usr/local/bin/led-driver"
+    sudo install -D -m 0755 "{{ wifi_bin }}"                        "$root_mnt/usr/local/bin/led-wifi-setup"
+    sudo install -D -m 0755 service/led-tailscale-init              "$root_mnt/usr/local/bin/led-tailscale-init"
+    sudo install -D -m 0644 service/led-driver.service              "$root_mnt/etc/systemd/system/led-driver.service"
+    sudo install -D -m 0644 service/led-wifi-setup.service          "$root_mnt/etc/systemd/system/led-wifi-setup.service"
+    sudo install -D -m 0644 service/led-tailscale-init.service      "$root_mnt/etc/systemd/system/led-tailscale-init.service"
+    sudo install -D -m 0644 service/alsa-blacklist.conf             "$root_mnt/etc/modprobe.d/led-alsa-blacklist.conf"
     rm -f "$cfg_tmp"
 
     sudo sync
@@ -190,7 +194,7 @@ init host id user="root": build
     scp service/alsa-blacklist.conf "{{ user }}@{{ host }}:/etc/modprobe.d/led-alsa-blacklist.conf"
     scp service/led-driver.service  "{{ user }}@{{ host }}:/etc/systemd/system/led-driver.service"
     scp "$rendered"                  "{{ user }}@{{ host }}:/usr/local/etc/led/config.toml"
-    scp {{ bin }}                    "{{ user }}@{{ host }}:/usr/local/bin/led-driver"
+    scp {{ driver_bin }}             "{{ user }}@{{ host }}:/usr/local/bin/led-driver"
     ssh "{{ user }}@{{ host }}" 'chmod 0755 /usr/local/bin/led-driver \
         && systemctl daemon-reload \
         && systemctl enable led-driver.service'
@@ -199,7 +203,7 @@ init host id user="root": build
 
 # Push a fresh binary to a host and restart the service.
 deploy host user="root": build
-    scp {{ bin }} "{{ user }}@{{ host }}:/usr/local/bin/led-driver.new"
+    scp {{ driver_bin }} "{{ user }}@{{ host }}:/usr/local/bin/led-driver.new"
     ssh "{{ user }}@{{ host }}" 'install -m 0755 /usr/local/bin/led-driver.new /usr/local/bin/led-driver \
         && systemctl restart led-driver.service \
         && rm /usr/local/bin/led-driver.new'

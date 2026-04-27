@@ -1,0 +1,15 @@
+[Unit]
+Description=Install Tailscale (if needed) and join the tailnet on first boot
+After=led-wifi-setup.service network-online.target
+Wants=network-online.target
+Requires=led-wifi-setup.service
+ConditionPathExists=!/var/lib/led-wifi-setup/tailscale-joined
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/led/init.env
+ExecStart=/usr/local/bin/led-tailscale-init
+
+[Install]
+WantedBy=multi-user.target

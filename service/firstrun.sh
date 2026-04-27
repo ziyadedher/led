@@ -1,10 +1,11 @@
 #!/bin/bash
 # Runs once on first boot, invoked via `systemd.run=` in cmdline.txt.
 #
-# Reads per-host config from /boot/firmware/firstrun.env (which is deleted
-# after this script runs). On success the script removes itself, strips its
-# `systemd.run=` hooks from cmdline.txt, and reboots into a normal multi-user
-# boot with WiFi + Tailscale up and led-driver enabled.
+# Reads per-host config from /boot/firmware/firstrun.env, writes the runtime
+# subset to /etc/led/init.env (deleted from /boot/firmware once translated),
+# applies hostname + SSH key, and enables the services that handle WiFi
+# onboarding, Tailscale join, and the driver itself. After exit, systemd
+# reboots into normal multi-user mode where the services pick things up.
 set -eo pipefail
 exec >> /boot/firmware/firstrun.log 2>&1
 echo "[firstrun] starting at $(date -u)"
@@ -18,11 +19,10 @@ fi
 source /boot/firmware/firstrun.env
 
 : "${HOSTNAME:?HOSTNAME unset in firstrun.env}"
-: "${WIFI_SSID:?WIFI_SSID unset}"
-: "${WIFI_PSK:?WIFI_PSK unset}"
 : "${WIFI_COUNTRY:?WIFI_COUNTRY unset}"
 : "${TAILSCALE_AUTHKEY:?TAILSCALE_AUTHKEY unset}"
 : "${AUTHORIZED_KEYS:?AUTHORIZED_KEYS unset}"
+: "${PANEL_ID:?PANEL_ID unset}"
 
 echo "[firstrun] hostname"
 hostnamectl set-hostname "$HOSTNAME"
@@ -37,35 +37,23 @@ printf '%s\n' "$AUTHORIZED_KEYS" > "$FIRSTUSERHOME/.ssh/authorized_keys"
 chown "$FIRSTUSER:$FIRSTUSER" "$FIRSTUSERHOME/.ssh/authorized_keys"
 chmod 600 "$FIRSTUSERHOME/.ssh/authorized_keys"
 
-echo "[firstrun] wifi country=$WIFI_COUNTRY"
+echo "[firstrun] runtime env -> /etc/led/init.env"
+mkdir -p /etc/led
+{
+    printf 'HOSTNAME=%q\n' "$HOSTNAME"
+    printf 'PANEL_ID=%q\n' "$PANEL_ID"
+    printf 'WIFI_COUNTRY=%q\n' "$WIFI_COUNTRY"
+    printf 'TAILSCALE_AUTHKEY=%q\n' "$TAILSCALE_AUTHKEY"
+} > /etc/led/init.env
+chmod 600 /etc/led/init.env
+
+echo "[firstrun] WiFi country (regdomain)"
 raspi-config nonint do_wifi_country "$WIFI_COUNTRY" 2>/dev/null || true
 
-echo "[firstrun] wifi connection (NetworkManager)"
-nmcli connection add type wifi ifname wlan0 con-name led-wifi \
-    ssid "$WIFI_SSID" \
-    wifi-sec.key-mgmt wpa-psk \
-    wifi-sec.psk "$WIFI_PSK" \
-    connection.autoconnect yes
-nmcli connection up led-wifi || true
-
-echo "[firstrun] waiting for internet"
-for i in $(seq 1 90); do
-    if curl -fsS -o /dev/null -m 2 https://1.1.1.1 2>/dev/null; then
-        echo "[firstrun] online after ${i}s"
-        break
-    fi
-    sleep 1
-done
-
-echo "[firstrun] tailscale install + join"
-curl -fsSL https://tailscale.com/install.sh | sh
-tailscale up --auth-key="$TAILSCALE_AUTHKEY" --hostname="$HOSTNAME" --ssh
-
-echo "[firstrun] disabling system sshd in favour of tailscale ssh"
-systemctl disable --now ssh 2>/dev/null || true
-
-echo "[firstrun] enabling led-driver"
+echo "[firstrun] enabling boot services"
 systemctl daemon-reload
+systemctl enable led-wifi-setup.service
+systemctl enable led-tailscale-init.service
 systemctl enable led-driver.service
 
 echo "[firstrun] cleanup"
