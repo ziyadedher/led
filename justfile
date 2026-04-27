@@ -2,6 +2,13 @@
 # Override per-invocation: `just arch=aarch64-unknown-linux-musl build`.
 arch := "arm-unknown-linux-gnueabihf"
 
+# Non-sensitive runtime configuration. Exported so recipe shells inherit them.
+# `secrets.sops.json` only holds genuinely-secret values. Override per-invocation
+# (`just OTEL_ENDPOINT=… flash-sd …`) or via secrets.env if you need.
+export OTEL_ENDPOINT := env_var_or_default("OTEL_ENDPOINT", "https://otel.ziyadedher.com")
+export WIFI_COUNTRY := env_var_or_default("WIFI_COUNTRY", "US")
+export SSH_AUTHORIZED_KEYS_FILE := env_var_or_default("SSH_AUTHORIZED_KEYS_FILE", env_var("HOME") + "/.ssh/id_ed25519.pub")
+
 # Local paths of the cross-compiled binaries for the current `arch`.
 driver_bin := "target" / arch / "release" / "led-driver"
 wifi_bin := "target" / arch / "release" / "led-wifi-setup"
@@ -68,9 +75,7 @@ flash-sd id host device: build
     set +a
     : "${SUPABASE_URL:?need SUPABASE_URL in secrets.sops.json}"
     : "${SUPABASE_ANON_KEY:?need SUPABASE_ANON_KEY in secrets.sops.json}"
-    : "${WIFI_COUNTRY:?need WIFI_COUNTRY (e.g. US)}"
-    : "${TAILSCALE_AUTHKEY:?need TAILSCALE_AUTHKEY}"
-    SSH_AUTHORIZED_KEYS_FILE="${SSH_AUTHORIZED_KEYS_FILE:-${HOME}/.ssh/id_ed25519.pub}"
+    : "${TAILSCALE_AUTHKEY:?need TAILSCALE_AUTHKEY in secrets.sops.json}"
     [ -f "$SSH_AUTHORIZED_KEYS_FILE" ] || { echo "ERROR: $SSH_AUTHORIZED_KEYS_FILE missing" >&2; exit 1; }
 
     dev="{{ device }}"

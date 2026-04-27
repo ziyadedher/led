@@ -122,7 +122,8 @@ pub async fn sync(
     metrics: Arc<Metrics>,
 ) -> anyhow::Result<()> {
     tracing::info!("Initializing state sync...");
-    let client = Postgrest::new(supabase_url).insert_header("apikey", supabase_anon_key);
+    let postgrest_url = format!("{}/rest/v1", supabase_url.trim_end_matches('/'));
+    let client = Postgrest::new(&postgrest_url).insert_header("apikey", supabase_anon_key);
 
     let panel_id = get_panel_id(&panel_name, &client).await?;
     tracing::info!("Using panel ID: {}", panel_id);
