@@ -93,6 +93,7 @@ async fn main() -> Result<()> {
         networks,
         shutdown: shutdown.clone(),
         country: args.country.clone(),
+        id: args.id.clone(),
     });
 
     let app = Router::new()
@@ -126,6 +127,7 @@ struct AppState {
     networks: Vec<Network>,
     shutdown: Arc<Notify>,
     country: String,
+    id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, serde::Serialize)]
@@ -239,7 +241,14 @@ async fn connect_handler(
             (axum::http::StatusCode::OK, Html(success_page().to_string()))
         }
         Err(err) => {
-            tracing::warn!(error = %err, "apply failed");
+            tracing::warn!(error = %err, "apply failed; restoring AP");
+            // Bringing up a STA connection on wlan0 tears the AP down. If the
+            // user's PSK is wrong, the STA attempt fails and we'd be stranded
+            // without an AP. Restore it so they can reconnect and retry.
+            let ap_ssid = format!("led-setup-{}", state.id);
+            if let Err(reup) = bring_up_ap(&ap_ssid).await {
+                tracing::error!(error = %reup, "failed to re-arm AP after STA failure");
+            }
             (
                 axum::http::StatusCode::OK,
                 Html(error_page(&format!("{err:#}"))),
