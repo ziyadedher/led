@@ -1,18 +1,30 @@
 [package]
 name = "led-driver"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 
 [dependencies]
 anyhow = "1.0.86"
 chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.16", features = ["derive"] }
-console-subscriber = "0.2.0"
-crossbeam-channel = "0.5.13"
 embedded-graphics = "0.8.1"
 human-panic = "1.2.3"
 led-driver-common = { path = "../driver-common" }
 log = "0.4.22"
+opentelemetry = { version = "0.30", features = ["metrics", "logs"] }
+opentelemetry-appender-tracing = "0.30"
+opentelemetry-otlp = { version = "0.30", default-features = false, features = [
+    "http-proto",
+    "reqwest-rustls",
+    "metrics",
+    "logs",
+] }
+opentelemetry-semantic-conventions = { version = "0.30", features = ["semconv_experimental"] }
+opentelemetry_sdk = { version = "0.30", features = [
+    "rt-tokio",
+    "metrics",
+    "logs",
+] }
 parking_lot = "0.12.3"
 postgrest = "1.6.0"
 reqwest = { version = "0.12.5", features = [
@@ -22,8 +34,8 @@ reqwest = { version = "0.12.5", features = [
 rpi-led-panel = "0.5.1"
 serde = { version = "1.0.208", features = ["derive"] }
 serde_json = "1.0.125"
-tokio = { version = "1.39.2", features = ["full", "tracing"] }
+tokio = { version = "1.39.2", features = ["full"] }
 tracing = "0.1.40"
 tracing-appender = "0.2.3"
-tracing-log = "0.2.0"
-tracing-subscriber = "0.3.18"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+hostname = "0.4"

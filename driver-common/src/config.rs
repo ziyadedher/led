@@ -3,7 +3,6 @@
 //! This module provides a `Config` struct that defines the configuration for the LED driver and related services like
 //! `led-driverup`. It also provides utilities for saving and loading this configuration to and from a file.
 
-use log;
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -39,6 +38,12 @@ pub struct Config {
 
     /// Path to a directory that will store various log files for the LED driver.
     pub log_dir: PathBuf,
+
+    /// OTLP endpoint for telemetry export (HTTP/protobuf, e.g. `http://infra:4318`).
+    ///
+    /// If `None`, telemetry export is disabled and the driver only logs locally.
+    #[serde(default)]
+    pub otel_endpoint: Option<String>,
 }
 
 /// Saves the given configuration to a file at the given path.
@@ -61,19 +66,20 @@ pub struct Config {
 ///     id: "my-led-matrix".to_string(),
 ///     install_path: Path::new("/usr/local/bin/led-driver").to_path_buf(),
 ///     log_dir: Path::new("/var/log/led-driver").to_path_buf(),
+///     otel_endpoint: None,
 /// };
 /// save_config(&config, Path::new("config.toml"))?;
 /// # Ok(())
 /// # }
 /// ```
 pub fn save_config(config: &Config, path: &Path) -> Result<(), Error> {
-    log::debug!("Saving configuration to {:?}...", path);
+    tracing::debug!("Saving configuration to {:?}...", path);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     let config_str = toml::to_string(config)?;
     fs::write(path, config_str)?;
-    log::debug!("Configuration saved successfully");
+    tracing::debug!("Configuration saved successfully");
     Ok(())
 }
 
@@ -96,9 +102,9 @@ pub fn save_config(config: &Config, path: &Path) -> Result<(), Error> {
 /// # }
 /// ```
 pub fn load_config(path: &Path) -> Result<Config, Error> {
-    log::debug!("Loading configuration from {:?}...", path);
+    tracing::debug!("Loading configuration from {:?}...", path);
     let config_str = fs::read_to_string(path)?;
     let config: Config = toml::from_str(&config_str)?;
-    log::debug!("Configuration loaded successfully");
+    tracing::debug!("Configuration loaded successfully");
     Ok(config)
 }

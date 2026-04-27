@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time::Instant;
 
 use crate::display::{Panel, TextEntry};
+use crate::telemetry::Metrics;
 
 const SUPABASE_POSTGREST_URL: &str = "https://ohowojanrhlzhgwuwkrd.supabase.co/rest/v1";
 const SUPABASE_ANON_KEY: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ob3dvamFucmhsemhnd3V3a3JkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDg4ODIzOTQsImV4cCI6MjAyNDQ1ODM5NH0.cXhxyPzLcClJlbeOF9QbQ2txI7IJWrpifAK7esTt8Zc";
@@ -26,7 +27,7 @@ struct TextEntryResponse {
 }
 
 async fn get_panel_id(panel_name: &str, client: &Postgrest) -> anyhow::Result<String> {
-    log::debug!("Getting panel ID for name {}...", panel_name);
+    tracing::debug!("Getting panel ID for name {}...", panel_name);
     let panels: Vec<Panel> = serde_json::from_str(
         &client
             .from("panels")
@@ -40,7 +41,7 @@ async fn get_panel_id(panel_name: &str, client: &Postgrest) -> anyhow::Result<St
 
     match panels.len() {
         0 => {
-            log::warn!("Panel not found, creating...");
+            tracing::warn!("Panel not found, creating...");
             let new_panel = Panel {
                 name: panel_name.to_string(),
                 ..Default::default()
@@ -57,7 +58,7 @@ async fn get_panel_id(panel_name: &str, client: &Postgrest) -> anyhow::Result<St
             Ok(created_panel.id)
         }
         1 => {
-            log::debug!("Panel found with ID {}", panels[0].id);
+            tracing::debug!("Panel found with ID {}", panels[0].id);
             Ok(panels[0].id.clone())
         }
         _ => Err(anyhow::anyhow!(
@@ -72,9 +73,9 @@ async fn maybe_download(
     last_updated: &str,
     client: &Postgrest,
 ) -> anyhow::Result<Option<State>> {
-    log::info!("Downloading state...");
+    tracing::info!("Downloading state...");
     let now = Instant::now();
-    log::debug!("Downloading panel information...");
+    tracing::debug!("Downloading panel information...");
     let panels: Vec<Panel> = serde_json::from_str(
         &client
             .from("panels")
@@ -91,11 +92,11 @@ async fn maybe_download(
         .ok_or_else(|| anyhow::anyhow!("No panel found"))?;
 
     if panel.last_updated == last_updated {
-        log::debug!("State is up to date, skipping download");
+        tracing::debug!("State is up to date, skipping download");
         return Ok(None);
     }
 
-    log::debug!("Downloading text entries...");
+    tracing::debug!("Downloading text entries...");
     let entries: Vec<TextEntry> = serde_json::from_str::<Vec<TextEntryResponse>>(
         &client
             .from("entries")
@@ -111,47 +112,48 @@ async fn maybe_download(
     .map(|x| x.data.clone())
     .collect();
 
-    log::info!("Downloaded state, got {} entries", entries.len());
-    log::debug!("Downloaded state in {:?}", now.elapsed());
+    tracing::info!("Downloaded state, got {} entries", entries.len());
+    tracing::debug!("Downloaded state in {:?}", now.elapsed());
     Ok(Some(State { panel, entries }))
 }
 
-pub async fn sync(panel_name: String, state: Arc<RwLock<State>>) -> anyhow::Result<()> {
-    log::info!("Initializing state sync...");
+pub async fn sync(
+    panel_name: String,
+    state: Arc<RwLock<State>>,
+    metrics: Arc<Metrics>,
+) -> anyhow::Result<()> {
+    tracing::info!("Initializing state sync...");
     let client = Postgrest::new(SUPABASE_POSTGREST_URL).insert_header("apikey", SUPABASE_ANON_KEY);
 
     let panel_id = get_panel_id(&panel_name, &client).await?;
-    log::info!("Using panel ID: {}", panel_id);
+    tracing::info!("Using panel ID: {}", panel_id);
 
-    log::info!(
-        "Starting state sync loop ({}ms refresh period)...",
-        REFRESH_PERIOD.as_millis()
+    tracing::info!(
+        refresh_period_ms = REFRESH_PERIOD.as_millis() as u64,
+        "Starting state sync loop"
     );
     let mut interval = tokio::time::interval(REFRESH_PERIOD);
     loop {
         interval.tick().await;
 
-        log::debug!("Setting liveness...");
-        client
-            .from("panels")
-            .update(format!(
-                "{{ \"last_seen\": \"{}\" }}",
-                chrono::Utc::now().to_rfc3339()
-            ))
-            .eq("id", &panel_id)
-            .execute()
-            .await?;
-
+        let started = Instant::now();
         let last_updated = state.read().panel.last_updated.clone();
         match maybe_download(&panel_id, &last_updated, &client).await {
             Ok(None) => {}
             Ok(Some(new_state)) => {
+                metrics
+                    .entries_loaded
+                    .record(new_state.entries.len() as u64, &[]);
                 let mut state_write = state.write();
                 *state_write = new_state;
             }
             Err(err) => {
-                log::warn!("Failed to download state: {}, trying again...", err);
+                tracing::warn!(error = %err, "Failed to download state, trying again");
             }
         }
+        metrics
+            .sync_duration_ms
+            .record(started.elapsed().as_secs_f64() * 1000.0, &[]);
+        metrics.heartbeat.add(1, &[]);
     }
 }

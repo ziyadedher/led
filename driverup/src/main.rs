@@ -357,6 +357,7 @@ async fn init(
             id: id.to_string(),
             install_path: PathBuf::from("/usr/local/bin/led-driver"),
             log_dir: PathBuf::from("/var/log/led/"),
+            otel_endpoint: None,
         };
         save_config(&config, &config_path)?;
         log::debug!("Configuration created successfully");

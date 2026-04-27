@@ -2,7 +2,7 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::cargo)]
 
-use std::{env, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 
 use clap::Parser;
 use parking_lot::RwLock;
@@ -12,6 +12,7 @@ use tokio::task::JoinSet;
 use led_driver::{
     display::drive,
     state::{self, State},
+    telemetry,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
@@ -32,10 +33,12 @@ async fn main() -> anyhow::Result<()> {
 
     let config = led_driver_common::config::load_config(&args.config)?;
 
-    let (non_blocking, _guard) = tracing_appender::non_blocking(tracing_appender::rolling::hourly(
-        &config.log_dir,
-        "led.log",
-    ));
+    let (metrics, otel_log_layer, _telemetry_guard) =
+        telemetry::init(config.otel_endpoint.as_deref(), &config.id)?;
+
+    let (non_blocking, _file_guard) = tracing_appender::non_blocking(
+        tracing_appender::rolling::hourly(&config.log_dir, "led.log"),
+    );
     let console_layer = tracing_subscriber::fmt::layer()
         .with_writer(std::io::stderr)
         .with_ansi(true)
@@ -53,23 +56,24 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(console_layer)
         .with(file_layer)
+        .with(otel_log_layer)
         .init();
 
-    log::info!("Setting up configuration...");
+    tracing::info!("Setting up configuration...");
     let matrix_config = RGBMatrixConfig {
         led_sequence: LedSequence::Rgb,
         ..Default::default()
     };
 
-    log::info!("Initializing state...");
+    tracing::info!("Initializing state...");
     let state = Arc::new(RwLock::new(State::default()));
 
-    log::info!("Spawning tasks...");
+    tracing::info!("Spawning tasks...");
     let mut tasks = JoinSet::new();
-    tasks.spawn(drive(matrix_config, state.clone()));
-    tasks.spawn(state::sync(config.id, state.clone()));
+    tasks.spawn(drive(matrix_config, state.clone(), metrics.clone()));
+    tasks.spawn(state::sync(config.id, state.clone(), metrics.clone()));
 
-    log::info!("Waiting for tasks...");
+    tracing::info!("Waiting for tasks...");
     while let Some(result) = tasks.join_next().await {
         result??;
     }

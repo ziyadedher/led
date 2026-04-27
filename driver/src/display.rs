@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::Context;
 use embedded_graphics::{
@@ -13,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use tokio::task::block_in_place;
 
 use crate::state::State;
+use crate::telemetry::Metrics;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Rgb {
@@ -95,15 +97,19 @@ pub struct Panel {
 #[allow(clippy::cast_sign_loss)]
 #[allow(clippy::cast_lossless)]
 #[allow(clippy::cast_precision_loss)]
-pub async fn drive(config: RGBMatrixConfig, state: Arc<RwLock<State>>) -> anyhow::Result<()> {
-    log::info!("Initializing display...");
+pub async fn drive(
+    config: RGBMatrixConfig,
+    state: Arc<RwLock<State>>,
+    metrics: Arc<Metrics>,
+) -> anyhow::Result<()> {
+    tracing::info!("Initializing display...");
     let (mut matrix, canvas) = RGBMatrix::new(config, 0).context("Matrix initialization failed")?;
 
     let font = ascii::FONT_5X8;
 
     let mut step: usize = 0;
     loop {
-        log::debug!("Starting display loop iteration...");
+        let frame_started = Instant::now();
 
         let mut canvas = canvas.clone();
         canvas.clear(Rgb888::BLACK)?;
@@ -229,5 +235,8 @@ pub async fn drive(config: RGBMatrixConfig, state: Arc<RwLock<State>>) -> anyhow
         }
 
         block_in_place(|| matrix.update_on_vsync(canvas));
+        metrics
+            .frame_time_ms
+            .record(frame_started.elapsed().as_secs_f64() * 1000.0, &[]);
     }
 }
