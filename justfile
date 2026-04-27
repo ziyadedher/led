@@ -8,6 +8,21 @@ arch := "arm-unknown-linux-gnueabihf"
 # Local path of the cross-compiled binary for the current `arch`.
 bin := "target" / arch / "release" / "led-driver"
 
+# Cache for downloaded Pi OS images.
+cache_dir := env_var_or_default("XDG_CACHE_HOME", env_var("HOME") + "/.cache") + "/led"
+
+# Pi OS Lite image source matching the build target. _latest is a stable
+# redirect to the current Bookworm release.
+image_url := if arch == "arm-unknown-linux-gnueabihf" {
+    "https://downloads.raspberrypi.org/raspios_lite_armhf_latest"
+} else if arch == "aarch64-unknown-linux-musl" {
+    "https://downloads.raspberrypi.org/raspios_lite_arm64_latest"
+} else if arch == "aarch64-unknown-linux-gnu" {
+    "https://downloads.raspberrypi.org/raspios_lite_arm64_latest"
+} else {
+    "ERROR_UNKNOWN_ARCH"
+}
+
 default:
     @just --list
 
@@ -19,8 +34,141 @@ build:
 check:
     cargo check --workspace
 
-# First-time install on a fresh Pi: ALSA blacklist, systemd unit, rendered config, binary.
-# Requires SUPABASE_URL, SUPABASE_ANON_KEY (and optional OTEL_ENDPOINT) in env or secrets.env.
+# Download (and cache) the Pi OS Lite image matching `arch`. Prints the cached path on stdout.
+_download-image:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{ image_url }}" = "ERROR_UNKNOWN_ARCH" ]; then
+        echo "ERROR: no Pi OS image URL mapped for arch={{ arch }}" >&2
+        exit 1
+    fi
+    mkdir -p "{{ cache_dir }}"
+    cached="{{ cache_dir }}/raspios-lite-{{ arch }}.img.xz"
+    if [ ! -f "$cached" ]; then
+        echo "==> downloading Pi OS Lite for {{ arch }}" >&2
+        curl --fail --location --progress-bar -o "$cached.tmp" "{{ image_url }}"
+        mv "$cached.tmp" "$cached"
+    fi
+    printf '%s\n' "$cached"
+
+# Drop the cached OS image so the next `flash-sd` re-downloads.
+refresh-image-cache:
+    rm -f "{{ cache_dir }}/raspios-lite-{{ arch }}.img.xz"
+
+# Flash an SD card with a fully provisioned image: Pi OS Lite + driver baked in,
+# first-boot script for hostname/WiFi/Tailscale.
+#
+# Requires (in env or secrets.env): SUPABASE_URL, SUPABASE_ANON_KEY,
+# WIFI_SSID, WIFI_PSK, WIFI_COUNTRY, TAILSCALE_AUTHKEY. Optional:
+# OTEL_ENDPOINT, SSH_AUTHORIZED_KEYS_FILE (defaults to ~/.ssh/id_ed25519.pub).
+flash-sd id host device: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${SUPABASE_URL:?need SUPABASE_URL in secrets.env or env}"
+    : "${SUPABASE_ANON_KEY:?need SUPABASE_ANON_KEY in secrets.env or env}"
+    : "${WIFI_SSID:?need WIFI_SSID}"
+    : "${WIFI_PSK:?need WIFI_PSK}"
+    : "${WIFI_COUNTRY:?need WIFI_COUNTRY (e.g. US)}"
+    : "${TAILSCALE_AUTHKEY:?need TAILSCALE_AUTHKEY}"
+    SSH_AUTHORIZED_KEYS_FILE="${SSH_AUTHORIZED_KEYS_FILE:-${HOME}/.ssh/id_ed25519.pub}"
+    [ -f "$SSH_AUTHORIZED_KEYS_FILE" ] || { echo "ERROR: $SSH_AUTHORIZED_KEYS_FILE missing" >&2; exit 1; }
+
+    dev="{{ device }}"
+    [ -b "$dev" ] || { echo "ERROR: $dev is not a block device" >&2; exit 1; }
+    if mount | awk '{print $1}' | grep -qE "^${dev}p?[0-9]+$|^${dev}$"; then
+        echo "ERROR: $dev or one of its partitions is mounted; unmount first." >&2
+        exit 1
+    fi
+
+    sudo -v
+    size_bytes=$(sudo blockdev --getsize64 "$dev")
+    size_gb=$((size_bytes / 1024 / 1024 / 1024))
+    if [ "$size_gb" -lt 2 ] || [ "$size_gb" -gt 256 ]; then
+        echo "ERROR: $dev is ${size_gb}GB; expected 2-256GB. Refusing." >&2
+        exit 1
+    fi
+
+    echo
+    echo "About to OVERWRITE $dev (${size_gb}GB)"
+    echo "  -> Pi OS Lite + led-driver baked in for host={{ host }} id={{ id }}"
+    read -r -p "Type the device path '$dev' to confirm: " confirmation
+    [ "$confirmation" = "$dev" ] || { echo "Aborted." >&2; exit 1; }
+
+    cached_image=$(just arch={{ arch }} _download-image)
+
+    echo "==> writing image to $dev (this can take several minutes)"
+    xzcat "$cached_image" | sudo dd of="$dev" bs=4M conv=fsync status=progress
+    sudo sync
+    sudo partprobe "$dev"
+    sleep 2
+
+    if [[ "$dev" =~ (mmcblk|nvme|loop)[0-9]+$ ]]; then
+        boot_part="${dev}p1"
+        root_part="${dev}p2"
+    else
+        boot_part="${dev}1"
+        root_part="${dev}2"
+    fi
+    [ -b "$boot_part" ] || { echo "ERROR: boot partition $boot_part not found after partprobe" >&2; exit 1; }
+    [ -b "$root_part" ] || { echo "ERROR: root partition $root_part not found after partprobe" >&2; exit 1; }
+
+    boot_mnt=$(mktemp -d)
+    root_mnt=$(mktemp -d)
+    cleanup() {
+        sudo umount "$boot_mnt" 2>/dev/null || true
+        sudo umount "$root_mnt" 2>/dev/null || true
+        rmdir "$boot_mnt" "$root_mnt" 2>/dev/null || true
+    }
+    trap cleanup EXIT
+    sudo mount "$boot_part" "$boot_mnt"
+    sudo mount "$root_part" "$root_mnt"
+
+    # Per-host first-boot env (secrets land here, deleted on first boot).
+    env_tmp=$(mktemp)
+    chmod 600 "$env_tmp"
+    {
+        printf 'HOSTNAME=%q\n' "{{ host }}"
+        printf 'WIFI_SSID=%q\n' "$WIFI_SSID"
+        printf 'WIFI_PSK=%q\n' "$WIFI_PSK"
+        printf 'WIFI_COUNTRY=%q\n' "$WIFI_COUNTRY"
+        printf 'TAILSCALE_AUTHKEY=%q\n' "$TAILSCALE_AUTHKEY"
+        printf 'AUTHORIZED_KEYS=%q\n' "$(cat "$SSH_AUTHORIZED_KEYS_FILE")"
+    } > "$env_tmp"
+    sudo install -m 0600 "$env_tmp" "$boot_mnt/firstrun.env"
+    rm -f "$env_tmp"
+
+    sudo install -m 0755 service/firstrun.sh "$boot_mnt/firstrun.sh"
+
+    cmdline=$(sudo tr -d '\n' < "$boot_mnt/cmdline.txt")
+    new_cmdline="$cmdline systemd.run=/boot/firmware/firstrun.sh systemd.run_success_action=reboot systemd.unit=kernel-command-line.target"
+    echo "$new_cmdline" | sudo tee "$boot_mnt/cmdline.txt" > /dev/null
+
+    # Bake driver runtime artefacts into the rootfs.
+    cfg_tmp=$(mktemp)
+    sed \
+        -e "s|@@ID@@|{{ id }}|g" \
+        -e "s|@@SUPABASE_URL@@|${SUPABASE_URL}|g" \
+        -e "s|@@SUPABASE_ANON_KEY@@|${SUPABASE_ANON_KEY}|g" \
+        -e "s|@@OTEL_ENDPOINT@@|${OTEL_ENDPOINT:-}|g" \
+        service/config.toml.tmpl > "$cfg_tmp"
+    sudo install -D -m 0644 "$cfg_tmp"                       "$root_mnt/usr/local/etc/led/config.toml"
+    sudo install -D -m 0755 "{{ bin }}"                      "$root_mnt/usr/local/bin/led-driver"
+    sudo install -D -m 0644 service/led-driver.service       "$root_mnt/etc/systemd/system/led-driver.service"
+    sudo install -D -m 0644 service/alsa-blacklist.conf      "$root_mnt/etc/modprobe.d/led-alsa-blacklist.conf"
+    rm -f "$cfg_tmp"
+
+    sudo sync
+    cleanup
+    trap - EXIT
+
+    echo
+    echo "==> $dev ready. Insert into the Pi for {{ host }} ({{ id }}) and power it on."
+    echo "    First boot configures WiFi, Tailscale and the driver, then reboots."
+    echo "    Watch for it on tailnet: tailscale status | grep {{ host }}"
+
+# Re-init an existing Pi that's already on the tailnet (e.g. one provisioned
+# before flash-sd existed). Pushes config + service unit + ALSA blacklist +
+# binary. Use `flash-sd` for fresh hardware.
 init host id user="root": build
     #!/usr/bin/env bash
     set -euo pipefail

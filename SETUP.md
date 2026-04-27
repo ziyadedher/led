@@ -4,101 +4,87 @@ End-to-end bring-up of a new LED matrix Pi.
 
 ## Prerequisites (one-time, on your dev machine)
 
-1. **Tools**: `just`, `cross`, Docker (for `cross`), `ssh`, `scp`, Tailscale.
-2. **Tailscale**: be logged into the same tailnet the matrix will join, with a reusable auth key minted in the Tailscale admin console (Settings → Keys → Generate auth key, mark it reusable + ephemeral=false).
-3. **Secrets**: copy the secrets template and fill it in.
+1. **Tools**: `just`, `cross`, Docker (for `cross`), `xz`, `parted`, `curl`, `ssh`/`scp`, Tailscale.
+2. **Tailscale**: be logged into the same tailnet the matrix will join, and mint a reusable auth key (Settings → Keys → Generate auth key, reusable + non-ephemeral). Save it for `secrets.env`.
+3. **Secrets**: copy and fill in.
    ```sh
-   cp secrets.env.example secrets.env  # if you don't have it yet
+   cp secrets.env.example secrets.env
    $EDITOR secrets.env
    ```
    `secrets.env` is gitignored. It needs:
-   - `SUPABASE_URL` — `https://<project>.supabase.co/rest/v1`
-   - `SUPABASE_ANON_KEY` — anon JWT for the project
-   - `OTEL_ENDPOINT` (optional) — e.g. `http://infra:4318` for OTLP/HTTP to your tailnet collector
+   - `SUPABASE_URL`, `SUPABASE_ANON_KEY` — driver runtime
+   - `OTEL_ENDPOINT` (optional) — `http://infra:4318` for OTLP/HTTP to your tailnet collector
+   - `WIFI_SSID`, `WIFI_PSK`, `WIFI_COUNTRY` — first-boot WiFi config
+   - `TAILSCALE_AUTHKEY` — first-boot tailnet join
+   - `SSH_AUTHORIZED_KEYS_FILE` (optional) — defaults to `~/.ssh/id_ed25519.pub`
 4. **Workspace builds locally**: `just check`.
 
 ## Provisioning a new matrix
 
-These four steps take a brand-new SD card and a Pi to a working matrix on the tailnet.
+One command on your dev machine, then plug-and-power on the Pi.
 
-### 1. Flash Raspberry Pi OS Lite (32-bit) with Pi Imager
+### 1. Flash a fully provisioned SD card
 
-Use the Imager's gear-icon customization (or `Ctrl+Shift+X`):
-
-| Field | Value |
-|---|---|
-| Hostname | `led-<name>` (e.g. `led-echo`) |
-| Username | `pi` |
-| Password | something random; it'll only matter if you ever lose tailnet access |
-| WiFi SSID + PSK | the network the matrix will live on |
-| WiFi country | your country code |
-| Locale + keyboard | your preferences |
-| Enable SSH → public-key only | paste your dev machine's public key |
-
-Flash, eject, slot the card into the Pi, power on. First boot takes 1–2 minutes.
-
-### 2. Join the tailnet
-
-SSH in once over the local network:
+Plug a 4–32 GB SD card into your dev machine, identify the device:
 
 ```sh
-ssh pi@led-<name>.local
+lsblk -o NAME,SIZE,TYPE,TRAN,MODEL
+# expect e.g. `sdb 32G disk usb`
 ```
 
-On the Pi, install Tailscale and join (one line — replace `<auth-key>` with your reusable auth key):
+Then:
 
 ```sh
-curl -fsSL https://tailscale.com/install.sh | sh \
-  && sudo tailscale up --ssh --auth-key=<auth-key> \
-  && sudo systemctl disable --now ssh
+just flash-sd <id> <hostname> /dev/sdX
+# e.g. just flash-sd kitchen led-echo /dev/sdb
 ```
 
-This installs Tailscale, joins the tailnet with Tailscale SSH, and disables the default sshd so all future access goes via Tailscale.
+This:
+- cross-compiles the driver
+- downloads & caches Pi OS Lite (`~/.cache/led/raspios-lite-<arch>.img.xz`)
+- `dd`s it to the SD card (~5 min)
+- bakes the driver binary, systemd unit, ALSA blacklist, and rendered `config.toml` into the rootfs
+- drops a `firstrun.sh` + per-host `firstrun.env` into the boot partition
 
-In the Tailscale admin console, mark the new node's key expiry as disabled.
+You'll be prompted to retype the device path before the destructive `dd`. The recipe refuses to run on devices outside 2–256 GB or anything currently mounted.
 
-### 3. Initialize the driver from your dev machine
+### 2. Insert the SD into the Pi and power on
 
-Pick a panel id (the `name` your matrix is keyed under in the dash; e.g. `floater`, `kitchen`, `office-back`).
+First boot takes ~2–3 min. The Pi runs `firstrun.sh`, which sets the hostname, configures WiFi (NetworkManager), installs Tailscale, joins the tailnet with the auth key, disables the system sshd, enables `led-driver.service`, then reboots into a normal boot. After that it's a regular tailnet host.
+
+Watch for it:
 
 ```sh
-just init led-<name> <id>
+tailscale status | grep <hostname>
 ```
 
-This cross-compiles the driver, then over Tailscale SSH:
-
-- installs the binary to `/usr/local/bin/led-driver`
-- writes `/etc/systemd/system/led-driver.service`
-- writes `/etc/modprobe.d/led-alsa-blacklist.conf` (frees DMA from `snd_bcm2835` for the panel library)
-- renders `/usr/local/etc/led/config.toml` from `service/config.toml.tmpl` using `secrets.env`
-- enables but does **not** start the service
-
-### 4. Reboot to apply the ALSA blacklist, then deploy
+The driver starts on the second boot. Tail logs over Tailscale SSH if you want:
 
 ```sh
-ssh root@led-<name> reboot          # only needed on first install
-just deploy led-<name>
+just logs <hostname>
 ```
 
-`deploy` rebuilds, pushes the binary, and restarts the service.
+If `firstrun.sh` failed for any reason, log into the Pi locally (the `pi` user is keyless without your SSH key, so you'd need a serial console or pull the SD) and read `/boot/firmware/firstrun.log`.
 
 ## Day-to-day
 
 | Goal | Command |
 |---|---|
-| Push a new build to one matrix | `just deploy led-<name>` |
-| Tail logs from a matrix | `just logs led-<name>` |
+| Push a new build to one matrix | `just deploy <hostname>` |
+| Tail logs from a matrix | `just logs <hostname>` |
+| Re-init an existing Pi (no SD reflash) | `just init <hostname> <id>` |
 | Cross-compile only | `just build` |
 | Local sanity check | `just check` |
-| Build for aarch64 (Pi Zero 2 W / Pi 4) | `just arch=aarch64-unknown-linux-musl build` |
+| Force re-download of Pi OS image | `just refresh-image-cache` |
+| Build/flash for aarch64 (Pi Zero 2 W / Pi 4) | `just arch=aarch64-unknown-linux-musl flash-sd …` |
 
 ## Architecture notes
 
-- **Hardware**: Pi Zero W (BCM2835, armv6 hardfp) with an Adafruit RGB Matrix Bonnet driving HUB75. The cross-compile target `arm-unknown-linux-gnueabihf` is the right one — `armv7-unknown-linux-gnueabihf` is for Pi 3+.
+- **Hardware**: Pi Zero W (BCM2835, armv6 hardfp) with an Adafruit RGB Matrix Bonnet driving HUB75. Default cross-compile target is `arm-unknown-linux-gnueabihf`. `armv7-unknown-linux-gnueabihf` is for Pi 3+; `aarch64-unknown-linux-musl` for Pi Zero 2 W / Pi 4 / Pi 5.
 - **Data plane**: the driver pulls panel state and text entries from Supabase PostgREST every ~2.5 s, keyed by `id`. Updates from the dash become visible on the matrix on the next sync tick.
 - **Observability**: the driver emits OTLP/HTTP metrics + logs to `OTEL_ENDPOINT` if set. `led.driver.heartbeat` is the liveness signal — query HyperDX/ClickHouse for it instead of polling `panels.last_seen` (which the driver no longer writes).
 - **Updates**: push-based via `just deploy`. There's no on-device polling; the matrix only changes when you push.
-- **WiFi changes after deploy**: SSH in over Tailscale, edit `/etc/NetworkManager/system-connections/` (Bookworm) and restart `NetworkManager`. A captive-portal fallback is on the v2 list.
+- **WiFi changes after deploy**: SSH in over Tailscale, edit `/etc/NetworkManager/system-connections/led-wifi.nmconnection` (Bookworm) and `nmcli connection up led-wifi`. A captive-portal fallback is on the v2 list.
 
 ## Solder note
 
