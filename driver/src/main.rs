@@ -10,6 +10,7 @@ use rpi_led_panel::{LedSequence, RGBMatrixConfig};
 use tokio::task::JoinSet;
 
 use led_driver::{
+    config,
     display::drive,
     state::{self, State},
     telemetry,
@@ -31,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
 
     let args = Args::parse();
 
-    let config = led_driver_common::config::load_config(&args.config)?;
+    let config = config::load(&args.config)?;
 
     let (metrics, otel_log_layer, _telemetry_guard) =
         telemetry::init(config.otel_endpoint.as_deref(), &config.id)?;

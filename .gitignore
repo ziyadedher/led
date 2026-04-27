@@ -2,3 +2,9 @@
 # will have compiled files and executables
 debug/
 target/
+
+# Locally-managed deploy secrets, loaded by justfile via `set dotenv-load`.
+secrets.env
+
+# Local notes / scratch.
+deployments.txt
