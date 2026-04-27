@@ -63,11 +63,11 @@ flash-sd id host device: build
     #!/usr/bin/env bash
     set -euo pipefail
     set -a
-    source <(sops --decrypt secrets.sops.env)
+    eval "$(sops --decrypt secrets.sops.json | jq -r 'to_entries[] | "\(.key)=\(.value | @sh)"')"
     [ -f secrets.env ] && source secrets.env
     set +a
-    : "${SUPABASE_URL:?need SUPABASE_URL in secrets.sops.env}"
-    : "${SUPABASE_ANON_KEY:?need SUPABASE_ANON_KEY in secrets.sops.env}"
+    : "${SUPABASE_URL:?need SUPABASE_URL in secrets.sops.json}"
+    : "${SUPABASE_ANON_KEY:?need SUPABASE_ANON_KEY in secrets.sops.json}"
     : "${WIFI_COUNTRY:?need WIFI_COUNTRY (e.g. US)}"
     : "${TAILSCALE_AUTHKEY:?need TAILSCALE_AUTHKEY}"
     SSH_AUTHORIZED_KEYS_FILE="${SSH_AUTHORIZED_KEYS_FILE:-${HOME}/.ssh/id_ed25519.pub}"
@@ -177,11 +177,11 @@ init host id user="root": build
     #!/usr/bin/env bash
     set -euo pipefail
     set -a
-    source <(sops --decrypt secrets.sops.env)
+    eval "$(sops --decrypt secrets.sops.json | jq -r 'to_entries[] | "\(.key)=\(.value | @sh)"')"
     [ -f secrets.env ] && source secrets.env
     set +a
-    : "${SUPABASE_URL:?need SUPABASE_URL in secrets.sops.env}"
-    : "${SUPABASE_ANON_KEY:?need SUPABASE_ANON_KEY in secrets.sops.env}"
+    : "${SUPABASE_URL:?need SUPABASE_URL in secrets.sops.json}"
+    : "${SUPABASE_ANON_KEY:?need SUPABASE_ANON_KEY in secrets.sops.json}"
     rendered=$(mktemp)
     trap 'rm -f "$rendered"' EXIT
     sed \

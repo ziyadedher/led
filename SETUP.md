@@ -8,13 +8,14 @@ End-to-end bring-up of a new LED matrix Pi.
 2. **Tailscale**: be logged into the same tailnet the matrix will join, and mint a reusable auth key (Settings → Keys → Generate auth key, reusable + non-ephemeral). Save it for `secrets.env`.
 3. **Secrets**: edit the SOPS-encrypted file.
    ```sh
-   sops secrets.sops.env
+   sops secrets.sops.json
    ```
-   `secrets.sops.env` is committed encrypted (PGP, your key only — see `.sops.yaml`). The justfile decrypts it on the fly for any recipe that needs secrets. A gitignored `secrets.env` next to it acts as an optional local override (not required).
+   `secrets.sops.json` is committed encrypted (PGP, your key only — see `.sops.yaml`). The justfile decrypts it on the fly for any recipe that needs secrets, converting JSON keys into env vars via `jq`. A gitignored `secrets.env` next to it still acts as an optional local override.
 
    Keys:
    - `SUPABASE_URL`, `SUPABASE_ANON_KEY` — driver runtime
-   - `OTEL_ENDPOINT` (optional) — `http://infra:4318` for OTLP/HTTP to your tailnet collector
+   - `SUPABASE_ACCESS_TOKEN` — Personal Access Token for Terraform-managing the Supabase project
+   - `OTEL_ENDPOINT` (optional) — `https://otel.ziyadedher.com` for OTLP/HTTP to the infra collector
    - `WIFI_COUNTRY` — 2-letter ISO regdomain code (e.g. `CA`, `US`)
    - `TAILSCALE_AUTHKEY` — first-boot tailnet join
    - `SSH_AUTHORIZED_KEYS_FILE` (optional) — defaults to `~/.ssh/id_ed25519.pub`
