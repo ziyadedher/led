@@ -1,0 +1,3 @@
+creation_rules:
+  - path_regex: ^secrets\.sops\.env$
+    pgp: 9A7D74D21300FB45F5711E604131B010CF69F27A

@@ -1,6 +1,3 @@
-set dotenv-load := true
-set dotenv-required := false
-
 # Default target architecture for the LED matrix Pis (Pi Zero W = armv6 hardfp).
 # Override per-invocation: `just arch=aarch64-unknown-linux-musl build`.
 arch := "arm-unknown-linux-gnueabihf"
@@ -58,14 +55,17 @@ refresh-image-cache:
 # Flash an SD card with a fully provisioned image: Pi OS Lite + driver baked in,
 # first-boot script for hostname/WiFi/Tailscale.
 #
-# Requires (in env or secrets.env): SUPABASE_URL, SUPABASE_ANON_KEY,
-# WIFI_SSID, WIFI_PSK, WIFI_COUNTRY, TAILSCALE_AUTHKEY. Optional:
-# OTEL_ENDPOINT, SSH_AUTHORIZED_KEYS_FILE (defaults to ~/.ssh/id_ed25519.pub).
+# Pulls all secrets from `secrets.sops.env` (decrypted via SOPS at recipe
+# start). Edit with `sops secrets.sops.env`.
 flash-sd id host device: build
     #!/usr/bin/env bash
     set -euo pipefail
-    : "${SUPABASE_URL:?need SUPABASE_URL in secrets.env or env}"
-    : "${SUPABASE_ANON_KEY:?need SUPABASE_ANON_KEY in secrets.env or env}"
+    set -a
+    source <(sops --decrypt secrets.sops.env)
+    [ -f secrets.env ] && source secrets.env
+    set +a
+    : "${SUPABASE_URL:?need SUPABASE_URL in secrets.sops.env}"
+    : "${SUPABASE_ANON_KEY:?need SUPABASE_ANON_KEY in secrets.sops.env}"
     : "${WIFI_SSID:?need WIFI_SSID}"
     : "${WIFI_PSK:?need WIFI_PSK}"
     : "${WIFI_COUNTRY:?need WIFI_COUNTRY (e.g. US)}"
@@ -172,8 +172,12 @@ flash-sd id host device: build
 init host id user="root": build
     #!/usr/bin/env bash
     set -euo pipefail
-    : "${SUPABASE_URL:?set SUPABASE_URL in secrets.env or env}"
-    : "${SUPABASE_ANON_KEY:?set SUPABASE_ANON_KEY in secrets.env or env}"
+    set -a
+    source <(sops --decrypt secrets.sops.env)
+    [ -f secrets.env ] && source secrets.env
+    set +a
+    : "${SUPABASE_URL:?need SUPABASE_URL in secrets.sops.env}"
+    : "${SUPABASE_ANON_KEY:?need SUPABASE_ANON_KEY in secrets.sops.env}"
     rendered=$(mktemp)
     trap 'rm -f "$rendered"' EXIT
     sed \

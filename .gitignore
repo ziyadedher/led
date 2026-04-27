@@ -3,7 +3,9 @@
 debug/
 target/
 
-# Locally-managed deploy secrets, loaded by justfile via `set dotenv-load`.
+# Optional local override for secrets (`secrets.sops.env` is the source of
+# truth, committed encrypted). Anything in `secrets.env` overrides values
+# from the decrypted SOPS file.
 secrets.env
 
 # Local notes / scratch.

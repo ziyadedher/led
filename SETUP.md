@@ -6,12 +6,13 @@ End-to-end bring-up of a new LED matrix Pi.
 
 1. **Tools**: `just`, `cross`, Docker (for `cross`), `xz`, `parted`, `curl`, `ssh`/`scp`, Tailscale.
 2. **Tailscale**: be logged into the same tailnet the matrix will join, and mint a reusable auth key (Settings → Keys → Generate auth key, reusable + non-ephemeral). Save it for `secrets.env`.
-3. **Secrets**: copy and fill in.
+3. **Secrets**: edit the SOPS-encrypted file.
    ```sh
-   cp secrets.env.example secrets.env
-   $EDITOR secrets.env
+   sops secrets.sops.env
    ```
-   `secrets.env` is gitignored. It needs:
+   `secrets.sops.env` is committed encrypted (PGP, your key only — see `.sops.yaml`). The justfile decrypts it on the fly for any recipe that needs secrets. A gitignored `secrets.env` next to it acts as an optional local override (not required).
+
+   Keys:
    - `SUPABASE_URL`, `SUPABASE_ANON_KEY` — driver runtime
    - `OTEL_ENDPOINT` (optional) — `http://infra:4318` for OTLP/HTTP to your tailnet collector
    - `WIFI_SSID`, `WIFI_PSK`, `WIFI_COUNTRY` — first-boot WiFi config
