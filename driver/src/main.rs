@@ -71,7 +71,16 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Spawning tasks...");
     let mut tasks = JoinSet::new();
     tasks.spawn(drive(matrix_config, state.clone(), metrics.clone()));
-    tasks.spawn(state::sync(config.id, state.clone(), metrics.clone()));
+    tasks.spawn(async move {
+        state::sync(
+            config.id,
+            &config.supabase_url,
+            &config.supabase_anon_key,
+            state,
+            metrics,
+        )
+        .await
+    });
 
     tracing::info!("Waiting for tasks...");
     while let Some(result) = tasks.join_next().await {

@@ -357,6 +357,8 @@ async fn init(
             id: id.to_string(),
             install_path: PathBuf::from("/usr/local/bin/led-driver"),
             log_dir: PathBuf::from("/var/log/led/"),
+            supabase_url: String::new(),
+            supabase_anon_key: String::new(),
             otel_endpoint: None,
         };
         save_config(&config, &config_path)?;

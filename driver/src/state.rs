@@ -8,9 +8,6 @@ use tokio::time::Instant;
 use crate::display::{Panel, TextEntry};
 use crate::telemetry::Metrics;
 
-const SUPABASE_POSTGREST_URL: &str = "https://ohowojanrhlzhgwuwkrd.supabase.co/rest/v1";
-const SUPABASE_ANON_KEY: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ob3dvamFucmhsemhnd3V3a3JkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDg4ODIzOTQsImV4cCI6MjAyNDQ1ODM5NH0.cXhxyPzLcClJlbeOF9QbQ2txI7IJWrpifAK7esTt8Zc";
-
 const REFRESH_PERIOD: Duration = Duration::from_millis(2500);
 
 #[derive(PartialEq, Eq, Clone, Debug, Default, Deserialize, Serialize)]
@@ -119,11 +116,13 @@ async fn maybe_download(
 
 pub async fn sync(
     panel_name: String,
+    supabase_url: &str,
+    supabase_anon_key: &str,
     state: Arc<RwLock<State>>,
     metrics: Arc<Metrics>,
 ) -> anyhow::Result<()> {
     tracing::info!("Initializing state sync...");
-    let client = Postgrest::new(SUPABASE_POSTGREST_URL).insert_header("apikey", SUPABASE_ANON_KEY);
+    let client = Postgrest::new(supabase_url).insert_header("apikey", supabase_anon_key);
 
     let panel_id = get_panel_id(&panel_name, &client).await?;
     tracing::info!("Using panel ID: {}", panel_id);

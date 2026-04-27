@@ -39,6 +39,12 @@ pub struct Config {
     /// Path to a directory that will store various log files for the LED driver.
     pub log_dir: PathBuf,
 
+    /// Supabase PostgREST endpoint, e.g. `https://<project>.supabase.co/rest/v1`.
+    pub supabase_url: String,
+
+    /// Supabase API key (anon role) sent as the `apikey` header.
+    pub supabase_anon_key: String,
+
     /// OTLP endpoint for telemetry export (HTTP/protobuf, e.g. `http://infra:4318`).
     ///
     /// If `None`, telemetry export is disabled and the driver only logs locally.
@@ -66,6 +72,8 @@ pub struct Config {
 ///     id: "my-led-matrix".to_string(),
 ///     install_path: Path::new("/usr/local/bin/led-driver").to_path_buf(),
 ///     log_dir: Path::new("/var/log/led-driver").to_path_buf(),
+///     supabase_url: "https://example.supabase.co/rest/v1".to_string(),
+///     supabase_anon_key: "...".to_string(),
 ///     otel_endpoint: None,
 /// };
 /// save_config(&config, Path::new("config.toml"))?;
