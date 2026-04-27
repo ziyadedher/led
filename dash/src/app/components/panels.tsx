@@ -2,14 +2,7 @@
 
 import { useMemo } from "react";
 import { ChevronDownIcon } from "@heroicons/react/20/solid";
-import {
-  CheckCircleIcon,
-  ClockIcon,
-  ExclamationCircleIcon,
-  ExclamationTriangleIcon,
-} from "@heroicons/react/16/solid";
 
-import { Badge } from "@/components/badge";
 import {
   Dropdown,
   DropdownButton,
@@ -18,7 +11,7 @@ import {
   DropdownLabel,
   DropdownDescription,
 } from "@/components/dropdown";
-import { panels, health } from "@/utils/actions";
+import { panels } from "@/utils/actions";
 
 const PanelsDropdown = ({
   panelId,
@@ -28,11 +21,6 @@ const PanelsDropdown = ({
   setPanelId: (id: string) => void;
 }) => {
   const { data: panelsData, error } = panels.get.useSWR();
-  const {
-    data: status,
-    error: statusError,
-    isLoading,
-  } = health.get.useSWR(panelId);
 
   const panelsList = useMemo(() => {
     if (error) {
@@ -47,52 +35,8 @@ const PanelsDropdown = ({
     [panelsList, panelId],
   );
 
-  const getStatus = (): {
-    icon: React.ComponentType<React.ComponentProps<"svg">>;
-    color: "zinc" | "red" | "amber" | "green";
-    title: string;
-    text: string;
-  } => {
-    if (isLoading) {
-      return {
-        icon: ClockIcon,
-        color: "zinc",
-        title: "Loading the health of the LED server...",
-        text: "Loading...",
-      };
-    }
-    if (statusError || !status) {
-      return {
-        icon: ExclamationCircleIcon,
-        color: "red",
-        title:
-          "Failed to load the health of the LED server, it probably won't work.",
-        text: "Error",
-      };
-    }
-    if (!status.is_healthy) {
-      return {
-        icon: ExclamationTriangleIcon,
-        color: "amber",
-        title: "The LED server is not healthy, it probably won't work.",
-        text: "Unhealthy",
-      };
-    }
-    return {
-      icon: CheckCircleIcon,
-      color: "green",
-      title: "The LED server is healthy.",
-      text: "Healthy",
-    };
-  };
-
-  const { icon: Icon, color, title, text } = getStatus();
   return (
     <div className="flex flex-col items-center gap-2">
-      <Badge color={color} className="flex flex-row items-center" title={title}>
-        <Icon className="h-3 w-3" />
-        {text}
-      </Badge>
       <Dropdown>
         <DropdownButton outline className="w-48 justify-between">
           <span>{selectedPanel ? selectedPanel.name : "None"}</span>

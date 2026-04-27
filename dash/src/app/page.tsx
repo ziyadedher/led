@@ -16,12 +16,13 @@ import Effects, {
   FORCE_ENABLE_MARQUEE_LENGTH,
 } from "@/app/components/effects";
 import Entries from "@/app/components/entries";
-import { entries, panels } from "@/utils/actions";
+import { entries, panels, useRealtimeRevalidation } from "@/utils/actions";
 import { Divider } from "@/components/divider";
 import { StackedLayout } from "@/components/stacked-layout";
 
 export default function RootPage() {
   const { mutate } = useSWRConfig();
+  useRealtimeRevalidation();
   const { data: panelsData } = panels.get.useSWR();
 
   const [panelId, setPanelId] = useState<string>("");

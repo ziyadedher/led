@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
-import useSWR from "swr";
+import { useEffect } from "react";
+import useSWR, { useSWRConfig } from "swr";
 
 import { Database } from "@/types/supabase";
 
@@ -57,14 +58,64 @@ const getEntries = async (panel_id: string) => {
   return data as TextEntryItem[];
 };
 
+// Realtime subscriptions push invalidations to SWR, so the polling fallback
+// only exists to recover from a missed websocket message and can be loose.
+const FALLBACK_REFRESH_INTERVAL = 30_000;
+
 const useSWRFactory = <Result>(
   key: string,
   func: () => Promise<Result>,
-  { refreshInterval = 500 }: { refreshInterval?: number } = {},
+  { refreshInterval = FALLBACK_REFRESH_INTERVAL }: { refreshInterval?: number } = {},
 ) =>
   useSWR(key, func, {
     refreshInterval,
   });
+
+/**
+ * Subscribe to Postgres changes on the `panels` and `entries` tables and
+ * trigger SWR revalidation for the affected keys. Mount once at the top of
+ * the app.
+ */
+export const useRealtimeRevalidation = () => {
+  const { mutate } = useSWRConfig();
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("led-dash-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "panels" },
+        (payload) => {
+          mutate("/panels");
+          const id =
+            (payload.new as { id?: string })?.id ??
+            (payload.old as { id?: string })?.id;
+          if (id) {
+            mutate(`/pause/${id}`);
+            mutate(`/flash/${id}`);
+            mutate(`/entries/scroll/${id}`);
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "entries" },
+        (payload) => {
+          const panelId =
+            (payload.new as { panel_id?: string })?.panel_id ??
+            (payload.old as { panel_id?: string })?.panel_id;
+          if (panelId) {
+            mutate(`/entries/${panelId}`);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [mutate]);
+};
 
 const updatePanelLastUpdated = async (panelId: string) => {
   await supabase
@@ -88,20 +139,6 @@ export const panels = {
       return data;
     },
     useSWR: () => useSWRFactory("/panels", panels.get.call),
-  },
-};
-
-export const health = {
-  get: {
-    call: async (panelId: string) => {
-      const panel = await getPanel(panelId);
-      const has_right_id = panel.id === panelId;
-      const has_been_seen_recently =
-        Date.now() - new Date(panel.last_seen).getTime() < 10000;
-      return { is_healthy: has_right_id && has_been_seen_recently };
-    },
-    useSWR: (panelId: string) =>
-      useSWRFactory(`/health/${panelId}`, () => health.get.call(panelId)),
   },
 };
 
