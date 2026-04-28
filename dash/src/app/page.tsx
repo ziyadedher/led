@@ -25,7 +25,7 @@ import {
   type PanelMode,
   useRealtimeRevalidation,
 } from "@/utils/actions";
-import { isOffline } from "@/utils/offline";
+import { isOffline, relativeTime } from "@/utils/offline";
 import { useNow } from "@/utils/useNow";
 
 const AUTO_FORCED_DEFAULT = 10;
@@ -180,6 +180,7 @@ export default function Page() {
                       )
                     }
                     aria-label={activePanel?.is_paused ? "Resume panel" : "Pause panel"}
+                    title={`last seen ${relativeTime(activePanel?.last_seen, now)} · click to ${activePanel?.is_paused ? "resume" : "pause"}`}
                     className={[
                       "inline-flex h-5 items-center gap-1 border px-2 text-[9px] uppercase tracking-[0.3em] transition-colors",
                       activePanel?.is_paused

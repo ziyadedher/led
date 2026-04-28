@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 
 import { panels } from "@/utils/actions";
-import { isOffline } from "@/utils/offline";
+import { isOffline, relativeTime } from "@/utils/offline";
 import { useNow } from "@/utils/useNow";
 
 type VersionState = "current" | "stale" | "dirty" | "unreported";
@@ -84,6 +84,14 @@ export function PanelSwitcher({
           const active = p.id === panelId;
           const versionState = versionStates[i];
           const offline = isOffline(p.last_seen, now);
+          const heartbeatLabel = `last seen ${relativeTime(p.last_seen, now)}`;
+          const tooltip = [
+            p.description || p.name,
+            heartbeatLabel,
+            p.is_paused ? "paused" : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
           return (
             <button
               key={p.id}
@@ -100,7 +108,7 @@ export function PanelSwitcher({
                     ? "text-(--color-text-faint) hover:bg-(--color-surface-2)"
                     : "text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
               ].join(" ")}
-              title={p.description || p.name}
+              title={tooltip}
             >
               <span className="flex items-center gap-2.5">
                 <span
@@ -130,7 +138,16 @@ export function PanelSwitcher({
                 >
                   {p.name}
                 </span>
-                {active && !offline ? (
+                {p.is_paused ? (
+                  <span
+                    aria-label="paused"
+                    title={`paused · ${heartbeatLabel}`}
+                    className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-(--color-amber)/80"
+                  >
+                    ❚❚
+                  </span>
+                ) : null}
+                {active && !offline && !p.is_paused ? (
                   <span className="shrink-0 text-(--color-accent)/70">●</span>
                 ) : null}
                 {offline ? (

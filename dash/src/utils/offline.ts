@@ -19,3 +19,25 @@ export function isOffline(
   if (Number.isNaN(ts)) return true;
   return now - ts > OFFLINE_THRESHOLD_MS;
 }
+
+/**
+ * Compact "5s ago" / "2m ago" / "3h ago" / "4d ago" formatter, used
+ * in tooltips that surface a panel's last heartbeat. Returns
+ * "never" when last_seen is missing/unparseable.
+ */
+export function relativeTime(
+  iso: string | null | undefined,
+  now: number,
+): string {
+  if (!iso) return "never";
+  const ts = Date.parse(iso);
+  if (Number.isNaN(ts)) return "never";
+  const seconds = Math.max(0, Math.floor((now - ts) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
