@@ -4,12 +4,6 @@ import useSWR, { useSWRConfig } from "swr";
 
 import { Database } from "@/types/supabase";
 
-type FlashOptions = {
-  is_active: boolean;
-  on_steps: number;
-  total_steps: number;
-};
-
 type TextEntryOptions = {
   color:
     | { Rgb: { r: number; g: number; b: number } }
@@ -21,6 +15,11 @@ export type TextEntry = {
   text: string;
   options: TextEntryOptions;
 };
+
+export type TextEntryItem = Omit<
+  Database["public"]["Tables"]["entries"]["Row"],
+  "data"
+> & { data: TextEntry };
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -40,11 +39,6 @@ const getPanel = async (id: string) => {
   return data;
 };
 
-export type TextEntryItem = Omit<
-  Database["public"]["Tables"]["entries"]["Row"],
-  "data"
-> & { data: TextEntry };
-
 const getEntries = async (panel_id: string) => {
   const { data, error } = await supabase
     .from("entries")
@@ -58,8 +52,16 @@ const getEntries = async (panel_id: string) => {
   return data as TextEntryItem[];
 };
 
-// Realtime subscriptions push invalidations to SWR, so the polling fallback
-// only exists to recover from a missed websocket message and can be loose.
+const updatePanelLastUpdated = async (panelId: string) => {
+  await supabase
+    .from("panels")
+    .update({ last_updated: new Date().toISOString() })
+    .eq("id", panelId)
+    .throwOnError();
+};
+
+// Realtime pushes invalidations to SWR, so the polling fallback only
+// exists to recover from a missed websocket message and can be loose.
 const FALLBACK_REFRESH_INTERVAL = 30_000;
 
 const useSWRFactory = <Result>(
@@ -71,13 +73,14 @@ const useSWRFactory = <Result>(
     refreshInterval,
   });
 
-/**
- * Subscribe to Postgres changes on the `panels` and `entries` tables and
- * trigger SWR revalidation for the affected keys. Mount once at the top of
- * the app.
- */
 export type RealtimeStatus = "connecting" | "live" | "down";
 
+/**
+ * Subscribe to Postgres changes on the `panels` and `entries` tables
+ * and trigger SWR revalidation for the affected keys. Mount once at
+ * the page root. Returns the current channel status — useful for a
+ * "live" indicator.
+ */
 export const useRealtimeRevalidation = (): RealtimeStatus => {
   const { mutate } = useSWRConfig();
   const [status, setStatus] = useState<RealtimeStatus>("connecting");
@@ -93,11 +96,7 @@ export const useRealtimeRevalidation = (): RealtimeStatus => {
           const id =
             (payload.new as { id?: string })?.id ??
             (payload.old as { id?: string })?.id;
-          if (id) {
-            mutate(`/pause/${id}`);
-            mutate(`/flash/${id}`);
-            mutate(`/entries/scroll/${id}`);
-          }
+          if (id) mutate(`/entries/scroll/${id}`);
         },
       )
       .on(
@@ -107,9 +106,7 @@ export const useRealtimeRevalidation = (): RealtimeStatus => {
           const panelId =
             (payload.new as { panel_id?: string })?.panel_id ??
             (payload.old as { panel_id?: string })?.panel_id;
-          if (panelId) {
-            mutate(`/entries/${panelId}`);
-          }
+          if (panelId) mutate(`/entries/${panelId}`);
         },
       )
       .subscribe((s) => {
@@ -127,14 +124,6 @@ export const useRealtimeRevalidation = (): RealtimeStatus => {
   return status;
 };
 
-const updatePanelLastUpdated = async (panelId: string) => {
-  await supabase
-    .from("panels")
-    .update({ last_updated: new Date().toISOString() })
-    .eq("id", panelId)
-    .throwOnError();
-};
-
 export const panels = {
   get: {
     call: async () => {
@@ -143,35 +132,10 @@ export const panels = {
         .select("*")
         .order("name", { ascending: true })
         .throwOnError();
-      if (data === null || error) {
-        throw error;
-      }
+      if (data === null || error) throw error;
       return data;
     },
     useSWR: () => useSWRFactory("/panels", panels.get.call),
-  },
-};
-
-export const pause = {
-  get: {
-    call: async (panelId: string) => ({
-      is_paused: (await getPanel(panelId)).is_paused,
-    }),
-    useSWR: (panelId: string) =>
-      useSWRFactory(panelId ? `/pause/${panelId}` : null, () =>
-        pause.get.call(panelId),
-      ),
-  },
-
-  set: {
-    call: async (panelId: string, should_pause: boolean) => {
-      await supabase
-        .from("panels")
-        .update({ is_paused: should_pause })
-        .eq("id", panelId)
-        .throwOnError();
-      await updatePanelLastUpdated(panelId);
-    },
   },
 };
 
@@ -188,10 +152,10 @@ export const entries = {
 
   add: {
     call: async (panelId: string, entry: TextEntry) => {
-      const entries = await getEntries(panelId);
+      const existing = await getEntries(panelId);
       await supabase
         .from("entries")
-        .insert({ panel_id: panelId, data: entry, order: entries.length })
+        .insert({ panel_id: panelId, data: entry, order: existing.length })
         .throwOnError();
       await updatePanelLastUpdated(panelId);
     },
@@ -209,37 +173,26 @@ export const entries = {
     },
   },
 
-  order: {
-    patch: {
-      call: async (
-        panelId: string,
-        entry: number,
-        direction: "Up" | "Down",
-      ) => {
-        const order = entry;
-        const replaced_order = direction === "Up" ? order - 1 : order + 1;
-        const entries = await getEntries(panelId);
-
-        const entryToMove = entries.find((entry) => entry.order === order);
-        const replacedEntry = entries.find(
-          (entry) => entry.order === replaced_order,
-        );
-        if (entryToMove === undefined || replacedEntry === undefined) {
-          throw new Error("Entry not found");
-        }
-
-        await supabase
-          .from("entries")
-          .update({ order: replaced_order })
-          .eq("id", entryToMove.id)
-          .throwOnError();
-        await supabase
-          .from("entries")
-          .update({ order })
-          .eq("id", replacedEntry.id)
-          .throwOnError();
-        await updatePanelLastUpdated(panelId);
-      },
+  /**
+   * Replace the order of every entry on the panel with positions
+   * derived from `orderedIds`. Issued as parallel UPDATEs — the
+   * driver's poll re-pulls all entries on `last_updated` change so
+   * partial application during a race is self-healing on the next
+   * refresh cycle.
+   */
+  reorder: {
+    call: async (panelId: string, orderedIds: string[]) => {
+      await Promise.all(
+        orderedIds.map((id, order) =>
+          supabase
+            .from("entries")
+            .update({ order })
+            .eq("id", id)
+            .eq("panel_id", panelId)
+            .throwOnError(),
+        ),
+      );
+      await updatePanelLastUpdated(panelId);
     },
   },
 
@@ -252,46 +205,6 @@ export const entries = {
         useSWRFactory(panelId ? `/entries/scroll/${panelId}` : null, () =>
           entries.scroll.get.call(panelId),
         ),
-    },
-
-    post: {
-      call: async (panelId: string, direction: "Up" | "Down") => {
-        const scroll = (await getPanel(panelId)).scroll;
-        const newScroll = direction === "Up" ? scroll - 1 : scroll + 1;
-        await supabase
-          .from("panels")
-          .update({ scroll: newScroll })
-          .eq("id", panelId)
-          .throwOnError();
-        await updatePanelLastUpdated(panelId);
-      },
-    },
-  },
-};
-
-export const flash = {
-  get: {
-    call: async (panelId: string) =>
-      (await getPanel(panelId)).flash as FlashOptions,
-    useSWR: (panelId: string) =>
-      useSWRFactory(panelId ? `/flash/${panelId}` : null, () =>
-        flash.get.call(panelId),
-      ),
-  },
-
-  post: {
-    call: async (panelId: string, isActive: boolean) => {
-      const flash = {
-        is_active: isActive,
-        on_steps: 10,
-        total_steps: 50,
-      };
-      await supabase
-        .from("panels")
-        .update({ flash })
-        .eq("id", panelId)
-        .throwOnError();
-      await updatePanelLastUpdated(panelId);
     },
   },
 };
