@@ -1,7 +1,6 @@
 #!/bin/bash
-# Installs Tailscale (if missing), joins the tailnet, and disables the system
-# sshd so all future access goes via Tailscale SSH. Idempotent: writes a
-# marker file at the end so the systemd unit won't re-run.
+# Installs Tailscale (if missing) and joins the tailnet. Idempotent:
+# writes a marker file at the end so the systemd unit won't re-run.
 set -euo pipefail
 
 : "${HOSTNAME:?HOSTNAME unset in /etc/led/init.env}"
@@ -15,8 +14,13 @@ fi
 echo "[led-tailscale-init] joining tailnet as $HOSTNAME"
 tailscale up --auth-key="$TAILSCALE_AUTHKEY" --hostname="$HOSTNAME" --ssh
 
-echo "[led-tailscale-init] disabling system sshd (Tailscale SSH takes over)"
-systemctl disable --now ssh 2>/dev/null || true
+# Keep the system sshd running alongside Tailscale SSH. If the
+# tailnet breaks (control-plane unreachable, IPv6 routing trap,
+# auth key expired) the system sshd on :22 is the only way to
+# recover without reflashing — see the 2026-04-28 incident where
+# the Pi got stuck unable to refresh its tailscale session.
+# Tailscale SSH still handles tailnet-internal access; system sshd
+# adds a LAN fallback.
 
 mkdir -p /var/lib/led-wifi-setup
 date -u +%FT%TZ > /var/lib/led-wifi-setup/tailscale-joined
