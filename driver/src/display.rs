@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::Context;
-use display_core::{Frame, RenderPanel};
+use display_core::{text::TextFrame, Frame, Mode, PanelState};
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::DrawTarget;
 use parking_lot::RwLock;
@@ -57,9 +57,11 @@ pub async fn drive(
         let snapshot = state.read().clone();
 
         let frame = Frame {
-            entries: snapshot.entries,
-            panel: RenderPanel {
+            mode: Mode::Text(TextFrame {
+                entries: snapshot.entries,
                 scroll: snapshot.panel.scroll,
+            }),
+            panel: PanelState {
                 is_paused: snapshot.panel.is_paused,
                 flash: snapshot.panel.flash.clone(),
             },

@@ -28,10 +28,16 @@ type WireColor =
   | { Rgb: { r: number; g: number; b: number } }
   | { Rainbow: { is_per_letter: boolean; speed: number } };
 
+type TextEntry = {
+  text: string;
+  options: { color: WireColor; marquee: { speed: number } };
+};
+
+// Mirrors display_core::Frame. Externally-tagged Mode enum; `Text`
+// variant carries the entry list + scroll position.
 type Frame = {
-  entries: { text: string; options: { color: WireColor; marquee: { speed: number } } }[];
+  mode: { Text: { entries: TextEntry[]; scroll: number } };
   panel: {
-    scroll: number;
     is_paused: boolean;
     flash: { is_active: boolean; on_steps: number; total_steps: number };
   };
@@ -103,33 +109,29 @@ export function MatrixPreview({ preview }: { preview?: PreviewEntry } = {}) {
         marquee: { speed: e.data?.options?.marquee?.speed ?? 0 },
       },
     }));
-    if (preview && preview.text.length > 0) {
-      const previewWire: WireColor =
-        preview.color.mode === "rgb"
-          ? { Rgb: preview.color.rgb }
-          : {
-              Rainbow: {
-                is_per_letter: preview.color.perLetter,
-                speed: preview.color.speed,
-              },
-            };
-      return {
-        entries: [
+    const entries: TextEntry[] = preview && preview.text.length > 0
+      ? [
           {
             text: preview.text,
             options: {
-              color: previewWire,
+              color:
+                preview.color.mode === "rgb"
+                  ? { Rgb: preview.color.rgb }
+                  : {
+                      Rainbow: {
+                        is_per_letter: preview.color.perLetter,
+                        speed: preview.color.speed,
+                      },
+                    },
               marquee: { speed: preview.marqueeSpeed },
             },
           },
           ...fromStore,
-        ],
-        panel: { scroll, is_paused: false, flash: FLASH_OFF },
-      };
-    }
+        ]
+      : fromStore;
     return {
-      entries: fromStore,
-      panel: { scroll, is_paused: false, flash: FLASH_OFF },
+      mode: { Text: { entries, scroll } },
+      panel: { is_paused: false, flash: FLASH_OFF },
     };
   }, [items, preview, scroll]);
 
