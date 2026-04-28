@@ -27,10 +27,21 @@ create table if not exists public.entries (
 create index if not exists entries_panel_id_order_idx
     on public.entries(panel_id, "order");
 
--- Realtime publication. Adds are idempotent: if the table is already a
--- publication member, the call is a no-op (Postgres 16+).
-alter publication supabase_realtime add table public.panels;
-alter publication supabase_realtime add table public.entries;
+-- Realtime publication. Wrapped in a DO block so re-running the
+-- migration on a project where the tables are already members of
+-- supabase_realtime is a no-op (the bare `alter publication ... add
+-- table` form errors with SQLSTATE 42710 on duplicate).
+do $$
+begin
+    alter publication supabase_realtime add table public.panels;
+exception when duplicate_object then null;
+end $$;
+
+do $$
+begin
+    alter publication supabase_realtime add table public.entries;
+exception when duplicate_object then null;
+end $$;
 
 -- Permissive RLS: any holder of the anon JWT can read/write. v1 only.
 alter table public.panels enable row level security;
