@@ -152,10 +152,18 @@ export const entries = {
 
   add: {
     call: async (panelId: string, entry: TextEntry) => {
+      // Insert at the top of the list. The driver renders entries in
+      // ascending `order`, so the lowest order ends up at the top of
+      // the matrix. We pick min(existing) - 1, which is atomic (no
+      // shifting other rows) and self-heals when a reorder rewrites
+      // everyone to 0..N-1.
       const existing = await getEntries(panelId);
+      const minOrder = existing.length > 0
+        ? Math.min(...existing.map((e) => e.order))
+        : 0;
       await supabase
         .from("entries")
-        .insert({ panel_id: panelId, data: entry, order: existing.length })
+        .insert({ panel_id: panelId, data: entry, order: minOrder - 1 })
         .throwOnError();
       await updatePanelLastUpdated(panelId);
     },
