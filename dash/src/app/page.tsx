@@ -15,7 +15,8 @@ import { LiveDot } from "@/app/components/LiveDot";
 import { MatrixPreview } from "@/app/components/MatrixPreview";
 import { PanelSwitcher } from "@/app/components/PanelSwitcher";
 import { PanelContext } from "@/app/context";
-import { FRAMES, useLifeFrame } from "@/app/frames";
+import { FRAMES } from "@/app/frames";
+import { parseLifeConfig, useLifeFrame } from "@/app/frames/life";
 import { ModeSwitcher } from "@/app/frames/ModeSwitcher";
 import { MODES } from "@/app/frames/types";
 import {
@@ -117,11 +118,11 @@ export default function Page() {
   );
 
   // Life mode owns its own animation loop (rAF-driven cellular tick).
-  // Always running so previewing is instant when the user switches in.
-  // The hook seeds + reseeds on its own; takes the saved color from
-  // whatever the active life config is (or the default).
+  // Always running so previewing is instant when the user switches
+  // in. Bypasses the FRAMES registry's erased types — this is the
+  // one consumer that needs the life-typed config directly.
   const lifeConfig = useMemo(
-    () => FRAMES.life.parse(activePanel?.mode_config),
+    () => parseLifeConfig(activePanel?.mode_config),
     [activePanel?.mode_config],
   );
   const lifeFrame = useLifeFrame(lifeConfig);

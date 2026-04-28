@@ -16,7 +16,7 @@ import {
   parseClockConfig,
 } from "./clock";
 import { ImageComposer, parseImageConfig } from "./image";
-import { LifeComposer, parseLifeConfig, useLifeFrame } from "./life";
+import { LifeComposer, parseLifeConfig } from "./life";
 import type {
   ClockModeConfig,
   ImageModeConfig,
@@ -41,25 +41,45 @@ export type FrameInputs = {
 
 type ComposerProps<C> = { panelId: string; config: C };
 
-type FrameRegistration<C> = {
-  /** Parse a panels.mode_config jsonb into the typed config. */
-  parse: (raw: unknown) => C;
-  /** Build the runtime `ModeFrame` from saved config + page inputs. */
-  buildFrame: (config: C, inputs: FrameInputs) => ModeFrame;
-  /** The form rendered in the bottom half when this mode is active. */
-  Composer: React.ComponentType<ComposerProps<C>>;
+/**
+ * Erased registration shape used by the registry. Each entry's
+ * config type is encapsulated inside the entry — parse(raw)
+ * produces the typed config, buildFrame consumes it, Composer
+ * receives it. The outer types are `unknown` so the registry can
+ * hold heterogeneous entries in one Record without per-key generics.
+ */
+type FrameRegistration = {
+  parse: (raw: unknown) => unknown;
+  buildFrame: (config: unknown, inputs: FrameInputs) => ModeFrame;
+  Composer: React.ComponentType<ComposerProps<unknown>>;
 };
 
-// Each entry's config type is enforced by the `satisfies
-// FrameRegistration<…Config>` clause; the container is `any` to
-// keep the table heterogeneous (TS can't preserve per-key generics
-// in a Record). Page.tsx only ever consumes one entry at a time via
-// `FRAMES[activeMode]`, and the fact that `parse → buildFrame` is
-// closed over the same type per entry keeps things sound at runtime.
-export const FRAMES: Record<PanelMode, FrameRegistration<any>> = {
-  text: {
-    parse: () => null,
-    buildFrame: (_config, inputs) => {
+/**
+ * Builder helper. Take a strongly-typed parse + buildFrame +
+ * Composer triple and erase to FrameRegistration. The single cast
+ * here is sound because the parse output, buildFrame input, and
+ * Composer config prop are all bound to the same `C` per call.
+ */
+function frame<C>(
+  parse: (raw: unknown) => C,
+  build: (config: C, inputs: FrameInputs) => ModeFrame,
+  Composer: React.ComponentType<ComposerProps<C>>,
+): FrameRegistration {
+  return {
+    parse,
+    buildFrame: (config, inputs) => build(config as C, inputs),
+    Composer: Composer as React.ComponentType<ComposerProps<unknown>>,
+  };
+}
+
+// Text mode renders inline (Composer + EntriesList) in page.tsx,
+// not via a single Composer component. Stub Composer here.
+const TextComposerStub: React.ComponentType<ComposerProps<null>> = () => null;
+
+export const FRAMES: Record<PanelMode, FrameRegistration> = {
+  text: frame<null>(
+    () => null,
+    (_config, inputs) => {
       const previewEntry: TextEntry | null =
         inputs.message.length > 0
           ? {
@@ -87,43 +107,30 @@ export const FRAMES: Record<PanelMode, FrameRegistration<any>> = {
         },
       };
     },
-    // text mode renders inline (Composer + EntriesList) in page.tsx,
-    // not via a single Composer component. Stub here so TS is happy.
-    Composer: (() => null) as unknown as React.ComponentType<
-      ComposerProps<null>
-    >,
-  } satisfies FrameRegistration<null>,
+    TextComposerStub,
+  ),
 
-  clock: {
-    parse: parseClockConfig,
-    buildFrame: (config: ClockModeConfig) => ({
-      Clock: clockFrameFromConfig(config),
-    }),
-    Composer: ClockComposer,
-  } satisfies FrameRegistration<ClockModeConfig>,
+  clock: frame<ClockModeConfig>(
+    parseClockConfig,
+    (config) => ({ Clock: clockFrameFromConfig(config) }),
+    ClockComposer,
+  ),
 
-  life: {
-    parse: parseLifeConfig,
-    buildFrame: (_config, inputs) => ({ Life: inputs.lifeFrame }),
-    Composer: LifeComposer,
-  } satisfies FrameRegistration<LifeModeConfig>,
+  life: frame<LifeModeConfig>(
+    parseLifeConfig,
+    (_config, inputs) => ({ Life: inputs.lifeFrame }),
+    LifeComposer,
+  ),
 
-  image: {
-    parse: parseImageConfig,
-    buildFrame: (config: ImageModeConfig) => ({
+  image: frame<ImageModeConfig>(
+    parseImageConfig,
+    (config) => ({
       Image: {
         width: config.width,
         height: config.height,
         bitmap: config.bitmap,
       },
     }),
-    Composer: ImageComposer,
-  } satisfies FrameRegistration<ImageModeConfig>,
+    ImageComposer,
+  ),
 };
-
-/**
- * Re-export `useLifeFrame` so page.tsx can keep the rAF loop alive
- * even when life isn't the active mode (for instant preview when
- * the user switches in).
- */
-export { useLifeFrame };
