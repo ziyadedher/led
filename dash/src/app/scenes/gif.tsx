@@ -42,12 +42,16 @@ export function parseGifConfig(raw: unknown): GifSceneConfig {
   if (width <= 0 || height <= 0 || frames.length === 0) {
     return DEFAULT_GIF_CONFIG;
   }
+  const speed =
+    typeof obj.speed === "number" && obj.speed > 0
+      ? Math.max(0.05, Math.min(16, obj.speed))
+      : 1;
   const source = typeof obj.source === "string" ? obj.source : undefined;
   const source_frame_count =
     typeof obj.source_frame_count === "number"
       ? obj.source_frame_count
       : undefined;
-  return { width, height, frames, source, source_frame_count };
+  return { width, height, frames, speed, source, source_frame_count };
 }
 
 /**
@@ -153,10 +157,15 @@ async function decodeGif(file: File): Promise<GifSceneConfig> {
     width: drawW,
     height: drawH,
     frames,
+    speed: 1,
     source: file.name,
     source_frame_count: parsed.length,
   };
 }
+
+// Speed presets. Slider snaps to these; arbitrary values are still
+// clamped server-side at render time.
+const SPEED_PRESETS = [0.25, 0.5, 1, 1.5, 2, 4];
 
 export function GifComposer({
   panelId,
@@ -182,13 +191,20 @@ export function GifComposer({
     }
   };
 
+  const setSpeed = (next: number) => {
+    if (config.frames.length === 0) return;
+    void panels.setMode.call(panelId, "gif", { ...config, speed: next });
+  };
+
   const hasFrames = config.frames.length > 0;
   const trimmed =
     config.source_frame_count != null &&
     config.source_frame_count > config.frames.length;
 
-  // Total looped duration for the diagnostic readout.
+  // Total looped duration for the diagnostic readout — accounts for
+  // the playback speed the user has dialed in.
   const totalMs = config.frames.reduce((acc, f) => acc + f.delay_ms, 0);
+  const effectiveLoopMs = totalMs / Math.max(0.05, config.speed);
 
   return (
     <ComposerShell
@@ -196,8 +212,8 @@ export function GifComposer({
       status={`max ${MAX_FRAMES} frames · 64×64`}
       ariaLabel="GIF configuration"
     >
-      <div className="space-y-4 px-4 py-4">
-        <div className="space-y-2">
+      <div className="space-y-5 px-4 pb-4 pt-6">
+        <div className="space-y-3">
           <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
             :: upload
           </span>
@@ -243,15 +259,20 @@ export function GifComposer({
           <>
             <div className="border-t border-dashed border-(--color-hairline)" />
 
+            <SpeedRow value={config.speed} onChange={setSpeed} />
+
+            <div className="border-t border-dashed border-(--color-hairline)" />
+
             <div className="grid grid-cols-2 gap-px border border-(--color-border) bg-(--color-border) sm:grid-cols-4">
               <Stat label="frames" value={pad(config.frames.length, 2)} />
               <Stat
-                label="length"
-                value={`${(totalMs / 1000).toFixed(2)}s`}
+                label="loop"
+                value={`${(effectiveLoopMs / 1000).toFixed(2)}s`}
               />
               <Stat
-                label="avg delay"
-                value={`${Math.round(totalMs / Math.max(1, config.frames.length))}ms`}
+                label="speed"
+                value={`${config.speed.toFixed(2)}x`}
+                tone={config.speed === 1 ? undefined : "warn"}
               />
               <Stat
                 label="source"
@@ -267,6 +288,75 @@ export function GifComposer({
         ) : null}
       </div>
     </ComposerShell>
+  );
+}
+
+function SpeedRow({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  // Min slider step so dragging feels smooth; presets are markers.
+  const min = SPEED_PRESETS[0];
+  const max = SPEED_PRESETS[SPEED_PRESETS.length - 1];
+  const pct = ((value - min) / (max - min)) * 100;
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
+          {"// speed"}
+        </span>
+        <span
+          className="tabular-nums text-(--color-text)"
+          style={{ fontFamily: "var(--font-pixel)", fontSize: 14 }}
+        >
+          {value.toFixed(2)}x
+        </span>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
+          slow
+        </span>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={0.05}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="fader flex-1"
+          style={{ ["--fader-pos" as string]: `${pct}%` } as React.CSSProperties}
+          aria-label="GIF speed"
+        />
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
+          fast
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1">
+        {SPEED_PRESETS.map((p) => {
+          const active = Math.abs(value - p) < 0.01;
+          return (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onChange(p)}
+              className={[
+                "border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.25em] transition-colors",
+                active
+                  ? "border-(--color-accent) bg-(--color-accent)/15 text-(--color-accent)"
+                  : "border-(--color-border) text-(--color-text-muted) hover:border-(--color-border-strong) hover:text-(--color-text)",
+              ].join(" ")}
+            >
+              {p}x
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

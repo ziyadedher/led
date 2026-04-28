@@ -150,6 +150,11 @@ export type GifScene = {
   width: number;
   height: number;
   frames: GifFrame[];
+  /**
+   * Playback rate multiplier. 1.0 = native gif timing. 2.0 plays
+   * twice as fast, 0.5 half-speed. The driver clamps to [0.05, 16].
+   */
+  speed: number;
 };
 
 export type GifSceneConfig = GifScene & {
@@ -163,6 +168,7 @@ export const DEFAULT_GIF_CONFIG: GifSceneConfig = {
   width: 0,
   height: 0,
   frames: [],
+  speed: 1,
 };
 
 /**
@@ -191,8 +197,8 @@ export const MODES: ModeMeta[] = [
   { id: "text", label: "text", blurb: "scrolling text payloads" },
   { id: "clock", label: "clock", blurb: "current local time" },
   { id: "image", label: "image", blurb: "static 64×64 bitmap" },
-  { id: "paint", label: "paint", blurb: "pixel-grid editor" },
   { id: "gif", label: "gif", blurb: "animated frame loop" },
+  { id: "paint", label: "paint", blurb: "pixel-grid editor" },
   { id: "life", label: "life", blurb: "ambient cellular automaton" },
   { id: "test", label: "test", blurb: "diagnostic patterns" },
 ];

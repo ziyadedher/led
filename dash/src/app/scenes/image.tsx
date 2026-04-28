@@ -88,14 +88,14 @@ export function ImageComposer({
   config: ImageSceneConfig;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [urlDraft, setUrlDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const apply = async (next: ImageSceneConfig) => {
+  const handleFile = async (file: File) => {
     setBusy(true);
     setErr(null);
     try {
+      const next = await loadAndDownsample(file);
       await panels.setMode.call(panelId, "image", next);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -104,37 +104,12 @@ export function ImageComposer({
     }
   };
 
-  const handleFile = async (file: File) => {
-    setBusy(true);
-    setErr(null);
-    try {
-      const next = await loadAndDownsample(file);
-      await apply(next);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-      setBusy(false);
-    }
-  };
-
-  const handleUrl = async () => {
-    if (!urlDraft.trim()) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      const next = await loadAndDownsample(urlDraft.trim());
-      await apply(next);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-      setBusy(false);
-    }
-  };
-
   const hasImage = config.bitmap.length > 0;
 
   return (
     <ComposerShell title="image" status="static · 64×64 max" ariaLabel="Image configuration">
-      <div className="space-y-4 px-4 py-4">
-        <div className="space-y-2">
+      <div className="space-y-4 px-4 pb-4 pt-6">
+        <div className="space-y-3">
           <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
             :: upload
           </span>
@@ -167,38 +142,6 @@ export function ImageComposer({
                 no image set
               </span>
             )}
-          </div>
-        </div>
-
-        <div className="border-t border-dashed border-(--color-hairline)" />
-
-        <div className="space-y-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-            :: url
-          </span>
-          <div className="flex items-center gap-2 border-b border-(--color-border-strong) pb-1.5 focus-within:border-(--color-accent)">
-            <span aria-hidden className="font-mono text-(--color-accent)">
-              ▸
-            </span>
-            <input
-              type="text"
-              value={urlDraft}
-              onChange={(e) => setUrlDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void handleUrl();
-              }}
-              placeholder="https://..."
-              spellCheck={false}
-              className="w-full border-0 bg-transparent p-0 font-mono text-sm text-(--color-text) placeholder:text-(--color-text-faint) focus:outline-none focus:ring-0"
-            />
-            <button
-              type="button"
-              onClick={() => void handleUrl()}
-              disabled={busy || !urlDraft.trim()}
-              className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-muted) transition hover:text-(--color-accent) disabled:opacity-40"
-            >
-              fetch ↵
-            </button>
           </div>
         </div>
 

@@ -28,11 +28,32 @@ pub struct GifFrame {
     pub delay_ms: u32,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GifScene {
     pub width: u32,
     pub height: u32,
     pub frames: Vec<GifFrame>,
+    /// Playback rate. 1.0 = native gif speed, 2.0 = twice as fast,
+    /// 0.5 = half. Stored alongside the frames so the dash can change
+    /// playback without re-decoding. Old configs missing this field
+    /// default to 1.0 via [`default_speed`].
+    #[serde(default = "default_speed")]
+    pub speed: f32,
+}
+
+fn default_speed() -> f32 {
+    1.0
+}
+
+impl Default for GifScene {
+    fn default() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            frames: Vec::new(),
+            speed: 1.0,
+        }
+    }
 }
 
 #[allow(clippy::cast_possible_wrap)]
@@ -45,10 +66,13 @@ where
         return Ok(());
     }
 
-    // The driver vsync ticks `step` once per ~16.67ms. Map the
-    // accumulated step time into a frame index using each frame's
-    // own delay; pos_ms wraps within the gif's total duration.
-    let step_ms: u64 = (step as u64) * 1000 / 60;
+    // The driver vsync ticks `step` once per ~16.67ms. Scale by
+    // `speed` so a 2.0 makes time advance twice as fast through the
+    // timeline (frames flip at half their native delay), 0.5 doubles
+    // each frame's apparent duration. Clamp to a sane range so a
+    // bogus 0 or negative value can't stall or break wrap-around.
+    let speed = scene.speed.clamp(0.05, 16.0);
+    let step_ms: u64 = ((step as f64) * (1000.0 / 60.0) * f64::from(speed)) as u64;
     let total_ms: u64 = scene
         .frames
         .iter()

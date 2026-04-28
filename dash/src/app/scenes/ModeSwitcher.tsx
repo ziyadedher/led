@@ -1,5 +1,15 @@
 "use client";
 
+import {
+  Bars3BottomLeftIcon,
+  BeakerIcon,
+  ClockIcon,
+  FilmIcon,
+  PaintBrushIcon,
+  PhotoIcon,
+  SparklesIcon,
+} from "@heroicons/react/24/outline";
+
 import { MODES } from "./types";
 
 import { panels, type PanelMode } from "@/utils/actions";
@@ -9,9 +19,9 @@ import { panels, type PanelMode } from "@/utils/actions";
  * mode_config to Supabase; per-mode forms hydrate their own defaults
  * if config is missing/partial.
  *
- * Each button is a "preset key" — large mode glyph, label, and short
- * blurb. Active button gets a recessed/illuminated treatment with
- * the phosphor "ON" lamp; inactive buttons read as cold keys.
+ * Each tile is a "preset key" — heroicon glyph, label, and short
+ * blurb. Active tile gets a recessed/illuminated treatment; inactive
+ * tiles read as cold keys.
  */
 export function ModeSwitcher({
   panelId,
@@ -24,11 +34,11 @@ export function ModeSwitcher({
     <div
       role="tablist"
       aria-label="Mode"
-      className="bezel-recessed relative grid grid-cols-2 gap-px overflow-hidden border border-(--color-border) bg-(--color-border) sm:grid-cols-3 lg:grid-cols-5"
+      className="bezel-recessed relative grid grid-cols-2 gap-px overflow-hidden border border-(--color-border) bg-(--color-border) sm:grid-cols-3 lg:grid-cols-7"
     >
       {MODES.map((m) => {
         const active = m.id === current;
-        const glyph = MODE_GLYPHS[m.id];
+        const Icon = MODE_ICONS[m.id];
         return (
           <button
             key={m.id}
@@ -47,7 +57,7 @@ export function ModeSwitcher({
             ].join(" ")}
             title={m.blurb}
           >
-            {/* Pixel-font glyph anchor */}
+            {/* Icon plate */}
             <span
               aria-hidden
               className={[
@@ -57,15 +67,12 @@ export function ModeSwitcher({
                   : "border-(--color-border) bg-(--color-bg)/50 text-(--color-text-dim) group-hover:border-(--color-border-strong) group-hover:text-(--color-text)",
               ].join(" ")}
               style={{
-                fontFamily: "var(--font-pixel)",
-                fontSize: 22,
-                lineHeight: 1,
-                textShadow: active
-                  ? "0 0 8px var(--color-accent-fade)"
+                filter: active
+                  ? "drop-shadow(0 0 6px var(--color-accent-fade))"
                   : "none",
               }}
             >
-              {glyph}
+              <Icon className="h-4 w-4" strokeWidth={1.6} />
             </span>
 
             <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
@@ -102,12 +109,15 @@ export function ModeSwitcher({
   );
 }
 
-const MODE_GLYPHS: Record<PanelMode, string> = {
-  text: "≡",
-  clock: "◷",
-  image: "▦",
-  paint: "✎",
-  gif: "▶",
-  life: "✲",
-  test: "▤",
+const MODE_ICONS: Record<
+  PanelMode,
+  React.ComponentType<React.SVGProps<SVGSVGElement>>
+> = {
+  text: Bars3BottomLeftIcon,
+  clock: ClockIcon,
+  image: PhotoIcon,
+  gif: FilmIcon,
+  paint: PaintBrushIcon,
+  life: SparklesIcon,
+  test: BeakerIcon,
 };

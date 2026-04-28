@@ -161,6 +161,7 @@ export const SCENES: Record<PanelMode, SceneRegistration> = {
         width: config.width,
         height: config.height,
         frames: config.frames,
+        speed: config.speed,
       },
     }),
     GifComposer,
