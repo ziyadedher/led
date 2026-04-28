@@ -141,7 +141,7 @@ const EntryTableRow = ({
           </button>
         </span>
         <span
-          className="w-0 flex-grow overflow-hidden text-ellipsis"
+          className="w-0 grow overflow-hidden text-ellipsis"
           title={entry.data.text}
         >
           {entry.data.text}

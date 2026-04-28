@@ -1,3 +1,14 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* @tailwindcss/forms plugin (was registered in the deleted JS config). */
+@plugin "@tailwindcss/forms";
+
+/* Class-based dark mode (Tailwind v3 was `darkMode: "selector"`). The
+ * default variant in v4 is media-query-based; this restores opt-in via a
+ * `.dark` class on any ancestor. */
+@variant dark (&:where(.dark, .dark *));
+
+/* Custom font stack (replaces the v3 `theme.extend.fontFamily.sans`). */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}

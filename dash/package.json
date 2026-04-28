@@ -7,38 +7,34 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@headlessui/react": "^2",
     "@heroicons/react": "^2",
     "@supabase/supabase-js": "^2",
     "@tailwindcss/forms": "^0.5",
+    "@tailwindcss/postcss": "^4.2.4",
     "classnames": "^2",
     "clsx": "^2",
     "framer-motion": "^12",
-    "next": "^15",
+    "next": "^16",
     "react": "^19",
     "react-dom": "^19",
     "sharp": "^0.34",
-    "supabase": "^1",
     "swr": "^2",
-    "tailwindcss": "^3.4",
-    "zod": "^3"
+    "tailwindcss": "^4.2.4",
+    "zod": "^4"
   },
   "devDependencies": {
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@typescript-eslint/parser": "^8",
-    "autoprefixer": "^10",
-    "eslint": "^8",
-    "eslint-config-next": "^15",
-    "eslint-import-resolver-typescript": "^3",
-    "eslint-plugin-import": "^2",
-    "postcss": "^8",
+    "eslint": "^9",
+    "eslint-config-next": "^16",
     "prettier": "^3",
-    "prettier-plugin-tailwindcss": "^0.6",
+    "prettier-plugin-tailwindcss": "^0.8.0",
+    "supabase": "^2",
     "typescript": "^5"
   }
 }
