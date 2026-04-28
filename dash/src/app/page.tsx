@@ -170,6 +170,29 @@ export default function Page() {
                 </span>
               </div>
               <div className="flex items-center gap-3 font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint) tabular-nums">
+                {panelId.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void panels.setPaused.call(
+                        panelId,
+                        !(activePanel?.is_paused ?? false),
+                      )
+                    }
+                    aria-label={activePanel?.is_paused ? "Resume panel" : "Pause panel"}
+                    className={[
+                      "inline-flex h-5 items-center gap-1 border px-2 text-[9px] uppercase tracking-[0.3em] transition-colors",
+                      activePanel?.is_paused
+                        ? "border-(--color-accent) bg-(--color-accent)/15 text-(--color-accent)"
+                        : "border-(--color-border) text-(--color-text-muted) hover:border-(--color-border-strong) hover:text-(--color-text)",
+                    ].join(" ")}
+                  >
+                    <span aria-hidden style={{ fontFamily: "var(--font-pixel)", fontSize: 11 }}>
+                      {activePanel?.is_paused ? "▶" : "❚❚"}
+                    </span>
+                    <span>{activePanel?.is_paused ? "paused" : "live"}</span>
+                  </button>
+                ) : null}
                 <span style={{ fontFamily: "var(--font-pixel)", fontSize: 13 }}>
                   64 × 64
                 </span>
@@ -185,7 +208,11 @@ export default function Page() {
               <CornerBracket pos="tr" size="lg" />
               <CornerBracket pos="bl" size="lg" />
               <CornerBracket pos="br" size="lg" />
-              <MatrixPreview offline={activePanelOffline} mode={modeFrame} />
+              <MatrixPreview
+                offline={activePanelOffline}
+                mode={modeFrame}
+                isPaused={activePanel?.is_paused ?? false}
+              />
             </div>
           </div>
 

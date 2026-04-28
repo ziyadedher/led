@@ -157,6 +157,19 @@ export const panels = {
         .throwOnError();
     },
   },
+
+  setPaused: {
+    call: async (panelId: string, isPaused: boolean) => {
+      await supabase
+        .from("panels")
+        .update({
+          is_paused: isPaused,
+          last_updated: new Date().toISOString(),
+        })
+        .eq("id", panelId)
+        .throwOnError();
+    },
+  },
 };
 
 export const entries = {

@@ -50,9 +50,13 @@ const FLASH_OFF = { is_active: false, on_steps: 0, total_steps: 0 };
 export function MatrixPreview({
   mode,
   offline,
+  isPaused = false,
 }: {
   mode: ModeFrame;
   offline?: boolean;
+  /** Whether the panel is paused. Frozen step counter; current
+   * frame stays rendered. Mirrors the Pi driver's behaviour. */
+  isPaused?: boolean;
 }) {
   const panelId = useContext(PanelContext);
   const entriesData = entriesActions.get.useSWR(panelId);
@@ -119,9 +123,9 @@ export function MatrixPreview({
       : mode;
     return {
       mode: expanded,
-      panel: { is_paused: false, flash: FLASH_OFF },
+      panel: { is_paused: isPaused, flash: FLASH_OFF },
     };
-  }, [items, mode, scroll]);
+  }, [items, mode, scroll, isPaused]);
 
   // Push state into the renderer whenever it changes.
   useEffect(() => {
