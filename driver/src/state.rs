@@ -66,6 +66,23 @@ async fn get_panel_id(panel_name: &str, client: &Postgrest) -> anyhow::Result<St
     }
 }
 
+async fn report_driver_version(panel_id: &str, client: &Postgrest) -> anyhow::Result<()> {
+    tracing::info!(version = crate::DRIVER_VERSION, "Reporting driver version");
+    let body = serde_json::json!({ "driver_version": crate::DRIVER_VERSION }).to_string();
+    let response = client
+        .from("panels")
+        .eq("id", panel_id)
+        .update(body)
+        .execute()
+        .await?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        anyhow::bail!("driver_version update returned {status}: {text}");
+    }
+    Ok(())
+}
+
 async fn maybe_download(
     panel_id: &str,
     last_updated: &str,
@@ -129,6 +146,13 @@ pub async fn sync(
 
     let panel_id = get_panel_id(&panel_name, &client).await?;
     tracing::info!("Using panel ID: {}", panel_id);
+
+    // Stamp our build version on the panel row so the dash can flag
+    // Pis running an older binary than the rest of the fleet. Best
+    // effort — a failure here doesn't block startup.
+    if let Err(err) = report_driver_version(&panel_id, &client).await {
+        tracing::warn!(error = %err, "couldn't write driver_version");
+    }
 
     // Realtime listener: each Postgres NOTIFY for our panel pushes a
     // nudge here. The listener also nudges on every fresh connection
