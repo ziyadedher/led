@@ -18,7 +18,11 @@ import { entries as entriesActions } from "@/utils/actions";
 // embedded_graphics::FONT_5X8 + marquee/rainbow logic the driver does.
 const ROWS = 64;
 const COLS = 64;
-const GAP = 1;
+// Adafruit P3 (#4732) uses small SMD packages on a 3mm pitch — visually
+// the LED is ~60-70% of the cell, the rest dark mask. Picking gap=2,
+// cell-cap=3 gives the right "small bright dot in a black grid" feel.
+const GAP = 2;
+const CELL_CAP = 3;
 
 type WireColor =
   | { Rgb: { r: number; g: number; b: number } }
@@ -145,11 +149,8 @@ export function MatrixPreview({ preview }: { preview?: PreviewEntry } = {}) {
 
     const padding = 24;
     const target = Math.max(120, containerWidth - padding);
-    const fit = Math.max(3, Math.floor((target - GAP) / COLS) - 1);
-    // Adafruit P2.5/P3 panels use SMD LEDs with ~70-80% fill per cell
-    // — capping at 5px cell + 1px gap (~83/17) reads close enough at
-    // dashboard scale and keeps the simulator from dominating the page.
-    const cell = Math.min(5, fit);
+    const fit = Math.max(2, Math.floor((target - GAP) / COLS) - GAP);
+    const cell = Math.min(CELL_CAP, fit);
     const w = COLS * (cell + GAP) + GAP;
     const h = ROWS * (cell + GAP) + GAP;
     const dpr = window.devicePixelRatio || 1;
@@ -159,8 +160,8 @@ export function MatrixPreview({ preview }: { preview?: PreviewEntry } = {}) {
     c.style.height = `${h}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const cornerRadius = Math.max(0.5, cell * 0.12);
-    const unlitFill = "rgba(255,255,255,0.04)";
+    const cornerRadius = Math.max(0.5, cell * 0.18);
+    const unlitFill = "rgba(255,255,255,0.05)";
 
     let raf = 0;
     const draw = () => {
@@ -175,32 +176,78 @@ export function MatrixPreview({ preview }: { preview?: PreviewEntry } = {}) {
 
       ctx.clearRect(0, 0, w, h);
 
-      // Draw the lit/unlit grid in a single pass.
+      // Pass 1: unlit substrate. Cheap, no glow.
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = unlitFill;
       for (let row = 0; row < ROWS; row++) {
         for (let col = 0; col < COLS; col++) {
-          let fill = unlitFill;
-          let glow = 0;
           if (pixels) {
             const idx = (row * COLS + col) * 4;
-            const r = pixels[idx];
-            const g = pixels[idx + 1];
-            const b = pixels[idx + 2];
-            if (r !== 0 || g !== 0 || b !== 0) {
-              fill = `rgb(${r},${g},${b})`;
-              glow = Math.max(4, cell);
-            }
+            if (pixels[idx] || pixels[idx + 1] || pixels[idx + 2]) continue;
           }
           const x = GAP + col * (cell + GAP);
           const y = GAP + row * (cell + GAP);
           ctx.beginPath();
           ctx.roundRect(x, y, cell, cell, cornerRadius);
-          ctx.fillStyle = fill;
-          if (glow > 0) {
-            ctx.shadowColor = fill;
-            ctx.shadowBlur = glow;
-          }
           ctx.fill();
-          if (glow > 0) ctx.shadowBlur = 0;
+        }
+      }
+
+      if (!pixels) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
+
+      // Pass 2: lit LEDs as a soft outer halo. Real LEDs at full
+      // brightness bloom well past their package — gamma-curved so
+      // dim LEDs barely glow and bright ones spill into neighbors.
+      ctx.globalCompositeOperation = "lighter";
+      for (let row = 0; row < ROWS; row++) {
+        for (let col = 0; col < COLS; col++) {
+          const idx = (row * COLS + col) * 4;
+          const r = pixels[idx];
+          const g = pixels[idx + 1];
+          const b = pixels[idx + 2];
+          if (!r && !g && !b) continue;
+
+          const intensity = Math.max(r, g, b) / 255;
+          const haloRadius = cell * 0.4 + cell * 2.2 * Math.pow(intensity, 1.4);
+          const cx = GAP + col * (cell + GAP) + cell / 2;
+          const cy = GAP + row * (cell + GAP) + cell / 2;
+          const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloRadius);
+          const alpha = 0.35 * Math.pow(intensity, 1.2);
+          grad.addColorStop(0, `rgba(${r},${g},${b},${alpha})`);
+          grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+          ctx.fillStyle = grad;
+          ctx.fillRect(cx - haloRadius, cy - haloRadius, haloRadius * 2, haloRadius * 2);
+        }
+      }
+
+      // Pass 3: the LED chip itself — bright, slightly inset, with a
+      // small brighter core that reads as the actual die.
+      ctx.globalCompositeOperation = "source-over";
+      for (let row = 0; row < ROWS; row++) {
+        for (let col = 0; col < COLS; col++) {
+          const idx = (row * COLS + col) * 4;
+          const r = pixels[idx];
+          const g = pixels[idx + 1];
+          const b = pixels[idx + 2];
+          if (!r && !g && !b) continue;
+
+          const x = GAP + col * (cell + GAP);
+          const y = GAP + row * (cell + GAP);
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+          ctx.beginPath();
+          ctx.roundRect(x, y, cell, cell, cornerRadius);
+          ctx.fill();
+
+          // Tiny hot core — only visible when LED is actually bright.
+          const intensity = Math.max(r, g, b) / 255;
+          if (intensity > 0.5) {
+            const corePad = cell * 0.3;
+            ctx.fillStyle = `rgba(255,255,255,${(intensity - 0.5) * 0.5})`;
+            ctx.fillRect(x + corePad, y + corePad, cell - corePad * 2, cell - corePad * 2);
+          }
         }
       }
 

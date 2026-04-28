@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSWRConfig } from "swr";
 
 import { Composer } from "@/app/components/Composer";
@@ -15,6 +15,8 @@ import { MatrixPreview } from "@/app/components/MatrixPreview";
 import { PanelSwitcher } from "@/app/components/PanelSwitcher";
 import { PanelContext } from "@/app/context";
 import { entries, panels, useRealtimeRevalidation } from "@/utils/actions";
+
+const AUTO_FORCED_DEFAULT = 10;
 
 export default function Page() {
   const realtimeStatus = useRealtimeRevalidation();
@@ -39,14 +41,28 @@ export default function Page() {
   const [effects, setEffects] = useState<EffectsState>({ marqueeSpeed: 0 });
 
   const isSubmittable = message.length > 0 && panelId.length > 0;
+  const isMarqueeForced = message.length >= FORCE_ENABLE_MARQUEE_LENGTH;
 
-  // Mirror the auto-force logic from `handleSubmit` so the live
-  // preview shows what the entry will actually look like once it
-  // hits the panel (auto-bump to 16 when message is too long to fit
-  // and the user hasn't picked a speed).
-  const previewMarqueeSpeed =
-    effects.marqueeSpeed === 0 && message.length >= FORCE_ENABLE_MARQUEE_LENGTH
-      ? 16
+  // When the message crosses the auto-force threshold and the user
+  // hasn't picked a speed, snap to a sensible default so the slider
+  // visibly jumps and the preview matches what'll be transmitted.
+  // Only fires on the upward crossing — once forced and snapped,
+  // moving back below the threshold leaves the slider where it is.
+  const wasForced = useRef(false);
+  useEffect(() => {
+    if (isMarqueeForced && !wasForced.current && effects.marqueeSpeed === 0) {
+      setEffects((e) => ({ ...e, marqueeSpeed: AUTO_FORCED_DEFAULT }));
+    }
+    wasForced.current = isMarqueeForced;
+  }, [isMarqueeForced, effects.marqueeSpeed]);
+
+  // Effective marquee speed for preview + submit. The effect above
+  // will snap the slider on the next render, but if the user types
+  // and submits within the same render window we still want the
+  // forced default applied.
+  const effectiveMarqueeSpeed =
+    isMarqueeForced && effects.marqueeSpeed === 0
+      ? AUTO_FORCED_DEFAULT
       : effects.marqueeSpeed;
 
   const handleSubmit = useCallback(async () => {
@@ -64,14 +80,14 @@ export default function Page() {
       text: message,
       options: {
         color: wireColor,
-        marquee: { speed: previewMarqueeSpeed },
+        marquee: { speed: effectiveMarqueeSpeed },
       },
     });
     setMessage("");
     await mutate(`/entries/${panelId}`);
     await mutate(`/entries/scroll/${panelId}`);
     await mutate(`/pause/${panelId}`);
-  }, [color, message, mutate, panelId, previewMarqueeSpeed]);
+  }, [color, message, mutate, panelId, effectiveMarqueeSpeed]);
 
   return (
     <PanelContext.Provider value={panelId}>
@@ -139,7 +155,7 @@ export default function Page() {
                 preview={{
                   text: message,
                   color,
-                  marqueeSpeed: previewMarqueeSpeed,
+                  marqueeSpeed: effectiveMarqueeSpeed,
                 }}
               />
             </div>
