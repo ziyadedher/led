@@ -159,6 +159,7 @@ flash-sd id host device: build
         -e "s|@@SUPABASE_URL@@|${SUPABASE_URL}|g" \
         -e "s|@@SUPABASE_ANON_KEY@@|${SUPABASE_ANON_KEY}|g" \
         -e "s|@@OTEL_ENDPOINT@@|${OTEL_ENDPOINT:-}|g" \
+        -e "s|@@OTEL_AUTHORIZATION@@|${OTEL_AUTHORIZATION:-}|g" \
         service/config.toml.tmpl > "$cfg_tmp"
     sudo install -D -m 0644 "$cfg_tmp"                              "$root_mnt/usr/local/etc/led/config.toml"
     sudo install -D -m 0755 "{{ driver_bin }}"                      "$root_mnt/usr/local/bin/led-driver"

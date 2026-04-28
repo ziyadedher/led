@@ -34,8 +34,11 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config::load(&args.config)?;
 
-    let (metrics, otel_log_layer, _telemetry_guard) =
-        telemetry::init(config.otel_endpoint.as_deref(), &config.id)?;
+    let (metrics, otel_log_layer, _telemetry_guard) = telemetry::init(
+        config.otel_endpoint.as_deref(),
+        config.otel_authorization.as_deref(),
+        &config.id,
+    )?;
 
     let (non_blocking, _file_guard) = tracing_appender::non_blocking(
         tracing_appender::rolling::hourly(&config.log_dir, "led.log"),

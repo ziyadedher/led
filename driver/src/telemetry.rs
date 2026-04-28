@@ -103,6 +103,7 @@ impl Drop for TelemetryGuard {
 /// process, and no log layer is returned.
 pub fn init<S>(
     endpoint: Option<&str>,
+    authorization: Option<&str>,
     instance_id: &str,
 ) -> anyhow::Result<(
     Arc<Metrics>,
@@ -113,6 +114,9 @@ where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
     let resource = build_resource(instance_id);
+
+    let endpoint = endpoint.filter(|s| !s.is_empty());
+    let authorization = authorization.filter(|s| !s.is_empty());
 
     let Some(endpoint) = endpoint else {
         let meter_provider = SdkMeterProvider::builder()
@@ -131,15 +135,23 @@ where
     };
 
     // The HTTP exporter requires an explicit reqwest client in 0.30 — the
-    // feature flags alone don't install a default client. Reuse one shared
-    // client for both metrics and logs.
-    let http_client = reqwest::Client::new();
+    // feature flags alone don't install a default client. Use the *blocking*
+    // client because opentelemetry-rust 0.30 removed the runtime abstraction
+    // and runs exporters on plain `std::thread`s; the async reqwest client
+    // panics with "no reactor running" on DNS resolve from those threads.
+    let http_client = reqwest::blocking::Client::new();
+
+    let mut headers = std::collections::HashMap::new();
+    if let Some(auth) = authorization {
+        headers.insert("Authorization".to_string(), auth.to_string());
+    }
 
     let metric_exporter = MetricExporter::builder()
         .with_http()
         .with_http_client(http_client.clone())
         .with_protocol(Protocol::HttpBinary)
         .with_endpoint(format!("{}/v1/metrics", endpoint.trim_end_matches('/')))
+        .with_headers(headers.clone())
         .build()
         .context("Failed to build OTLP metric exporter")?;
     let reader = PeriodicReader::builder(metric_exporter)
@@ -156,6 +168,7 @@ where
         .with_http_client(http_client)
         .with_protocol(Protocol::HttpBinary)
         .with_endpoint(format!("{}/v1/logs", endpoint.trim_end_matches('/')))
+        .with_headers(headers)
         .build()
         .context("Failed to build OTLP log exporter")?;
     let logger_provider = SdkLoggerProvider::builder()

@@ -32,9 +32,15 @@ pub struct Config {
 
     /// OTLP/HTTP endpoint for telemetry export, e.g. `http://infra:4318`.
     ///
-    /// If absent, telemetry export is disabled and the driver only logs locally.
+    /// If absent or empty, telemetry export is disabled and the driver only
+    /// logs locally.
     #[serde(default)]
     pub otel_endpoint: Option<String>,
+
+    /// Optional `Authorization` header value sent on every OTLP request.
+    /// Required by the HyperDX OTel collector at otel.ziyadedher.com.
+    #[serde(default)]
+    pub otel_authorization: Option<String>,
 }
 
 /// Load configuration from a TOML file.

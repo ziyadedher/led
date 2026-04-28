@@ -13,6 +13,7 @@ opentelemetry = { version = "0.30", features = ["metrics", "logs"] }
 opentelemetry-appender-tracing = "0.30"
 opentelemetry-otlp = { version = "0.30", default-features = false, features = [
     "http-proto",
+    "reqwest-blocking-client",
     "reqwest-rustls",
     "metrics",
     "logs",
@@ -30,6 +31,7 @@ postgrest = "1.6.0"
 reqwest = { version = "0.12.5", default-features = false, features = [
     "json",
     "rustls-tls",
+    "blocking",
 ] }
 rpi-led-panel = "0.5.1"
 serde = { version = "1.0.208", features = ["derive"] }
