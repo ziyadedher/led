@@ -106,6 +106,7 @@ const MODE_GLYPHS: Record<PanelMode, string> = {
   text: "≡",
   clock: "◷",
   image: "▦",
+  paint: "✎",
   life: "✲",
   test: "▤",
 };

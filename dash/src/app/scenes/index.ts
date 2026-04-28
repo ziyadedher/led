@@ -18,6 +18,7 @@ import {
 } from "./clock";
 import { ImageComposer, parseImageConfig } from "./image";
 import { LifeComposer, parseLifeConfig } from "./life";
+import { PaintComposer, parsePaintConfig } from "./paint";
 import { parseTestConfig, TestComposer } from "./test";
 import type {
   ClockSceneConfig,
@@ -135,6 +136,20 @@ export const SCENES: Record<PanelMode, SceneRegistration> = {
       },
     }),
     ImageComposer,
+  ),
+
+  // Paint shares Image's render path on both sides of the wire — the
+  // distinction lives entirely in this composer's UX.
+  paint: scene<ImageSceneConfig>(
+    parsePaintConfig,
+    (config) => ({
+      Image: {
+        width: config.width,
+        height: config.height,
+        bitmap: config.bitmap,
+      },
+    }),
+    PaintComposer,
   ),
 
   test: scene<TestSceneConfig>(

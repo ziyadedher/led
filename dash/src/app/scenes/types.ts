@@ -160,6 +160,7 @@ export const MODES: ModeMeta[] = [
   { id: "text", label: "text", blurb: "scrolling text payloads" },
   { id: "clock", label: "clock", blurb: "current local time" },
   { id: "image", label: "image", blurb: "static 64×64 bitmap" },
+  { id: "paint", label: "paint", blurb: "pixel-grid editor" },
   { id: "life", label: "life", blurb: "ambient cellular automaton" },
   { id: "test", label: "test", blurb: "diagnostic patterns" },
 ];

@@ -261,7 +261,10 @@ fn build_mode(snapshot: &State, life_state: &mut Option<LifeState>) -> Mode {
             }
             Mode::Life(config.into_frame(&s.lattice))
         }
-        "image" => {
+        "image" | "paint" => {
+            // Paint mode is the dash's pixel-grid editor; it produces
+            // an image-shaped mode_config and the driver renders it
+            // through the same Image path.
             *life_state = None;
             let frame: ImageScene =
                 serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
