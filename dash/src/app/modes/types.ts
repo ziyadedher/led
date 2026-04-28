@@ -13,7 +13,8 @@ import type { PanelMode } from "@/utils/actions";
  */
 export type ModeFrame =
   | { Text: TextModeFrame }
-  | { Clock: ClockModeFrame };
+  | { Clock: ClockModeFrame }
+  | { Life: LifeModeFrame };
 
 export type TextEntry = {
   text: string;
@@ -53,6 +54,28 @@ export const DEFAULT_CLOCK_CONFIG: ClockModeConfig = {
   color: { r: 0xff, g: 0x8a, b: 0x2c },
 };
 
+/**
+ * Game of Life. The simulator always seeds and ticks driver-side;
+ * the dash never sees per-cell state — its frame just carries the
+ * current cell bitset that the driver evolved (or the WASM
+ * simulator's local seed for preview).
+ */
+export type LifeModeFrame = {
+  color: { r: number; g: number; b: number };
+  lattice_width: number;
+  lattice_height: number;
+  cells: number[];
+};
+
+/** Stored in panels.mode_config for life-mode panels. */
+export type LifeModeConfig = {
+  color: { r: number; g: number; b: number };
+};
+
+export const DEFAULT_LIFE_CONFIG: LifeModeConfig = {
+  color: { r: 0x5d, g: 0xff, b: 0xa9 },
+};
+
 export type ModeMeta = {
   id: PanelMode;
   label: string;
@@ -62,4 +85,5 @@ export type ModeMeta = {
 export const MODES: ModeMeta[] = [
   { id: "text", label: "text", blurb: "scrolling text payloads" },
   { id: "clock", label: "clock", blurb: "current local time" },
+  { id: "life", label: "life", blurb: "ambient cellular automaton" },
 ];

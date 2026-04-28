@@ -5,6 +5,7 @@ use anyhow::Context;
 use chrono::{Local, Timelike};
 use display_core::{
     clock::{ClockFrame, ClockTime},
+    life::{Lattice, LifeFrame},
     text::TextFrame,
     Frame, Mode, PanelState,
 };
@@ -66,6 +67,7 @@ pub async fn drive(
     let (mut matrix, canvas) = RGBMatrix::new(config, 0).context("Matrix initialization failed")?;
 
     let mut step: usize = 0;
+    let mut life_state: Option<LifeState> = None;
     loop {
         let frame_started = Instant::now();
 
@@ -73,7 +75,7 @@ pub async fn drive(
         let snapshot = state.read().clone();
 
         let frame = Frame {
-            mode: build_mode(&snapshot),
+            mode: build_mode(&snapshot, &mut life_state),
             panel: PanelState {
                 is_paused: snapshot.panel.is_paused,
                 flash: snapshot.panel.flash.clone(),
@@ -96,12 +98,76 @@ pub async fn drive(
     }
 }
 
+/// Driver-local state for life mode. Held across frames so the
+/// lattice can evolve between renders. Reset to None when the panel
+/// switches away from life mode.
+struct LifeState {
+    lattice: Lattice,
+    /// Frames since the last lattice step.
+    frames_since_step: u32,
+    /// Generations since last reseed.
+    generations: u32,
+    /// Last few populations — used to detect a stalled simulation
+    /// (still life or short-period oscillator) so we can reseed.
+    recent_populations: [u32; 4],
+}
+
+const LIFE_FRAMES_PER_STEP: u32 = 8; // ~8/60 s ≈ 130 ms.
+const LIFE_RESEED_GENERATIONS: u32 = 1500;
+
+impl LifeState {
+    fn new(width: u8, height: u8) -> Self {
+        let mut s = Self {
+            lattice: Lattice::new(width, height),
+            frames_since_step: 0,
+            generations: 0,
+            recent_populations: [0; 4],
+        };
+        s.reseed();
+        s
+    }
+
+    fn reseed(&mut self) {
+        let w = i32::from(self.lattice.width);
+        let h = i32::from(self.lattice.height);
+        for y in 0..h {
+            for x in 0..w {
+                // ~28% live density seeds interesting evolutions
+                // without immediately collapsing.
+                self.lattice.set(x, y, fastrand::f32() < 0.28);
+            }
+        }
+        self.generations = 0;
+        self.recent_populations = [0; 4];
+    }
+
+    fn advance(&mut self) {
+        self.lattice = self.lattice.step();
+        self.generations += 1;
+        // Shift populations and record current.
+        self.recent_populations.rotate_left(1);
+        self.recent_populations[3] = self.lattice.population();
+        // Reseed if stagnant: oscillating with period 1 or 2 is the
+        // most common still-life pattern, both manifest as flat
+        // population over the recent window.
+        let stalled = self.recent_populations[0] != 0
+            && self.recent_populations.iter().all(|p| *p == self.recent_populations[3]);
+        if stalled
+            || self.generations >= LIFE_RESEED_GENERATIONS
+            || self.lattice.population() < 5
+        {
+            self.reseed();
+        }
+    }
+}
+
 /// Pick the per-mode render input based on the panel's `mode`. Falls
 /// back to text mode on unknown modes so a misconfigured panel
 /// doesn't black out — text is the lowest-surprise default.
-fn build_mode(snapshot: &State) -> Mode {
+fn build_mode(snapshot: &State, life_state: &mut Option<LifeState>) -> Mode {
     match snapshot.panel.mode.as_str() {
         "clock" => {
+            *life_state = None;
             let mut frame: ClockFrame =
                 serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
             let now = Local::now();
@@ -112,10 +178,22 @@ fn build_mode(snapshot: &State) -> Mode {
             };
             Mode::Clock(frame)
         }
-        _ => Mode::Text(TextFrame {
-            entries: snapshot.entries.clone(),
-            scroll: snapshot.panel.scroll,
-        }),
+        "life" => {
+            let s = life_state.get_or_insert_with(|| LifeState::new(64, 64));
+            s.frames_since_step += 1;
+            if s.frames_since_step >= LIFE_FRAMES_PER_STEP {
+                s.frames_since_step = 0;
+                s.advance();
+            }
+            Mode::Life(LifeFrame::from(&s.lattice))
+        }
+        _ => {
+            *life_state = None;
+            Mode::Text(TextFrame {
+                entries: snapshot.entries.clone(),
+                scroll: snapshot.panel.scroll,
+            })
+        }
     }
 }
 

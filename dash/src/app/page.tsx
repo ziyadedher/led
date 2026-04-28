@@ -22,6 +22,11 @@ import {
   clockFrameFromConfig,
   parseClockConfig,
 } from "@/app/modes/clock";
+import {
+  LifeComposer,
+  parseLifeConfig,
+  useLifeFrame,
+} from "@/app/modes/life";
 import { ModeSwitcher } from "@/app/modes/ModeSwitcher";
 import type { ModeFrame, TextEntry } from "@/app/modes/types";
 import {
@@ -46,7 +51,11 @@ export default function Page() {
   const panelId = chosenPanelId ?? defaultPanelId;
   const activePanel = panelsData?.find((p) => p.id === panelId);
   const activeMode: PanelMode =
-    activePanel?.mode === "clock" ? "clock" : "text";
+    activePanel?.mode === "clock"
+      ? "clock"
+      : activePanel?.mode === "life"
+        ? "life"
+        : "text";
 
   // Tick `now` every 1s so the clock simulator advances and so the
   // offline indicator rolls over without a fresh data pull.
@@ -107,10 +116,21 @@ export default function Page() {
     () => parseClockConfig(activePanel?.mode_config),
     [activePanel?.mode_config],
   );
+  const lifeConfig = useMemo(
+    () => parseLifeConfig(activePanel?.mode_config),
+    [activePanel?.mode_config],
+  );
+
+  // Life mode owns its own animation loop (rAF-driven cellular tick).
+  // It always runs so we can preview the simulation regardless of
+  // which mode is active — but we only feed it into the simulator
+  // when life is the active mode.
+  const lifeFrame = useLifeFrame(lifeConfig);
 
   // Build the ModeFrame the simulator should render. Text mode mixes
   // in the live composer preview; clock mode ticks current time on
-  // each `now` change.
+  // each `now` change; life mode passes through its independent
+  // simulation.
   const modeFrame = useModeFrame({
     mode: activeMode,
     panelId,
@@ -118,6 +138,7 @@ export default function Page() {
     color,
     marqueeSpeed: effectiveMarqueeSpeed,
     clockConfig,
+    lifeFrame,
     now,
   });
 
@@ -200,8 +221,10 @@ export default function Page() {
               <EntriesList />
             </section>
           </div>
-        ) : (
+        ) : activeMode === "clock" ? (
           <ClockComposer panelId={panelId} config={clockConfig} />
+        ) : (
+          <LifeComposer panelId={panelId} config={lifeConfig} />
         )}
       </div>
     </PanelContext.Provider>
@@ -214,6 +237,7 @@ function useModeFrame({
   color,
   marqueeSpeed,
   clockConfig,
+  lifeFrame,
   now,
 }: {
   mode: PanelMode;
@@ -222,11 +246,15 @@ function useModeFrame({
   color: ColorState;
   marqueeSpeed: number;
   clockConfig: ReturnType<typeof parseClockConfig>;
+  lifeFrame: ReturnType<typeof useLifeFrame>;
   now: number;
 }): ModeFrame {
   return useMemo<ModeFrame>(() => {
     if (mode === "clock") {
       return { Clock: clockFrameFromConfig(clockConfig) };
+    }
+    if (mode === "life") {
+      return { Life: lifeFrame };
     }
     // Text mode: live preview prepends to whatever's stored.
     const previewEntry: TextEntry | null =
@@ -260,7 +288,7 @@ function useModeFrame({
     // clock mode picks up the new ClockTime. eslint can't see the
     // dependency through clockFrameFromConfig's Date.now() read.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, message, color, marqueeSpeed, clockConfig, now]);
+  }, [mode, message, color, marqueeSpeed, clockConfig, lifeFrame, now]);
 }
 
 function Bracket({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
