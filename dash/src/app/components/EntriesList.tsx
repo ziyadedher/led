@@ -75,17 +75,29 @@ export function EntriesList() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.25em] tabular-nums text-(--color-text-faint)">
-        <span>
-          {String(items.length).padStart(2, "0")} loaded ·{" "}
-          {String(visibleCount).padStart(2, "0")} on-air
+        <span className="flex items-baseline gap-2">
+          <span>loaded</span>
+          <span
+            className="text-(--color-text)"
+            style={{ fontFamily: "var(--font-pixel)", fontSize: 13 }}
+          >
+            {String(items.length).padStart(2, "0")}
+          </span>
+          <span>·</span>
+          <span>on-air</span>
+          <span
+            className="text-(--color-phosphor)"
+            style={{ fontFamily: "var(--font-pixel)", fontSize: 13 }}
+          >
+            {String(visibleCount).padStart(2, "0")}
+          </span>
         </span>
-        <span>drag to reorder</span>
       </div>
       <Reorder.Group
         axis="y"
         values={items}
         onReorder={handleReorder}
-        className="flex flex-col gap-px border border-(--color-border) bg-(--color-surface)/40"
+        className="bezel-recessed flex flex-col gap-px border border-(--color-border) bg-(--color-surface)/40"
       >
         <AnimatePresence initial={false}>
           {items.map((entry, index) => {
@@ -105,8 +117,10 @@ export function EntriesList() {
                   zIndex: 10,
                 }}
                 className={[
-                  "group flex cursor-grab select-none items-center gap-3 px-3 py-2 transition-colors active:cursor-grabbing",
-                  visible ? "bg-(--color-accent)/5" : "bg-transparent",
+                  "group relative flex cursor-grab select-none items-center gap-3 border-l-2 px-3 py-2 transition-colors active:cursor-grabbing",
+                  visible
+                    ? "border-(--color-phosphor) bg-(--color-phosphor)/5"
+                    : "border-transparent bg-transparent",
                 ].join(" ")}
               >
                 <Bars3Icon
@@ -114,7 +128,7 @@ export function EntriesList() {
                   className={[
                     "h-3 w-3 shrink-0",
                     visible
-                      ? "text-(--color-accent)/60"
+                      ? "text-(--color-phosphor)/70"
                       : "text-(--color-text-faint)",
                   ].join(" ")}
                 />
@@ -122,13 +136,18 @@ export function EntriesList() {
                 <span
                   aria-hidden
                   className={[
-                    "shrink-0 font-mono text-[10px] tabular-nums",
+                    "shrink-0 tabular-nums",
                     visible
-                      ? "text-(--color-accent)"
+                      ? "text-(--color-phosphor)"
                       : "text-(--color-text-faint)",
                   ].join(" ")}
+                  style={{
+                    fontFamily: "var(--font-pixel)",
+                    fontSize: 13,
+                    lineHeight: 1,
+                  }}
                 >
-                  [{String(index + 1).padStart(2, "0")}]
+                  {String(index + 1).padStart(2, "0")}
                 </span>
 
                 <span
@@ -142,17 +161,22 @@ export function EntriesList() {
                   {entry.data.text}
                 </span>
 
-                <span
-                  aria-hidden
-                  className={[
-                    "shrink-0 font-mono text-[9px] uppercase tracking-[0.25em] tabular-nums",
-                    visible
-                      ? "text-(--color-phosphor)"
-                      : "text-(--color-text-faint)",
-                  ].join(" ")}
-                >
-                  {visible ? "on-air" : "queued"}
-                </span>
+                {visible ? (
+                  <span
+                    aria-hidden
+                    className="flex shrink-0 items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.25em] text-(--color-phosphor)"
+                  >
+                    <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-phosphor)" />
+                    on-air
+                  </span>
+                ) : (
+                  <span
+                    aria-hidden
+                    className="shrink-0 font-mono text-[9px] uppercase tracking-[0.25em] text-(--color-text-faint)"
+                  >
+                    queued
+                  </span>
+                )}
 
                 <motion.button
                   type="button"

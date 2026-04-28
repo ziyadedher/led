@@ -11,9 +11,10 @@ import {
   type EffectsState,
 } from "@/app/components/EffectsPanel";
 import { EntriesList } from "@/app/components/EntriesList";
-import { LiveDot } from "@/app/components/LiveDot";
+import { InstrumentHeader } from "@/app/components/InstrumentHeader";
 import { MatrixPreview } from "@/app/components/MatrixPreview";
 import { PanelSwitcher } from "@/app/components/PanelSwitcher";
+import { StatusBar } from "@/app/components/StatusBar";
 import { PanelContext } from "@/app/context";
 import { SCENES } from "@/app/scenes";
 import { parseLifeConfig, useLifeScene } from "@/app/scenes/life";
@@ -153,52 +154,89 @@ export default function Page() {
 
   return (
     <PanelContext.Provider value={panelId}>
-      <div className="mx-auto flex min-h-dvh max-w-6xl flex-col gap-6 px-4 pb-10 pt-6 sm:px-6 lg:px-10">
+      <div className="mx-auto flex min-h-dvh max-w-6xl flex-col gap-5 px-4 pb-12 sm:px-6 lg:px-10">
+        <InstrumentHeader realtimeStatus={realtimeStatus} />
+
         {/* ─── instrument: matrix simulator ──────────────────────── */}
         <section
-          className="grid gap-4 lg:grid-cols-[1fr_220px]"
+          className="grid gap-4 lg:grid-cols-[1fr_240px]"
           aria-label="Live simulator"
         >
           <div className="relative">
-            <div className="mb-2 flex items-end justify-between">
-              <div className="flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.3em]">
-                <span className="text-(--color-text-faint)">::</span>
-                <span className="text-(--color-text-dim)">simulator</span>
+            {/* Section heading plate — instrument-label feel */}
+            <div className="mb-3 flex items-stretch border border-(--color-border) bg-gradient-to-b from-(--color-surface-2)/60 to-(--color-surface)/40">
+              <div className="flex items-center gap-2 border-r border-(--color-border) px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.3em]">
+                <span className="text-(--color-accent)">::</span>
+                <span className="text-(--color-text)">simulator</span>
                 <span className="text-(--color-text-faint)">/</span>
                 <span className="text-(--color-text-muted)">
                   wasm · driver-core
                 </span>
               </div>
-              <div className="flex items-center gap-3 font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint) tabular-nums">
-                {panelId.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void panels.setPaused.call(
-                        panelId,
-                        !(activePanel?.is_paused ?? false),
-                      )
+
+              <span aria-hidden className="flex-1" />
+
+              {/* Pause / Live transport button */}
+              {panelId.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void panels.setPaused.call(
+                      panelId,
+                      !(activePanel?.is_paused ?? false),
+                    )
+                  }
+                  aria-label={
+                    activePanel?.is_paused ? "Resume panel" : "Pause panel"
+                  }
+                  title={`last seen ${relativeTime(activePanel?.last_seen, now)} · click to ${activePanel?.is_paused ? "resume" : "pause"}`}
+                  className={[
+                    "flex items-center gap-2 border-l border-(--color-border) px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] transition-colors",
+                    activePanel?.is_paused
+                      ? "bg-(--color-accent)/10 text-(--color-accent)"
+                      : activePanelOffline
+                        ? "text-(--color-danger)"
+                        : "text-(--color-phosphor) hover:bg-(--color-surface-2)",
+                  ].join(" ")}
+                >
+                  <span
+                    aria-hidden
+                    className={
+                      activePanel?.is_paused || activePanelOffline
+                        ? ""
+                        : "h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-phosphor)"
                     }
-                    aria-label={activePanel?.is_paused ? "Resume panel" : "Pause panel"}
-                    title={`last seen ${relativeTime(activePanel?.last_seen, now)} · click to ${activePanel?.is_paused ? "resume" : "pause"}`}
-                    className={[
-                      "inline-flex h-5 items-center gap-1 border px-2 text-[9px] uppercase tracking-[0.3em] transition-colors",
-                      activePanel?.is_paused
-                        ? "border-(--color-accent) bg-(--color-accent)/15 text-(--color-accent)"
-                        : "border-(--color-border) text-(--color-text-muted) hover:border-(--color-border-strong) hover:text-(--color-text)",
-                    ].join(" ")}
+                    style={
+                      activePanel?.is_paused || activePanelOffline
+                        ? { fontFamily: "var(--font-pixel)", fontSize: 12 }
+                        : undefined
+                    }
                   >
-                    <span aria-hidden style={{ fontFamily: "var(--font-pixel)", fontSize: 11 }}>
-                      {activePanel?.is_paused ? "▶" : "❚❚"}
-                    </span>
-                    <span>{activePanel?.is_paused ? "paused" : "live"}</span>
-                  </button>
-                ) : null}
-                <span style={{ fontFamily: "var(--font-pixel)", fontSize: 13 }}>
-                  64 × 64
+                    {activePanel?.is_paused
+                      ? "▶"
+                      : activePanelOffline
+                        ? "✕"
+                        : ""}
+                  </span>
+                  <span>
+                    {activePanel?.is_paused
+                      ? "paused"
+                      : activePanelOffline
+                        ? "offline"
+                        : "live"}
+                  </span>
+                </button>
+              ) : null}
+
+              {/* Format chip — pixel font for the resolution */}
+              <div className="flex items-center gap-2 border-l border-(--color-border) px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint) tabular-nums">
+                <span style={{ fontFamily: "var(--font-pixel)", fontSize: 14 }}>
+                  64×64
                 </span>
-                <span>{"//"}</span>
-                <span style={{ fontFamily: "var(--font-pixel)", fontSize: 13 }}>
+                <span aria-hidden className="text-(--color-border-strong)">
+                  /
+                </span>
+                <span style={{ fontFamily: "var(--font-pixel)", fontSize: 14 }}>
                   rgb888
                 </span>
               </div>
@@ -217,13 +255,9 @@ export default function Page() {
             </div>
           </div>
 
-          {/* Side rail: target selector + connection status */}
-          <aside className="flex flex-col gap-5 border-l border-dashed border-(--color-hairline) pl-4 lg:pl-6">
+          {/* Side rail: target selector */}
+          <aside className="flex flex-col gap-4">
             <PanelSwitcher panelId={panelId} onChange={setChosenPanelId} />
-            <div className="mt-auto flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint)">
-              <span>realtime</span>
-              <LiveDot status={realtimeStatus} />
-            </div>
           </aside>
         </section>
 
@@ -252,11 +286,15 @@ export default function Page() {
               className="flex min-h-0 flex-col gap-3"
               aria-label="Messages"
             >
-              <div className="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-[0.3em]">
-                <span className="text-(--color-text-dim)">:: messages</span>
-                <span className="text-(--color-text-faint)">
-                  top 7 fit on the matrix
-                </span>
+              <div className="flex items-stretch border border-(--color-border) bg-gradient-to-b from-(--color-surface-2)/60 to-(--color-surface)/40">
+                <div className="flex items-center gap-2 border-r border-(--color-border) px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.3em]">
+                  <span className="text-(--color-accent)">::</span>
+                  <span className="text-(--color-text)">queue</span>
+                </div>
+                <span aria-hidden className="flex-1" />
+                <div className="flex items-center gap-2 border-l border-(--color-border) px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint)">
+                  <span>top 7 on-air · drag to reorder</span>
+                </div>
               </div>
               <EntriesList />
             </section>
@@ -264,6 +302,16 @@ export default function Page() {
         ) : (
           <frame.Composer panelId={panelId} config={activeConfig} />
         )}
+
+        <StatusBar
+          panelName={activePanel?.name ?? null}
+          panelMode={activeMode}
+          driverVersion={activePanel?.driver_version ?? null}
+          isPanelPaused={activePanel?.is_paused ?? false}
+          lastSeen={activePanel?.last_seen ?? null}
+          panelId={panelId}
+          now={now}
+        />
       </div>
     </PanelContext.Provider>
   );

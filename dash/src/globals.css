@@ -40,8 +40,11 @@
     0 0 20px -2px var(--color-accent-fade),
     0 0 60px -20px var(--color-accent-fade);
 
+  /* Just the cursor blink — `animate-pulse` and `animate-ping` from
+   * Tailwind cover the other "live" / "REC" pulses we used to ship
+   * a custom keyframe for. */
   --animate-cursor: cursor 1.05s steps(2) infinite;
-  --animate-scanline: scanline 6s linear infinite;
+  --animate-tape: tape 2.4s linear infinite;
 
   @keyframes cursor {
     0%,
@@ -54,12 +57,13 @@
     }
   }
 
-  @keyframes scanline {
+  /* Marching tape pattern for "transmitting" / on-air strips. */
+  @keyframes tape {
     0% {
-      transform: translateY(-100%);
+      background-position: 0 0;
     }
     100% {
-      transform: translateY(200%);
+      background-position: 16px 0;
     }
   }
 }
@@ -174,4 +178,39 @@ body::before {
   box-shadow:
     0 0 0 2px var(--color-bg),
     0 0 0 3px var(--color-accent);
+}
+
+/* Diagonal "transmitting" tape — used on the composer during submit.
+ * Two-stop hairline pattern that marches when paired with `animate-tape`.
+ * No Tailwind equivalent exists, so this stays as a utility. */
+@utility tape-stripes {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0,
+    transparent 6px,
+    color-mix(in oklch, var(--color-accent) 18%, transparent) 6px,
+    color-mix(in oklch, var(--color-accent) 18%, transparent) 8px
+  );
+  background-size: 16px 16px;
+}
+
+/* Recessed panel: top highlight + bottom shadow inset, pretending to
+ * sit in a frame. Used on the simulator chrome and section plates. */
+@utility bezel-recessed {
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.04),
+    inset 0 -1px 0 0 rgb(0 0 0 / 0.6);
+}
+
+/* Buttons: native default is `cursor: default`, and Tailwind v4
+ * preflight no longer overrides it. Clicky things should look clicky. */
+button:not(:disabled),
+[role="button"]:not(:disabled),
+[role="tab"]:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
 }

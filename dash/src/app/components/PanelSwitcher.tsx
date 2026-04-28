@@ -58,23 +58,26 @@ export function PanelSwitcher({
 
   return (
     <div className="flex flex-col gap-2 font-mono text-[11px]">
-      <div className="flex items-center justify-between">
+      <div className="flex items-baseline justify-between border-b border-dashed border-(--color-hairline) pb-1.5">
         <span className="uppercase tracking-[0.3em] text-(--color-text-dim)">
           :: target
         </span>
-        <span className="text-(--color-text-faint)">
+        <span
+          className="text-(--color-text-faint) tabular-nums"
+          style={{ fontFamily: "var(--font-pixel)", fontSize: 13 }}
+        >
           {list.length.toString().padStart(2, "0")}
         </span>
       </div>
 
       {error ? (
-        <div className="rounded border border-(--color-danger)/40 bg-(--color-danger)/5 px-2 py-1.5 text-(--color-danger)">
+        <div className="border border-(--color-danger)/40 bg-(--color-danger)/5 px-2 py-1.5 text-[10px] text-(--color-danger)">
           err: panel index unreachable
         </div>
       ) : null}
 
       {!error && list.length === 0 ? (
-        <div className="rounded border border-dashed border-(--color-border) px-2 py-1.5 text-(--color-text-dim)">
+        <div className="border border-dashed border-(--color-border) px-2 py-3 text-center text-[10px] text-(--color-text-dim)">
           no panels registered
         </div>
       ) : null}
@@ -92,6 +95,17 @@ export function PanelSwitcher({
           ]
             .filter(Boolean)
             .join(" · ");
+
+          // Status indicator: phosphor lamp for live-active, amber for
+          // paused, danger for offline, dim for inactive-online.
+          const lamp = p.is_paused
+            ? { class: "bg-(--color-amber)", glow: "var(--color-amber)" }
+            : offline
+              ? { class: "bg-(--color-danger)", glow: "var(--color-danger)" }
+              : active
+                ? { class: "bg-(--color-accent)", glow: "var(--color-accent)" }
+                : { class: "bg-(--color-phosphor)/40", glow: "transparent" };
+
           return (
             <button
               key={p.id}
@@ -99,37 +113,48 @@ export function PanelSwitcher({
               aria-selected={active}
               onClick={() => onChange(p.id)}
               className={[
-                "group flex flex-col gap-0.5 px-2 py-1.5 text-left transition-colors",
+                "group relative flex flex-col gap-0.5 border-l-2 px-2 py-1.5 text-left transition-colors",
                 active
                   ? offline
-                    ? "bg-(--color-danger)/10 text-(--color-danger)"
-                    : "bg-(--color-accent)/10 text-(--color-accent)"
-                  : offline
-                    ? "text-(--color-text-faint) hover:bg-(--color-surface-2)"
-                    : "text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
+                    ? "border-(--color-danger) bg-(--color-danger)/10 text-(--color-danger)"
+                    : "border-(--color-accent) bg-(--color-accent)/10 text-(--color-accent)"
+                  : "border-transparent text-(--color-text-muted) hover:border-(--color-border-strong) hover:bg-(--color-surface-2) hover:text-(--color-text)",
               ].join(" ")}
               title={tooltip}
             >
-              <span className="flex items-center gap-2.5">
-                <span
-                  aria-hidden
-                  className={[
-                    "shrink-0 font-mono",
-                    active
-                      ? offline
-                        ? "text-(--color-danger)"
-                        : "text-(--color-accent)"
-                      : "text-(--color-text-faint)",
-                  ].join(" ")}
-                >
-                  {active ? "▸" : " "}
-                </span>
+              <span className="flex items-center gap-2">
+                {/* Channel index — tape-deck preset */}
                 <span
                   aria-hidden
                   className="shrink-0 text-(--color-text-faint) tabular-nums"
+                  style={{
+                    fontFamily: "var(--font-pixel)",
+                    fontSize: 12,
+                    lineHeight: 1,
+                  }}
                 >
                   {(i + 1).toString().padStart(2, "0")}
                 </span>
+
+                {/* Status lamp */}
+                <span
+                  aria-hidden
+                  className={[
+                    "h-1.5 w-1.5 shrink-0 rounded-[1px]",
+                    lamp.class,
+                    active && !offline && !p.is_paused
+                      ? "animate-pulse"
+                      : "",
+                  ].join(" ")}
+                  style={{
+                    boxShadow:
+                      lamp.glow !== "transparent"
+                        ? `0 0 6px ${lamp.glow}`
+                        : "none",
+                  }}
+                />
+
+                {/* Panel name */}
                 <span
                   className={[
                     "min-w-0 flex-1 truncate lowercase tracking-wide",
@@ -138,6 +163,8 @@ export function PanelSwitcher({
                 >
                   {p.name}
                 </span>
+
+                {/* Right-side state chips */}
                 {p.is_paused ? (
                   <span
                     aria-label="paused"
@@ -147,19 +174,20 @@ export function PanelSwitcher({
                     ❚❚
                   </span>
                 ) : null}
-                {active && !offline && !p.is_paused ? (
-                  <span className="shrink-0 text-(--color-accent)/70">●</span>
-                ) : null}
                 {offline ? (
                   <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-(--color-danger)/80">
                     offline
                   </span>
                 ) : null}
               </span>
+
+              {/* Secondary row — version + heartbeat (only when active
+               * or non-current to keep the list quiet by default) */}
               <VersionTag
                 version={p.driver_version}
                 state={versionState}
-                indent={!active}
+                indent
+                show={active || versionState !== "current"}
               />
             </button>
           );
@@ -173,11 +201,14 @@ function VersionTag({
   version,
   state,
   indent,
+  show,
 }: {
   version: string | null;
   state: VersionState;
   indent: boolean;
+  show: boolean;
 }) {
+  if (!show) return null;
   const tone: Record<VersionState, string> = {
     current: "text-(--color-text-faint)",
     stale: "text-(--color-danger)/80",
@@ -201,7 +232,7 @@ function VersionTag({
     >
       <span>{label[state]}</span>
       <span className="truncate normal-case tabular-nums">
-        {version ?? "no report"}
+        {version ? version.slice(0, 12) : "no report"}
       </span>
     </span>
   );
