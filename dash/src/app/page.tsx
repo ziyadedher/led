@@ -121,14 +121,6 @@ export default function Page() {
                 }}
               />
             </div>
-
-            <div className="mt-2 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint) tabular-nums">
-              <span>signal · phosphor</span>
-              <span className="flex items-center gap-2">
-                <span className="inline-block h-1 w-1 animate-pulse rounded-[1px] bg-(--color-phosphor)" />
-                live · rAF
-              </span>
-            </div>
           </div>
 
           {/* Side rail: target selector + connection status */}
