@@ -9,6 +9,7 @@ use display_core::{
     image::ImageFrame,
     life::{Lattice, LifeConfig},
     setup::SetupFrame,
+    test::TestFrame,
     text::TextFrame,
     Frame, Mode, PanelState,
 };
@@ -265,6 +266,12 @@ fn build_mode(snapshot: &State, life_state: &mut Option<LifeState>) -> Mode {
             let frame: ImageFrame =
                 serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
             Mode::Image(frame)
+        }
+        "test" => {
+            *life_state = None;
+            let frame: TestFrame =
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
+            Mode::Test(frame)
         }
         _ => {
             *life_state = None;

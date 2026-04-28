@@ -18,12 +18,14 @@ import {
 } from "./clock";
 import { ImageComposer, parseImageConfig } from "./image";
 import { LifeComposer, parseLifeConfig } from "./life";
+import { parseTestConfig, TestComposer } from "./test";
 import type {
   ClockModeConfig,
   ImageModeConfig,
   LifeModeConfig,
   LifeModeFrame,
   ModeFrame,
+  TestModeConfig,
   TextEntry,
 } from "./types";
 
@@ -133,5 +135,11 @@ export const SCENES: Record<PanelMode, SceneRegistration> = {
       },
     }),
     ImageComposer,
+  ),
+
+  test: scene<TestModeConfig>(
+    parseTestConfig,
+    (config) => ({ Test: { pattern: config.pattern } }),
+    TestComposer,
   ),
 };

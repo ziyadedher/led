@@ -6,4 +6,5 @@ pub mod clock;
 pub mod image;
 pub mod life;
 pub mod setup;
+pub mod test;
 pub mod text;

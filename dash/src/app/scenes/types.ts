@@ -1,6 +1,6 @@
 /**
  * Per-mode contracts shared between the dash UI and the WASM-bound
- * Frame shape. Each mode owns its own file under src/app/frames/
+ * Frame shape. Each mode owns its own file under src/app/scenes/
  * and exports the components + helpers the page composes — keeps
  * the driver/dash frame layout isomorphic.
  */
@@ -16,6 +16,7 @@ export type ModeFrame =
   | { Clock: ClockModeFrame }
   | { Life: LifeModeFrame }
   | { Image: ImageModeFrame }
+  | { Test: TestModeFrame }
   // Driver-only frames the dash never constructs but the type
   // includes for completeness with display_core::Mode. The simulator
   // would render them correctly if it ever received one.
@@ -133,6 +134,22 @@ export const DEFAULT_IMAGE_CONFIG: ImageModeConfig = {
   bitmap: [],
 };
 
+/**
+ * Test/diagnostic patterns. Render-only — no animation, no per-frame
+ * state. Mirrors `display_core::test::TestPattern` + `TestFrame`.
+ */
+export type TestPatternId = "ColorBars" | "Gradient" | "Checkerboard";
+
+export type TestModeFrame = {
+  pattern: TestPatternId;
+};
+
+export type TestModeConfig = TestModeFrame;
+
+export const DEFAULT_TEST_CONFIG: TestModeConfig = {
+  pattern: "ColorBars",
+};
+
 export type ModeMeta = {
   id: PanelMode;
   label: string;
@@ -144,4 +161,5 @@ export const MODES: ModeMeta[] = [
   { id: "clock", label: "clock", blurb: "current local time" },
   { id: "image", label: "image", blurb: "static 64×64 bitmap" },
   { id: "life", label: "life", blurb: "ambient cellular automaton" },
+  { id: "test", label: "test", blurb: "diagnostic patterns" },
 ];
