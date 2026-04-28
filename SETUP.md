@@ -4,23 +4,36 @@ End-to-end bring-up of a new LED matrix Pi.
 
 ## Prerequisites (one-time, on your dev machine)
 
-1. **Tools**: `just`, `cross`, Docker (for `cross`), `xz`, `parted`, `curl`, `ssh`/`scp`, Tailscale.
-2. **Tailscale**: be logged into the same tailnet the matrix will join, and mint a reusable auth key (Settings → Keys → Generate auth key, reusable + non-ephemeral). Save it for `secrets.env`.
-3. **Secrets**: edit the SOPS-encrypted file.
+1. **Tools**: `just`, `cross`, Docker (for `cross`), `xz`, `parted`, `curl`, `ssh`/`scp`, `tofu` (OpenTofu), `sops`, Tailscale.
+2. **Tailscale**: be logged into the same tailnet the matrix will join, and mint a reusable auth key (Settings → Keys → Generate auth key, reusable + non-ephemeral). Save it for `secrets.sops.json`.
+3. **Supabase access token**: Account → Access Tokens → Generate. Save it as `SUPABASE_ACCESS_TOKEN` in `secrets.sops.json`. Terraform uses it to manage the project; this is the only Supabase credential you need to provide manually — the project URL and anon JWT are TF outputs.
+4. **Secrets**: edit the SOPS-encrypted file.
    ```sh
    sops secrets.sops.json
    ```
-   `secrets.sops.json` is committed encrypted (PGP, your key only — see `.sops.yaml`). The justfile decrypts it on the fly for any recipe that needs secrets, converting JSON keys into env vars via `jq`. A gitignored `secrets.env` next to it still acts as an optional local override.
-
-   Keys:
-   - `SUPABASE_URL`, `SUPABASE_ANON_KEY` — driver runtime
-   - `SUPABASE_ACCESS_TOKEN` — Personal Access Token for Terraform-managing the Supabase project
-   - `OTEL_ENDPOINT` (optional) — `https://otel.ziyadedher.com` for OTLP/HTTP to the infra collector
-   - `WIFI_COUNTRY` — 2-letter ISO regdomain code (e.g. `CA`, `US`)
+   `secrets.sops.json` is committed encrypted (PGP, your key only — see `.sops.yaml`). It only holds genuinely-sensitive values:
+   - `SUPABASE_ACCESS_TOKEN` — Terraform auth for managing the project
    - `TAILSCALE_AUTHKEY` — first-boot tailnet join
-   - `SSH_AUTHORIZED_KEYS_FILE` (optional) — defaults to `~/.ssh/id_ed25519.pub`
 
-   *No WiFi SSID/PSK*: those are entered by the user from a phone/laptop on first boot via the captive-portal AP that the Pi brings up. See "First boot" below.
+   Non-sensitive runtime config (`OTEL_ENDPOINT`, `WIFI_COUNTRY`, `SSH_AUTHORIZED_KEYS_FILE`) lives as exported variables in the justfile. Override per-invocation with `just OTEL_ENDPOINT=… flash-sd …`.
+5. **Provision Supabase + Vercel** (one-time):
+   ```sh
+   just tf init
+   just tf apply
+   ```
+   The `just tf` wrapper decrypts `TF_STATE_PASSPHRASE` from `secrets.sops.json` and injects it so the encrypted state file can be read. Apply creates the Supabase project + the Vercel env vars; the schema migration in `supabase/migrations/` is applied by the Supabase ↔ GitHub integration on push to `main`. Outputs (`supabase_url`, `anon_key`, etc.) feed the justfile recipes.
+6. **Sync dash env** (one-time, for local `npm run dev`; production reads from Vercel's TF-managed env vars): re-export the TF outputs into `dash/.env.local`.
+   ```sh
+   url=$(just tf output -raw supabase_url)
+   anon=$(just tf output -raw anon_key)
+   cat > dash/.env.local <<EOF
+   SUPABASE_URL=$url
+   NEXT_PUBLIC_SUPABASE_URL=$url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=$anon
+   EOF
+   ```
+
+   *No WiFi SSID/PSK in secrets*: those are entered by the user from a phone/laptop on first boot via the captive-portal AP that the Pi brings up. See "First boot" below.
 4. **Workspace builds locally**: `just check`.
 
 ## Provisioning a new matrix

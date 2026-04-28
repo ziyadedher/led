@@ -64,17 +64,21 @@ refresh-image-cache:
 # Flash an SD card with a fully provisioned image: Pi OS Lite + driver baked in,
 # first-boot script for hostname/WiFi/Tailscale.
 #
-# Pulls all secrets from `secrets.sops.env` (decrypted via SOPS at recipe
-# start). Edit with `sops secrets.sops.env`.
+# Pulls Supabase URL + anon key from `tofu output` (so the source of truth
+# is the TF state) and the rest from `secrets.sops.json` via SOPS. Run
+# `tofu -chdir=terraform apply` first if you haven't.
 flash-sd id host device: build
     #!/usr/bin/env bash
     set -euo pipefail
     set -a
     eval "$(sops --decrypt secrets.sops.json | jq -r 'to_entries[] | "\(.key)=\(.value | @sh)"')"
+    TF_VAR_tf_state_passphrase="$TF_STATE_PASSPHRASE"
+    SUPABASE_URL=$(tofu -chdir=terraform output -raw supabase_url)
+    SUPABASE_ANON_KEY=$(tofu -chdir=terraform output -raw anon_key)
     [ -f secrets.env ] && source secrets.env
     set +a
-    : "${SUPABASE_URL:?need SUPABASE_URL in secrets.sops.json}"
-    : "${SUPABASE_ANON_KEY:?need SUPABASE_ANON_KEY in secrets.sops.json}"
+    : "${SUPABASE_URL:?tofu output supabase_url is empty — run \`tofu -chdir=terraform apply\` first}"
+    : "${SUPABASE_ANON_KEY:?tofu output anon_key is empty — run \`tofu -chdir=terraform apply\` first}"
     : "${TAILSCALE_AUTHKEY:?need TAILSCALE_AUTHKEY in secrets.sops.json}"
     [ -f "$SSH_AUTHORIZED_KEYS_FILE" ] || { echo "ERROR: $SSH_AUTHORIZED_KEYS_FILE missing" >&2; exit 1; }
 
@@ -183,10 +187,11 @@ init host id user="root": build
     set -euo pipefail
     set -a
     eval "$(sops --decrypt secrets.sops.json | jq -r 'to_entries[] | "\(.key)=\(.value | @sh)"')"
+    TF_VAR_tf_state_passphrase="$TF_STATE_PASSPHRASE"
+    SUPABASE_URL=$(tofu -chdir=terraform output -raw supabase_url)
+    SUPABASE_ANON_KEY=$(tofu -chdir=terraform output -raw anon_key)
     [ -f secrets.env ] && source secrets.env
     set +a
-    : "${SUPABASE_URL:?need SUPABASE_URL in secrets.sops.json}"
-    : "${SUPABASE_ANON_KEY:?need SUPABASE_ANON_KEY in secrets.sops.json}"
     rendered=$(mktemp)
     trap 'rm -f "$rendered"' EXIT
     sed \
@@ -216,3 +221,13 @@ deploy host user="root": build
 # Tail the driver service journal on a host.
 logs host user="root":
     ssh "{{ user }}@{{ host }}" journalctl -u led-driver.service -f
+
+# Thin wrapper for `tofu -chdir=terraform <args>` that decrypts
+# TF_STATE_PASSPHRASE from sops and injects it as TF_VAR_tf_state_passphrase
+# (the var the encryption block reads). Use for everything: `just tf init`,
+# `just tf plan`, `just tf apply`, `just tf output -raw supabase_url`, …
+tf *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export TF_VAR_tf_state_passphrase=$(sops --decrypt secrets.sops.json | jq -r '.TF_STATE_PASSPHRASE')
+    tofu -chdir=terraform {{ args }}

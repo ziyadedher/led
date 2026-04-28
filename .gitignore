@@ -10,3 +10,9 @@ secrets.env
 
 # Local notes / scratch.
 deployments.txt
+
+# Terraform: provider plugin cache and plan artefacts. State is committed
+# (matching the infra repo's convention).
+.terraform/
+*.tfplan
+*.tfstate.backup
