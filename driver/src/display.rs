@@ -2,12 +2,18 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::Context;
-use display_core::{text::TextFrame, Frame, Mode, PanelState};
+use chrono::{Local, Timelike};
+use display_core::{
+    clock::{ClockFrame, ClockTime},
+    text::TextFrame,
+    Frame, Mode, PanelState,
+};
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::DrawTarget;
 use parking_lot::RwLock;
 use rpi_led_panel::{RGBMatrix, RGBMatrixConfig};
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use tokio::task::block_in_place;
 
 use crate::state::State;
@@ -20,8 +26,7 @@ pub use display_core::{
 };
 
 /// Driver-side panel: the renderer-relevant subset (scroll, pause,
-/// flash) plus the DB fields we keep around for sync. The renderer
-/// only reads [`RenderPanel`].
+/// flash, mode) plus the DB fields we keep around for sync.
 #[derive(PartialEq, Eq, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Panel {
     /// Unique identifier of the panel.
@@ -39,6 +44,17 @@ pub struct Panel {
     /// value to decide whether to re-pull entries.
     #[serde(skip_serializing)]
     pub last_updated: String,
+    /// Render mode: "text", "clock", … . Drives the dispatch in `drive`.
+    #[serde(default = "default_mode")]
+    pub mode: String,
+    /// Mode-specific configuration (e.g. clock format/color). Free-form
+    /// jsonb; per-mode helpers parse the relevant subset.
+    #[serde(default)]
+    pub mode_config: JsonValue,
+}
+
+fn default_mode() -> String {
+    "text".to_string()
 }
 
 pub async fn drive(
@@ -57,10 +73,7 @@ pub async fn drive(
         let snapshot = state.read().clone();
 
         let frame = Frame {
-            mode: Mode::Text(TextFrame {
-                entries: snapshot.entries,
-                scroll: snapshot.panel.scroll,
-            }),
+            mode: build_mode(&snapshot),
             panel: PanelState {
                 is_paused: snapshot.panel.is_paused,
                 flash: snapshot.panel.flash.clone(),
@@ -80,6 +93,29 @@ pub async fn drive(
         metrics
             .frame_time_ms
             .record(frame_started.elapsed().as_secs_f64() * 1000.0, &[]);
+    }
+}
+
+/// Pick the per-mode render input based on the panel's `mode`. Falls
+/// back to text mode on unknown modes so a misconfigured panel
+/// doesn't black out — text is the lowest-surprise default.
+fn build_mode(snapshot: &State) -> Mode {
+    match snapshot.panel.mode.as_str() {
+        "clock" => {
+            let mut frame: ClockFrame =
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
+            let now = Local::now();
+            frame.now = ClockTime {
+                hour: now.hour() as u8,
+                minute: now.minute() as u8,
+                second: now.second() as u8,
+            };
+            Mode::Clock(frame)
+        }
+        _ => Mode::Text(TextFrame {
+            entries: snapshot.entries.clone(),
+            scroll: snapshot.panel.scroll,
+        }),
     }
 }
 

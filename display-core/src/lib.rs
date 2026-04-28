@@ -16,6 +16,7 @@ use embedded_graphics::{
 };
 use serde::{Deserialize, Serialize};
 
+pub mod clock;
 pub mod text;
 
 // Re-export the most-used text types so existing callers can grab
@@ -46,6 +47,7 @@ pub struct PanelState {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Mode {
     Text(text::TextFrame),
+    Clock(clock::ClockFrame),
 }
 
 impl Default for Mode {
@@ -74,6 +76,7 @@ where
 
     match &frame.mode {
         Mode::Text(t) => text::render(t, step, canvas)?,
+        Mode::Clock(c) => clock::render(c, canvas)?,
     }
 
     apply_flash(canvas, &frame.panel, step)?;
