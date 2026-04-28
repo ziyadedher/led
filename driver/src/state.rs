@@ -66,6 +66,22 @@ async fn get_panel_id(panel_name: &str, client: &Postgrest) -> anyhow::Result<St
     }
 }
 
+async fn touch_last_seen(panel_id: &str, client: &Postgrest) -> anyhow::Result<()> {
+    let body = serde_json::json!({ "last_seen": chrono::Utc::now().to_rfc3339() }).to_string();
+    let response = client
+        .from("panels")
+        .eq("id", panel_id)
+        .update(body)
+        .execute()
+        .await?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        anyhow::bail!("last_seen update returned {status}: {text}");
+    }
+    Ok(())
+}
+
 async fn report_driver_version(panel_id: &str, client: &Postgrest) -> anyhow::Result<()> {
     tracing::info!(version = crate::DRIVER_VERSION, "Reporting driver version");
     let body = serde_json::json!({ "driver_version": crate::DRIVER_VERSION }).to_string();
@@ -171,14 +187,21 @@ pub async fn sync(
         });
     }
 
-    // Heartbeat metric on its own cadence so absence of changes still
-    // shows liveness in HyperDX.
+    // Heartbeat: bump the metric (telemetry liveness) and write
+    // panels.last_seen (dash liveness) on the same cadence. The dash
+    // marks panels offline when last_seen is stale — independent of
+    // last_updated, which only moves when entry data changes.
     let heartbeat_metrics = metrics.clone();
+    let heartbeat_client = client.clone();
+    let heartbeat_panel_id = panel_id.clone();
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(HEARTBEAT_PERIOD);
         loop {
             tick.tick().await;
             heartbeat_metrics.heartbeat.add(1, &[]);
+            if let Err(err) = touch_last_seen(&heartbeat_panel_id, &heartbeat_client).await {
+                tracing::warn!(error = %err, "couldn't update last_seen");
+            }
         }
     });
 
