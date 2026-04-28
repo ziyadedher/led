@@ -16,6 +16,7 @@ export type Mode =
   | { Clock: ClockScene }
   | { Life: LifeScene }
   | { Image: ImageScene }
+  | { Gif: GifScene }
   | { Test: TestScene }
   // Driver-only frames the dash never constructs but the type
   // includes for completeness with display_core::Mode. The simulator
@@ -135,6 +136,36 @@ export const DEFAULT_IMAGE_CONFIG: ImageSceneConfig = {
 };
 
 /**
+ * Animated GIF. The dash decodes the gif, downsamples each frame to
+ * fit the panel, resolves disposal, and stores the resulting RGB888
+ * frames + per-frame delays in mode_config. The driver steps through
+ * the sequence based on accumulated step time.
+ */
+export type GifFrame = {
+  bitmap: number[];
+  delay_ms: number;
+};
+
+export type GifScene = {
+  width: number;
+  height: number;
+  frames: GifFrame[];
+};
+
+export type GifSceneConfig = GifScene & {
+  /** Source filename or URL — purely cosmetic, shown in the UI. */
+  source?: string;
+  /** Original frame count before any caps the dash applied. */
+  source_frame_count?: number;
+};
+
+export const DEFAULT_GIF_CONFIG: GifSceneConfig = {
+  width: 0,
+  height: 0,
+  frames: [],
+};
+
+/**
  * Test/diagnostic patterns. Render-only — no animation, no per-frame
  * state. Mirrors `display_core::test::TestPattern` + `TestScene`.
  */
@@ -161,6 +192,7 @@ export const MODES: ModeMeta[] = [
   { id: "clock", label: "clock", blurb: "current local time" },
   { id: "image", label: "image", blurb: "static 64×64 bitmap" },
   { id: "paint", label: "paint", blurb: "pixel-grid editor" },
+  { id: "gif", label: "gif", blurb: "animated frame loop" },
   { id: "life", label: "life", blurb: "ambient cellular automaton" },
   { id: "test", label: "test", blurb: "diagnostic patterns" },
 ];

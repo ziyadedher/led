@@ -3,6 +3,7 @@
 
 pub mod boot;
 pub mod clock;
+pub mod gif;
 pub mod image;
 pub mod life;
 pub mod setup;

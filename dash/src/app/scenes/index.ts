@@ -16,12 +16,14 @@ import {
   clockSceneFromConfig,
   parseClockConfig,
 } from "./clock";
+import { GifComposer, parseGifConfig } from "./gif";
 import { ImageComposer, parseImageConfig } from "./image";
 import { LifeComposer, parseLifeConfig } from "./life";
 import { PaintComposer, parsePaintConfig } from "./paint";
 import { parseTestConfig, TestComposer } from "./test";
 import type {
   ClockSceneConfig,
+  GifSceneConfig,
   ImageSceneConfig,
   LifeSceneConfig,
   LifeScene,
@@ -150,6 +152,18 @@ export const SCENES: Record<PanelMode, SceneRegistration> = {
       },
     }),
     PaintComposer,
+  ),
+
+  gif: scene<GifSceneConfig>(
+    parseGifConfig,
+    (config) => ({
+      Gif: {
+        width: config.width,
+        height: config.height,
+        frames: config.frames,
+      },
+    }),
+    GifComposer,
   ),
 
   test: scene<TestSceneConfig>(

@@ -6,6 +6,7 @@ use chrono_tz::Tz;
 use display_core::{
     boot::BootScene,
     clock::{ClockSceneConfig, ClockTime},
+    gif::GifScene,
     image::ImageScene,
     life::{Lattice, LifeSceneConfig},
     setup::SetupScene,
@@ -269,6 +270,12 @@ fn build_mode(snapshot: &State, life_state: &mut Option<LifeState>) -> Mode {
             let frame: ImageScene =
                 serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
             Mode::Image(frame)
+        }
+        "gif" => {
+            *life_state = None;
+            let frame: GifScene =
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
+            Mode::Gif(frame)
         }
         "test" => {
             *life_state = None;
