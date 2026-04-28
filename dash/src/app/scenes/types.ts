@@ -11,12 +11,12 @@ import type { PanelMode } from "@/utils/actions";
  * Tagged union describing the contents of `display_core::Mode`.
  * Externally-tagged so JSON looks like `{ "Text": {...} }`.
  */
-export type ModeFrame =
-  | { Text: TextModeFrame }
-  | { Clock: ClockModeFrame }
-  | { Life: LifeModeFrame }
-  | { Image: ImageModeFrame }
-  | { Test: TestModeFrame }
+export type Mode =
+  | { Text: TextScene }
+  | { Clock: ClockScene }
+  | { Life: LifeScene }
+  | { Image: ImageScene }
+  | { Test: TestScene }
   // Driver-only frames the dash never constructs but the type
   // includes for completeness with display_core::Mode. The simulator
   // would render them correctly if it ever received one.
@@ -38,12 +38,12 @@ export type WireColor =
   | { Rgb: { r: number; g: number; b: number } }
   | { Rainbow: { is_per_letter: boolean; speed: number } };
 
-export type TextModeFrame = {
+export type TextScene = {
   entries: TextEntry[];
   scroll: number;
 };
 
-export type ClockModeFrame = {
+export type ClockScene = {
   format: "H12" | "H24";
   show_seconds: boolean;
   show_meridiem: boolean;
@@ -54,9 +54,9 @@ export type ClockModeFrame = {
 
 /**
  * Stored in panels.mode_config for clock-mode panels. Mirrors the
- * Rust `display_core::clock::ClockConfig` shape.
+ * Rust `display_core::clock::ClockSceneConfig` shape.
  */
-export type ClockModeConfig = {
+export type ClockSceneConfig = {
   format: "H12" | "H24";
   show_seconds: boolean;
   show_meridiem: boolean;
@@ -69,7 +69,7 @@ export type ClockModeConfig = {
   color: { r: number; g: number; b: number };
 };
 
-export const DEFAULT_CLOCK_CONFIG: ClockModeConfig = {
+export const DEFAULT_CLOCK_CONFIG: ClockSceneConfig = {
   format: "H24",
   show_seconds: false,
   show_meridiem: false,
@@ -85,7 +85,7 @@ export const DEFAULT_CLOCK_CONFIG: ClockModeConfig = {
  * — `cells` here is just the current snapshot for whichever side is
  * doing the rendering.
  */
-export type LifeModeFrame = {
+export type LifeScene = {
   color: { r: number; g: number; b: number };
   lattice_width: number;
   lattice_height: number;
@@ -94,9 +94,9 @@ export type LifeModeFrame = {
 
 /**
  * Stored in panels.mode_config for life-mode panels. Mirrors the
- * Rust `display_core::life::LifeConfig` shape.
+ * Rust `display_core::life::LifeSceneConfig` shape.
  */
-export type LifeModeConfig = {
+export type LifeSceneConfig = {
   color: { r: number; g: number; b: number };
   /**
    * Render frames between lattice ticks. Higher → slower
@@ -106,7 +106,7 @@ export type LifeModeConfig = {
   step_interval_frames: number;
 };
 
-export const DEFAULT_LIFE_CONFIG: LifeModeConfig = {
+export const DEFAULT_LIFE_CONFIG: LifeSceneConfig = {
   color: { r: 0x5d, g: 0xff, b: 0xa9 },
   step_interval_frames: 8,
 };
@@ -117,18 +117,18 @@ export const DEFAULT_LIFE_CONFIG: LifeModeConfig = {
  * treated as transparent on the panel side (matches the gif
  * decoder's transparent-pixel convention).
  */
-export type ImageModeFrame = {
+export type ImageScene = {
   width: number;
   height: number;
   bitmap: number[];
 };
 
-export type ImageModeConfig = ImageModeFrame & {
+export type ImageSceneConfig = ImageScene & {
   /** Source filename or URL — purely cosmetic, shown in the UI. */
   source?: string;
 };
 
-export const DEFAULT_IMAGE_CONFIG: ImageModeConfig = {
+export const DEFAULT_IMAGE_CONFIG: ImageSceneConfig = {
   width: 0,
   height: 0,
   bitmap: [],
@@ -136,17 +136,17 @@ export const DEFAULT_IMAGE_CONFIG: ImageModeConfig = {
 
 /**
  * Test/diagnostic patterns. Render-only — no animation, no per-frame
- * state. Mirrors `display_core::test::TestPattern` + `TestFrame`.
+ * state. Mirrors `display_core::test::TestPattern` + `TestScene`.
  */
 export type TestPatternId = "ColorBars" | "Gradient" | "Checkerboard";
 
-export type TestModeFrame = {
+export type TestScene = {
   pattern: TestPatternId;
 };
 
-export type TestModeConfig = TestModeFrame;
+export type TestSceneConfig = TestScene;
 
-export const DEFAULT_TEST_CONFIG: TestModeConfig = {
+export const DEFAULT_TEST_CONFIG: TestSceneConfig = {
   pattern: "ColorBars",
 };
 

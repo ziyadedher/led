@@ -27,15 +27,15 @@ pub enum TestPattern {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
-pub struct TestFrame {
+pub struct TestScene {
     #[serde(default)]
     pub pattern: TestPattern,
 }
 
-pub type TestConfig = TestFrame;
+pub type TestConfig = TestScene;
 
 #[allow(clippy::cast_possible_wrap)]
-pub fn render<D>(frame: &TestFrame, canvas: &mut D) -> Result<(), D::Error>
+pub fn render<D>(frame: &TestScene, canvas: &mut D) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888> + OriginDimensions,
 {

@@ -4,14 +4,14 @@ use std::time::Instant;
 use chrono::{Local, Timelike};
 use chrono_tz::Tz;
 use display_core::{
-    boot::BootFrame,
-    clock::{ClockConfig, ClockTime},
-    image::ImageFrame,
-    life::{Lattice, LifeConfig},
-    setup::SetupFrame,
-    test::TestFrame,
-    text::TextFrame,
-    Frame, Mode, PanelState,
+    boot::BootScene,
+    clock::{ClockSceneConfig, ClockTime},
+    image::ImageScene,
+    life::{Lattice, LifeSceneConfig},
+    setup::SetupScene,
+    test::TestScene,
+    text::TextScene,
+    Scene, Mode, PanelState,
 };
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -75,7 +75,7 @@ pub async fn drive(
         let frame_started = Instant::now();
 
         let snapshot = state.read().clone();
-        let frame = Frame {
+        let frame = Scene {
             mode: build_mode(&snapshot, &mut life_state),
             panel: PanelState {
                 is_paused: snapshot.panel.is_paused,
@@ -102,7 +102,7 @@ pub async fn drive(
 /// brings the AP up and removes it on successful STA connect; the
 /// content is two lines: the AP SSID and the portal URL. Absence =
 /// not in setup mode.
-fn read_setup_marker() -> Option<SetupFrame> {
+fn read_setup_marker() -> Option<SetupScene> {
     let path = Path::new("/run/led-wifi-setup.active");
     let raw = std::fs::read_to_string(path).ok()?;
     let mut lines = raw.lines();
@@ -114,7 +114,7 @@ fn read_setup_marker() -> Option<SetupFrame> {
     if ssid.is_empty() {
         return None;
     }
-    Some(SetupFrame {
+    Some(SetupScene {
         color: Rgb {
             r: 0xff,
             g: 0xb8,
@@ -239,18 +239,18 @@ fn build_mode(snapshot: &State, life_state: &mut Option<LifeState>) -> Mode {
     }
     if snapshot.panel.id.is_empty() {
         *life_state = None;
-        return Mode::Boot(BootFrame::default());
+        return Mode::Boot(BootScene::default());
     }
     match snapshot.panel.mode.as_str() {
         "clock" => {
             *life_state = None;
-            let config: ClockConfig =
+            let config: ClockSceneConfig =
                 serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
             let now = sample_time(config.timezone.as_deref());
             Mode::Clock(config.into_frame(now))
         }
         "life" => {
-            let config: LifeConfig =
+            let config: LifeSceneConfig =
                 serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
             let interval = config.step_interval_frames.max(1);
             let s = life_state.get_or_insert_with(|| LifeState::new(64, 64));
@@ -263,19 +263,19 @@ fn build_mode(snapshot: &State, life_state: &mut Option<LifeState>) -> Mode {
         }
         "image" => {
             *life_state = None;
-            let frame: ImageFrame =
+            let frame: ImageScene =
                 serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
             Mode::Image(frame)
         }
         "test" => {
             *life_state = None;
-            let frame: TestFrame =
+            let frame: TestScene =
                 serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
             Mode::Test(frame)
         }
         _ => {
             *life_state = None;
-            Mode::Text(TextFrame {
+            Mode::Text(TextScene {
                 entries: snapshot.entries.clone(),
                 scroll: snapshot.panel.scroll,
             })

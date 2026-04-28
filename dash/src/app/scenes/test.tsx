@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import {
   DEFAULT_TEST_CONFIG,
-  type TestModeConfig,
+  type TestSceneConfig,
   type TestPatternId,
 } from "./types";
 
@@ -17,7 +17,7 @@ const PATTERNS: { id: TestPatternId; label: string; blurb: string }[] = [
   { id: "Checkerboard", label: "checkerboard",  blurb: "1×1 checker — surfaces moiré + row-driver shadows" },
 ];
 
-export function parseTestConfig(raw: unknown): TestModeConfig {
+export function parseTestConfig(raw: unknown): TestSceneConfig {
   if (!raw || typeof raw !== "object") return DEFAULT_TEST_CONFIG;
   const obj = raw as Record<string, unknown>;
   const valid = PATTERNS.some((p) => p.id === obj.pattern);
@@ -35,17 +35,17 @@ export function TestComposer({
   config,
 }: {
   panelId: string;
-  config: TestModeConfig;
+  config: TestSceneConfig;
 }) {
   const configKey = JSON.stringify(config);
   const [snapshotKey, setSnapshotKey] = useState(configKey);
-  const [local, setLocal] = useState<TestModeConfig>(config);
+  const [local, setLocal] = useState<TestSceneConfig>(config);
   if (snapshotKey !== configKey) {
     setSnapshotKey(configKey);
     setLocal(config);
   }
 
-  const persist = (next: TestModeConfig) => {
+  const persist = (next: TestSceneConfig) => {
     setLocal(next);
     void panels.setMode.call(panelId, "test", next);
   };

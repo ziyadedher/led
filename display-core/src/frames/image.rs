@@ -12,7 +12,7 @@ use embedded_graphics::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ImageFrame {
+pub struct ImageScene {
     pub width: u32,
     pub height: u32,
     /// RGB bytes, row-major. Length must be exactly 3 * width * height.
@@ -22,7 +22,7 @@ pub struct ImageFrame {
     pub bitmap: Vec<u8>,
 }
 
-impl Default for ImageFrame {
+impl Default for ImageScene {
     fn default() -> Self {
         Self {
             width: 0,
@@ -34,7 +34,7 @@ impl Default for ImageFrame {
 
 #[allow(clippy::cast_possible_wrap)]
 #[allow(clippy::cast_possible_truncation)]
-pub fn render<D>(frame: &ImageFrame, canvas: &mut D) -> Result<(), D::Error>
+pub fn render<D>(frame: &ImageScene, canvas: &mut D) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888> + OriginDimensions,
 {

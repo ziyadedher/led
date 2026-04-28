@@ -6,7 +6,7 @@
 //!
 //! Architecture: each render mode (text, clock, image, …) lives in
 //! its own module and exposes its own per-mode frame type. The
-//! top-level [`Frame`] tags which mode to dispatch to and carries
+//! top-level [`Scene`] tags which mode to dispatch to and carries
 //! mode-independent panel state (flash, pause).
 
 use embedded_graphics::{
@@ -49,25 +49,25 @@ pub struct PanelState {
 /// directly.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Mode {
-    Text(text::TextFrame),
-    Clock(clock::ClockFrame),
-    Life(life::LifeFrame),
-    Image(image::ImageFrame),
-    Test(test::TestFrame),
-    Boot(boot::BootFrame),
-    Setup(setup::SetupFrame),
+    Text(text::TextScene),
+    Clock(clock::ClockScene),
+    Life(life::LifeScene),
+    Image(image::ImageScene),
+    Test(test::TestScene),
+    Boot(boot::BootScene),
+    Setup(setup::SetupScene),
 }
 
 impl Default for Mode {
     fn default() -> Self {
-        Self::Text(text::TextFrame::default())
+        Self::Text(text::TextScene::default())
     }
 }
 
 /// One frame of input — what to render plus how the panel as a whole
 /// is configured (paused, flashing).
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct Frame {
+pub struct Scene {
     pub mode: Mode,
     pub panel: PanelState,
 }
@@ -76,7 +76,7 @@ pub struct Frame {
 /// increasing tick counter that drives any animation. The Pi driver
 /// calls this once per vsync; the WASM simulator calls it once per
 /// requestAnimationFrame.
-pub fn render<D>(frame: &Frame, step: usize, canvas: &mut D) -> Result<(), D::Error>
+pub fn render<D>(frame: &Scene, step: usize, canvas: &mut D) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888> + OriginDimensions,
 {

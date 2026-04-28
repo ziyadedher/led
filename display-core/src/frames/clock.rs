@@ -30,10 +30,10 @@ pub struct ClockTime {
 }
 
 /// Persisted shape — what the dash writes into `panels.mode_config`
-/// for clock-mode panels. Mirrors `ClockModeConfig` in dash/types.ts.
-/// Driver constructs a `ClockFrame` per render by adding `now`.
+/// for clock-mode panels. Mirrors `ClockSceneConfig` in dash/types.ts.
+/// Driver constructs a `ClockScene` per render by adding `now`.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct ClockConfig {
+pub struct ClockSceneConfig {
     #[serde(default)]
     pub format: ClockFormat,
     #[serde(default)]
@@ -50,7 +50,7 @@ pub struct ClockConfig {
     pub color: Rgb,
 }
 
-impl Default for ClockConfig {
+impl Default for ClockSceneConfig {
     fn default() -> Self {
         Self {
             format: ClockFormat::H24,
@@ -62,12 +62,12 @@ impl Default for ClockConfig {
     }
 }
 
-impl ClockConfig {
+impl ClockSceneConfig {
     /// Combine the persisted config with a freshly-sampled time into
-    /// a render-ready `ClockFrame`.
+    /// a render-ready `ClockScene`.
     #[must_use]
-    pub fn into_frame(self, now: ClockTime) -> ClockFrame {
-        ClockFrame {
+    pub fn into_frame(self, now: ClockTime) -> ClockScene {
+        ClockScene {
             format: self.format,
             show_seconds: self.show_seconds,
             show_meridiem: self.show_meridiem,
@@ -86,7 +86,7 @@ fn default_clock_color() -> Rgb {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct ClockFrame {
+pub struct ClockScene {
     /// 12h or 24h.
     #[serde(default)]
     pub format: ClockFormat,
@@ -108,7 +108,7 @@ pub struct ClockFrame {
     pub show_meridiem: bool,
 }
 
-impl Default for ClockFrame {
+impl Default for ClockScene {
     fn default() -> Self {
         Self {
             format: ClockFormat::H24,
@@ -122,7 +122,7 @@ impl Default for ClockFrame {
 
 #[allow(clippy::cast_possible_truncation)]
 #[allow(clippy::cast_possible_wrap)]
-pub fn render<D>(frame: &ClockFrame, canvas: &mut D) -> Result<(), D::Error>
+pub fn render<D>(frame: &ClockScene, canvas: &mut D) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888> + OriginDimensions,
 {
@@ -150,7 +150,7 @@ where
     Ok(())
 }
 
-fn format_time(frame: &ClockFrame) -> String {
+fn format_time(frame: &ClockScene) -> String {
     let (h, m, s) = (frame.now.hour, frame.now.minute, frame.now.second);
     match frame.format {
         ClockFormat::H24 => {

@@ -15,11 +15,11 @@ use serde::{Deserialize, Serialize};
 use crate::text::Rgb;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct BootFrame {
+pub struct BootScene {
     pub color: Rgb,
 }
 
-impl Default for BootFrame {
+impl Default for BootScene {
     fn default() -> Self {
         Self {
             color: Rgb {
@@ -33,7 +33,7 @@ impl Default for BootFrame {
 
 #[allow(clippy::cast_possible_truncation)]
 #[allow(clippy::cast_possible_wrap)]
-pub fn render<D>(frame: &BootFrame, step: usize, canvas: &mut D) -> Result<(), D::Error>
+pub fn render<D>(frame: &BootScene, step: usize, canvas: &mut D) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888> + OriginDimensions,
 {

@@ -10,8 +10,8 @@ import {
 import { useMemo, useState } from "react";
 
 import {
-  type ClockModeConfig,
-  type ClockModeFrame,
+  type ClockSceneConfig,
+  type ClockScene,
   DEFAULT_CLOCK_CONFIG,
 } from "./types";
 
@@ -20,7 +20,7 @@ import { SolidColorPicker } from "@/app/components/SolidColorPicker";
 import { panels } from "@/utils/actions";
 
 /** Build a renderable clock frame from saved config + current time. */
-export function clockFrameFromConfig(config: ClockModeConfig): ClockModeFrame {
+export function clockSceneFromConfig(config: ClockSceneConfig): ClockScene {
   const { hour, minute, second } = sampleTime(config.timezone);
   return {
     format: config.format,
@@ -62,8 +62,8 @@ function sampleTime(timezone: string | null) {
   }
 }
 
-/** Read a stored mode_config jsonb back into a typed `ClockModeConfig`. */
-export function parseClockConfig(raw: unknown): ClockModeConfig {
+/** Read a stored mode_config jsonb back into a typed `ClockSceneConfig`. */
+export function parseClockConfig(raw: unknown): ClockSceneConfig {
   if (!raw || typeof raw !== "object") return DEFAULT_CLOCK_CONFIG;
   const obj = raw as Record<string, unknown>;
   const fmt = obj.format === "H12" ? "H12" : "H24";
@@ -106,7 +106,7 @@ export function ClockComposer({
   config,
 }: {
   panelId: string;
-  config: ClockModeConfig;
+  config: ClockSceneConfig;
 }) {
   // Hold an optimistic local copy so the form doesn't snap when an
   // unrelated panel field updates (last_seen ticks every 30s). When
@@ -114,13 +114,13 @@ export function ClockComposer({
   // render avoids the setState-in-effect anti-pattern.
   const configKey = JSON.stringify(config);
   const [snapshotKey, setSnapshotKey] = useState(configKey);
-  const [local, setLocal] = useState<ClockModeConfig>(config);
+  const [local, setLocal] = useState<ClockSceneConfig>(config);
   if (snapshotKey !== configKey) {
     setSnapshotKey(configKey);
     setLocal(config);
   }
 
-  const persist = (next: ClockModeConfig) => {
+  const persist = (next: ClockSceneConfig) => {
     setLocal(next);
     void panels.setMode.call(panelId, "clock", next);
   };

@@ -1,7 +1,7 @@
 /**
  * Scene registry. One entry per renderable mode; each entry owns
  * its parse helper, its composer component, and the function that
- * builds the WASM-bound `ModeFrame` (the per-frame render input)
+ * builds the WASM-bound `Mode` payload (the per-tick render input)
  * from saved config + ephemeral inputs (typed message, current
  * time, life lattice).
  *
@@ -13,19 +13,19 @@
 
 import {
   ClockComposer,
-  clockFrameFromConfig,
+  clockSceneFromConfig,
   parseClockConfig,
 } from "./clock";
 import { ImageComposer, parseImageConfig } from "./image";
 import { LifeComposer, parseLifeConfig } from "./life";
 import { parseTestConfig, TestComposer } from "./test";
 import type {
-  ClockModeConfig,
-  ImageModeConfig,
-  LifeModeConfig,
-  LifeModeFrame,
-  ModeFrame,
-  TestModeConfig,
+  ClockSceneConfig,
+  ImageSceneConfig,
+  LifeSceneConfig,
+  LifeScene,
+  Mode,
+  TestSceneConfig,
   TextEntry,
 } from "./types";
 
@@ -39,7 +39,7 @@ export type SceneInputs = {
   color: ColorState;
   marqueeSpeed: number;
   // ephemeral state owned by the page
-  lifeFrame: LifeModeFrame;
+  lifeScene: LifeScene;
 };
 
 type ComposerProps<C> = { panelId: string; config: C };
@@ -53,7 +53,7 @@ type ComposerProps<C> = { panelId: string; config: C };
  */
 type SceneRegistration = {
   parse: (raw: unknown) => unknown;
-  buildFrame: (config: unknown, inputs: SceneInputs) => ModeFrame;
+  buildFrame: (config: unknown, inputs: SceneInputs) => Mode;
   Composer: React.ComponentType<ComposerProps<unknown>>;
 };
 
@@ -65,7 +65,7 @@ type SceneRegistration = {
  */
 function scene<C>(
   parse: (raw: unknown) => C,
-  build: (config: C, inputs: SceneInputs) => ModeFrame,
+  build: (config: C, inputs: SceneInputs) => Mode,
   Composer: React.ComponentType<ComposerProps<C>>,
 ): SceneRegistration {
   return {
@@ -113,19 +113,19 @@ export const SCENES: Record<PanelMode, SceneRegistration> = {
     TextComposerStub,
   ),
 
-  clock: scene<ClockModeConfig>(
+  clock: scene<ClockSceneConfig>(
     parseClockConfig,
-    (config) => ({ Clock: clockFrameFromConfig(config) }),
+    (config) => ({ Clock: clockSceneFromConfig(config) }),
     ClockComposer,
   ),
 
-  life: scene<LifeModeConfig>(
+  life: scene<LifeSceneConfig>(
     parseLifeConfig,
-    (_config, inputs) => ({ Life: inputs.lifeFrame }),
+    (_config, inputs) => ({ Life: inputs.lifeScene }),
     LifeComposer,
   ),
 
-  image: scene<ImageModeConfig>(
+  image: scene<ImageSceneConfig>(
     parseImageConfig,
     (config) => ({
       Image: {
@@ -137,7 +137,7 @@ export const SCENES: Record<PanelMode, SceneRegistration> = {
     ImageComposer,
   ),
 
-  test: scene<TestModeConfig>(
+  test: scene<TestSceneConfig>(
     parseTestConfig,
     (config) => ({ Test: { pattern: config.pattern } }),
     TestComposer,

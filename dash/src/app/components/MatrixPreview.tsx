@@ -10,7 +10,7 @@ import {
 } from "react";
 
 import { PanelContext } from "@/app/context";
-import type { ModeFrame, WireColor } from "@/app/scenes/types";
+import type { Mode, WireColor } from "@/app/scenes/types";
 import { entries as entriesActions } from "@/utils/actions";
 
 // 64×64 to match the rpi-led-panel default; the WASM core runs the same
@@ -23,9 +23,12 @@ const COLS = 64;
 const GAP = 2;
 const CELL_CAP = 3;
 
-// Mirrors display_core::Frame. Externally-tagged Mode enum.
-type Frame = {
-  mode: ModeFrame;
+// Mirrors display_core::Scene — the wrapper passed to WASM render
+// containing the active mode payload + panel-level state (paused,
+// flash). `Mode` (imported above) mirrors display_core::Mode (the
+// tagged union over per-mode payloads).
+type Scene = {
+  mode: Mode;
   panel: {
     is_paused: boolean;
     flash: { is_active: boolean; on_steps: number; total_steps: number };
@@ -42,7 +45,7 @@ const FLASH_OFF = { is_active: false, on_steps: 0, total_steps: 0 };
  * canvas. Same code path as the Pi: marquee scroll, rainbow,
  * flash all behave identically.
  *
- * `mode` is the ModeFrame the page wants rendered. For text mode the
+ * `mode` is the Mode the page wants rendered. For text mode the
  * page passes just the live-preview entry; we fold in the queued
  * entries from Supabase here so the simulator shows the full panel
  * state. Other modes pass their full frame and we pass it through.
@@ -52,7 +55,7 @@ export function MatrixPreview({
   offline,
   isPaused = false,
 }: {
-  mode: ModeFrame;
+  mode: Mode;
   offline?: boolean;
   /** Whether the panel is paused. Frozen step counter; current
    * frame stays rendered. Mirrors the Pi driver's behaviour. */
@@ -97,11 +100,11 @@ export function MatrixPreview({
   );
   const scroll = scrollData.data?.scroll ?? 0;
 
-  // Build the Frame the WASM renderer consumes. For text mode we
-  // append store entries to whatever the page passed (the live
-  // preview); other modes pass through unchanged.
-  const frame = useMemo<Frame>(() => {
-    const expanded: ModeFrame = "Text" in mode
+  // Build the Scene (mode + panel state) the WASM renderer
+  // consumes. For text mode we append store entries to whatever the
+  // page passed (the live preview); other modes pass through.
+  const frame = useMemo<Scene>(() => {
+    const expanded: Mode = "Text" in mode
       ? {
           Text: {
             entries: [
@@ -129,7 +132,7 @@ export function MatrixPreview({
 
   // Push state into the renderer whenever it changes.
   useEffect(() => {
-    rendererRef.current?.setFrameJson(JSON.stringify(frame));
+    rendererRef.current?.setSceneJson(JSON.stringify(frame));
   }, [frame]);
 
   // rAF loop: tick the WASM renderer and paint to canvas. Cell size
@@ -295,7 +298,7 @@ export function MatrixPreview({
 // the `Renderer` reference typed without pulling the full wasm types
 // into the component file.
 type WasmRenderer = {
-  setFrameJson(json: string): void;
+  setSceneJson(json: string): void;
   tick(): Uint8Array;
   free(): void;
 };

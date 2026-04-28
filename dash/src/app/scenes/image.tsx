@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 
 import {
   DEFAULT_IMAGE_CONFIG,
-  type ImageModeConfig,
+  type ImageSceneConfig,
 } from "./types";
 
 import { ComposerShell } from "@/app/components/ComposerShell";
@@ -13,7 +13,7 @@ import { panels } from "@/utils/actions";
 const PANEL_W = 64;
 const PANEL_H = 64;
 
-export function parseImageConfig(raw: unknown): ImageModeConfig {
+export function parseImageConfig(raw: unknown): ImageSceneConfig {
   if (!raw || typeof raw !== "object") return DEFAULT_IMAGE_CONFIG;
   const obj = raw as Record<string, unknown>;
   const width = typeof obj.width === "number" ? obj.width : 0;
@@ -36,7 +36,7 @@ export function parseImageConfig(raw: unknown): ImageModeConfig {
  */
 async function loadAndDownsample(
   src: string | File,
-): Promise<ImageModeConfig> {
+): Promise<ImageSceneConfig> {
   const url = typeof src === "string" ? src : URL.createObjectURL(src);
   try {
     const img = await loadImage(url);
@@ -85,14 +85,14 @@ export function ImageComposer({
   config,
 }: {
   panelId: string;
-  config: ImageModeConfig;
+  config: ImageSceneConfig;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [urlDraft, setUrlDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const apply = async (next: ImageModeConfig) => {
+  const apply = async (next: ImageSceneConfig) => {
     setBusy(true);
     setErr(null);
     try {

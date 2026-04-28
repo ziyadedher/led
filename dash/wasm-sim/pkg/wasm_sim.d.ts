@@ -17,9 +17,9 @@ export class Renderer {
     /**
      * Replace the renderable state (entries + panel scroll/pause/flash).
      * Pass a JSON string; we parse here so the JS shape is whatever
-     * `serde` accepts on `Frame`.
+     * `serde` accepts on `Scene`.
      */
-    setFrameJson(json: string): void;
+    setSceneJson(json: string): void;
     /**
      * Render the current frame at the current step into the pixel
      * buffer, advance step (unless paused), and return the RGBA bytes.
@@ -41,7 +41,7 @@ export interface InitOutput {
     readonly renderer_height: (a: number) => number;
     readonly renderer_new: (a: number, b: number) => number;
     readonly renderer_reset: (a: number) => void;
-    readonly renderer_setFrameJson: (a: number, b: number, c: number) => [number, number];
+    readonly renderer_setSceneJson: (a: number, b: number, c: number) => [number, number];
     readonly renderer_tick: (a: number) => [number, number, number, number];
     readonly renderer_width: (a: number) => number;
     readonly init: () => void;

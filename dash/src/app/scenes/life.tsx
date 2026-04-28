@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   DEFAULT_LIFE_CONFIG,
-  type LifeModeConfig,
-  type LifeModeFrame,
+  type LifeSceneConfig,
+  type LifeScene,
 } from "./types";
 
 import { ComposerShell } from "@/app/components/ComposerShell";
@@ -25,7 +25,7 @@ const SPEED_PRESETS: { id: string; label: string; frames: number }[] = [
   { id: "blazing", label: "blazing", frames: 1  },
 ];
 
-export function parseLifeConfig(raw: unknown): LifeModeConfig {
+export function parseLifeConfig(raw: unknown): LifeSceneConfig {
   if (!raw || typeof raw !== "object") return DEFAULT_LIFE_CONFIG;
   const obj = raw as Record<string, unknown>;
   const colorRaw =
@@ -55,7 +55,7 @@ function clamp255(n: unknown): number {
 
 /**
  * Drive the in-browser preview of Life mode. Cells live in React
- * state so the rendered LifeModeFrame updates reactively (React 19
+ * state so the rendered LifeScene updates reactively (React 19
  * disallows reading ref.current during render). Tick counters stay
  * in refs since they don't drive output.
  *
@@ -63,7 +63,7 @@ function clamp255(n: unknown): number {
  * from config so a fresh seed evolves through visually comparable
  * patterns at matching wall-clock speed.
  */
-export function useLifeFrame(config: LifeModeConfig): LifeModeFrame {
+export function useLifeScene(config: LifeSceneConfig): LifeScene {
   const [cells, setCells] = useState<Uint8Array>(() => seed());
   const framesRef = useRef(0);
   const generationsRef = useRef(0);
@@ -155,17 +155,17 @@ export function LifeComposer({
   config,
 }: {
   panelId: string;
-  config: LifeModeConfig;
+  config: LifeSceneConfig;
 }) {
   const configKey = JSON.stringify(config);
   const [snapshotKey, setSnapshotKey] = useState(configKey);
-  const [local, setLocal] = useState<LifeModeConfig>(config);
+  const [local, setLocal] = useState<LifeSceneConfig>(config);
   if (snapshotKey !== configKey) {
     setSnapshotKey(configKey);
     setLocal(config);
   }
 
-  const persist = (next: LifeModeConfig) => {
+  const persist = (next: LifeSceneConfig) => {
     setLocal(next);
     void panels.setMode.call(panelId, "life", next);
   };

@@ -2,7 +2,7 @@
 //! [`Renderer::tick`] each rAF; the JS side reads RGBA bytes out of
 //! [`Renderer::buffer`] and paints them to a 64×64 ImageData.
 
-use display_core::{Frame, render};
+use display_core::{Scene, render};
 use embedded_graphics::{
     pixelcolor::Rgb888, prelude::*, draw_target::DrawTarget, geometry::Size,
 };
@@ -19,7 +19,7 @@ pub struct Renderer {
     width: u32,
     height: u32,
     pixels: Vec<u8>,
-    frame: Frame,
+    scene: Scene,
     step: usize,
 }
 
@@ -33,17 +33,17 @@ impl Renderer {
             width,
             height,
             pixels: vec![0; (width * height * 4) as usize],
-            frame: Frame::default(),
+            scene: Scene::default(),
             step: 0,
         }
     }
 
     /// Replace the renderable state (entries + panel scroll/pause/flash).
     /// Pass a JSON string; we parse here so the JS shape is whatever
-    /// `serde` accepts on `Frame`.
-    #[wasm_bindgen(js_name = setFrameJson)]
-    pub fn set_frame_json(&mut self, json: &str) -> Result<(), JsError> {
-        self.frame =
+    /// `serde` accepts on `Scene`.
+    #[wasm_bindgen(js_name = setSceneJson)]
+    pub fn set_scene_json(&mut self, json: &str) -> Result<(), JsError> {
+        self.scene =
             serde_json::from_str(json).map_err(|e| JsError::new(&format!("frame parse: {e}")))?;
         Ok(())
     }
@@ -59,8 +59,8 @@ impl Renderer {
             height: self.height,
             pixels: &mut self.pixels,
         };
-        render(&self.frame, self.step, &mut target).map_err(|_| JsError::new("render error"))?;
-        if !self.frame.panel.is_paused {
+        render(&self.scene, self.step, &mut target).map_err(|_| JsError::new("render error"))?;
+        if !self.scene.panel.is_paused {
             self.step = self.step.wrapping_add(1);
         }
         Ok(self.pixels.clone())

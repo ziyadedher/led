@@ -55,7 +55,7 @@ pub struct TextEntry {
 
 /// Per-frame text-mode payload.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct TextFrame {
+pub struct TextScene {
     pub entries: Vec<TextEntry>,
     /// Index of the first entry rendered at the top of the panel.
     /// Subsequent entries are stacked below; entries before this
@@ -69,7 +69,7 @@ pub struct TextFrame {
 #[allow(clippy::cast_sign_loss)]
 #[allow(clippy::cast_lossless)]
 #[allow(clippy::cast_precision_loss)]
-pub fn render<D>(frame: &TextFrame, step: usize, canvas: &mut D) -> Result<(), D::Error>
+pub fn render<D>(frame: &TextScene, step: usize, canvas: &mut D) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888> + OriginDimensions,
 {

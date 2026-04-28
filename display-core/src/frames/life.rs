@@ -2,7 +2,7 @@
 //! and a tick rate. Reseeds when the simulation goes extinct or
 //! settles into a still life / period-2 oscillator.
 //!
-//! State (the live cells) is part of `LifeFrame` and stored on the
+//! State (the live cells) is part of `LifeScene` and stored on the
 //! caller side. Driver/sim hold a `Lattice` and call `step` between
 //! frames; `render` paints whatever cells are alive in the lattice.
 
@@ -109,10 +109,10 @@ fn default_step_interval_frames() -> u32 {
 }
 
 /// Persisted shape — what the dash writes into `panels.mode_config`
-/// for life-mode panels. Mirrors `LifeModeConfig` in dash/types.ts.
+/// for life-mode panels. Mirrors `LifeSceneConfig` in dash/types.ts.
 /// Driver merges this with its local lattice each frame.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct LifeConfig {
+pub struct LifeSceneConfig {
     #[serde(default = "default_life_color")]
     pub color: Rgb,
     /// Render frames between lattice ticks. Higher = slower
@@ -121,7 +121,7 @@ pub struct LifeConfig {
     pub step_interval_frames: u32,
 }
 
-impl Default for LifeConfig {
+impl Default for LifeSceneConfig {
     fn default() -> Self {
         Self {
             color: default_life_color(),
@@ -130,12 +130,12 @@ impl Default for LifeConfig {
     }
 }
 
-impl LifeConfig {
+impl LifeSceneConfig {
     /// Build a render-ready frame from this config + the caller's
     /// current lattice snapshot.
     #[must_use]
-    pub fn into_frame(self, lattice: &Lattice) -> LifeFrame {
-        LifeFrame {
+    pub fn into_frame(self, lattice: &Lattice) -> LifeScene {
+        LifeScene {
             color: self.color,
             lattice_width: lattice.width,
             lattice_height: lattice.height,
@@ -148,7 +148,7 @@ impl LifeConfig {
 /// the WASM simulator and driver share state shape; in practice the
 /// driver evolves it locally and the dash never sees per-cell state.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct LifeFrame {
+pub struct LifeScene {
     /// Live-cell color.
     pub color: Rgb,
     /// Current lattice (caller advances between frames).
@@ -157,7 +157,7 @@ pub struct LifeFrame {
     pub cells: Vec<u8>,
 }
 
-impl Default for LifeFrame {
+impl Default for LifeScene {
     fn default() -> Self {
         Self {
             color: default_life_color(),
@@ -168,7 +168,7 @@ impl Default for LifeFrame {
     }
 }
 
-impl From<&Lattice> for LifeFrame {
+impl From<&Lattice> for LifeScene {
     fn from(l: &Lattice) -> Self {
         Self {
             color: default_life_color(),
@@ -180,7 +180,7 @@ impl From<&Lattice> for LifeFrame {
 }
 
 #[allow(clippy::cast_possible_wrap)]
-pub fn render<D>(frame: &LifeFrame, canvas: &mut D) -> Result<(), D::Error>
+pub fn render<D>(frame: &LifeScene, canvas: &mut D) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888> + OriginDimensions,
 {

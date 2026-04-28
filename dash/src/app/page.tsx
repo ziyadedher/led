@@ -16,7 +16,7 @@ import { MatrixPreview } from "@/app/components/MatrixPreview";
 import { PanelSwitcher } from "@/app/components/PanelSwitcher";
 import { PanelContext } from "@/app/context";
 import { SCENES } from "@/app/scenes";
-import { parseLifeConfig, useLifeFrame } from "@/app/scenes/life";
+import { parseLifeConfig, useLifeScene } from "@/app/scenes/life";
 import { ModeSwitcher } from "@/app/scenes/ModeSwitcher";
 import { MODES } from "@/app/scenes/types";
 import {
@@ -125,9 +125,9 @@ export default function Page() {
     () => parseLifeConfig(activePanel?.mode_config),
     [activePanel?.mode_config],
   );
-  const lifeFrame = useLifeFrame(lifeConfig);
+  const lifeScene = useLifeScene(lifeConfig);
 
-  // Build the ModeFrame the simulator renders. `now` is in deps so
+  // Build the Scene the simulator renders. `now` is in deps so
   // clock mode advances each tick.
   const modeFrame = useMemo(
     () =>
@@ -135,7 +135,7 @@ export default function Page() {
         message,
         color,
         marqueeSpeed: effectiveMarqueeSpeed,
-        lifeFrame,
+        lifeScene,
       }),
     // `now` reruns the memo every tick — needed for clock mode to
     // pick up the current time. eslint can't see through `frame.buildFrame`.
@@ -146,7 +146,7 @@ export default function Page() {
       message,
       color,
       effectiveMarqueeSpeed,
-      lifeFrame,
+      lifeScene,
       now,
     ],
   );
