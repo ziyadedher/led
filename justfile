@@ -25,6 +25,17 @@ image_url := if arch == "arm-unknown-linux-gnueabihf" {
     "ERROR_UNKNOWN_ARCH"
 }
 
+# qemu-user-static binary that matches `arch` — used by flash-sd's
+# chroot to apt-install tailscale into the rootfs. Arch's
+# `qemu-user-static` package ships both.
+qemu_user_static := if arch == "arm-unknown-linux-gnueabihf" {
+    "/usr/bin/qemu-arm-static"
+} else if arch == "aarch64-unknown-linux-musl" {
+    "/usr/bin/qemu-aarch64-static"
+} else {
+    "ERROR_UNKNOWN_ARCH"
+}
+
 default:
     @just --list
 
@@ -81,6 +92,11 @@ flash-sd id host device: build
     : "${SUPABASE_URL:?tofu output supabase_url is empty — run \`tofu -chdir=terraform apply\` first}"
     : "${SUPABASE_ANON_KEY:?tofu output anon_key is empty — run \`tofu -chdir=terraform apply\` first}"
     : "${TAILSCALE_AUTHKEY:?need TAILSCALE_AUTHKEY in secrets/fleet.sops.json}"
+
+    # qemu-user-static for the chroot apt-install step. Arch:
+    # `pacman -S qemu-user-static qemu-user-static-binfmt`.
+    [ -x "{{ qemu_user_static }}" ] \
+        || { echo "ERROR: {{ qemu_user_static }} missing (Arch: pacman -S qemu-user-static qemu-user-static-binfmt)" >&2; exit 1; }
 
     dev="{{ device }}"
     [ -b "$dev" ] || { echo "ERROR: $dev is not a block device" >&2; exit 1; }
@@ -185,11 +201,56 @@ flash-sd id host device: build
     sudo install -D -m 0644 service/disable-ipv6.conf           "$root_mnt/etc/sysctl.d/99-led-disable-ipv6.conf"
     rm -f "$cfg_tmp"
 
-    # Enable our services + systemd-time-wait-sync. The latter gates
-    # apt-get on NTP sync — Pi Zero W has no RTC, image build-date
-    # wall clock poisons apt InRelease verification on first boot
-    # otherwise. Symlink targets follow where each unit's source
-    # lives: ours under /etc/systemd/system, systemd-shipped under
+    # Mask raspbian's first-boot user setup. We don't write
+    # userconf.txt and don't want a `pi` user; without this mask,
+    # userconfig.service half-creates pi with /usr/sbin/nologin
+    # which is harmless but noisy.
+    sudo ln -sf /dev/null "$root_mnt/etc/systemd/system/userconfig.service"
+
+    # Pre-install tailscale into the rootfs so first boot doesn't
+    # need apt at all. We chroot via qemu-user-static and run the
+    # official installer. Host clock is correct → apt signature
+    # validation passes; on the Pi at first boot the package is
+    # already there. Saves ~3min of first-boot apt work and removes
+    # the time-sync dependency for tailscale-init.
+    echo "==> pre-installing tailscale into the rootfs (~30s via qemu-user)"
+    sudo install -m 0755 "{{ qemu_user_static }}" "$root_mnt{{ qemu_user_static }}"
+    sudo mount --bind /proc "$root_mnt/proc"
+    sudo mount --bind /sys  "$root_mnt/sys"
+    sudo mount --bind /dev  "$root_mnt/dev"
+    # raspbian ships /etc/resolv.conf as a symlink to
+    # /run/systemd/resolve/stub-resolv.conf; cp-through would clobber
+    # the host's. Save the symlink target, replace with a plain file
+    # for the chroot, restore the symlink on cleanup.
+    resolv_link=$(sudo readlink "$root_mnt/etc/resolv.conf" 2>/dev/null || true)
+    sudo rm -f "$root_mnt/etc/resolv.conf"
+    sudo install -m 0644 /etc/resolv.conf "$root_mnt/etc/resolv.conf"
+    chroot_cleanup() {
+        sudo umount "$root_mnt/dev"  2>/dev/null || true
+        sudo umount "$root_mnt/sys"  2>/dev/null || true
+        sudo umount "$root_mnt/proc" 2>/dev/null || true
+        sudo rm -f  "$root_mnt{{ qemu_user_static }}"
+        sudo rm -f  "$root_mnt/etc/resolv.conf"
+        if [ -n "$resolv_link" ]; then
+            sudo ln -sf "$resolv_link" "$root_mnt/etc/resolv.conf"
+        fi
+    }
+    chroot_full_cleanup() {
+        chroot_cleanup
+        cleanup
+    }
+    trap chroot_full_cleanup EXIT
+    sudo install -m 0755 service/install-tailscale-chroot.sh "$root_mnt/install-tailscale-chroot.sh"
+    sudo chroot "$root_mnt" /install-tailscale-chroot.sh
+    sudo rm -f "$root_mnt/install-tailscale-chroot.sh"
+    chroot_cleanup
+    trap cleanup EXIT
+
+    # Enable our services. systemd-time-wait-sync stays as a soft
+    # dep for tailscale-init's TLS cert validation — apt is gone
+    # but cert validity windows still benefit from a synced clock.
+    # Symlink targets follow where each unit's source lives: ours
+    # under /etc/systemd/system, systemd-shipped under
     # /lib/systemd/system.
     sudo install -d -m 0755 "$root_mnt/etc/systemd/system/multi-user.target.wants"
     for unit in led-driver.service led-wifi-setup.service led-tailscale-init.service; do

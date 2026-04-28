@@ -1,31 +1,21 @@
 #!/bin/bash
-# Installs Tailscale (if missing) and joins the tailnet. Idempotent:
-# writes a marker file at the end so the systemd unit won't re-run.
+# Joins the tailnet on first boot. Tailscale itself is pre-installed
+# at flash time (see `just flash-sd`'s chroot+apt step), so this
+# script just runs `tailscale up` and scrubs the auth key.
+# Idempotent via the marker file in the systemd unit's
+# ConditionPathExists=.
 set -euo pipefail
 
 : "${HOSTNAME:?HOSTNAME unset in /etc/led/init.env}"
 : "${TAILSCALE_AUTHKEY:?TAILSCALE_AUTHKEY unset in /etc/led/init.env}"
 
-if ! command -v tailscale >/dev/null; then
-    echo "[led-tailscale-init] installing tailscale"
-    curl -fsSL https://tailscale.com/install.sh | sh
-fi
-
 echo "[led-tailscale-init] joining tailnet as $HOSTNAME"
 tailscale up --auth-key="$TAILSCALE_AUTHKEY" --hostname="$HOSTNAME" --ssh
-
-# Keep the system sshd running alongside Tailscale SSH. If the
-# tailnet breaks (control-plane unreachable, IPv6 routing trap,
-# auth key expired) the system sshd on :22 is the only way to
-# recover without reflashing — see the 2026-04-28 incident where
-# the Pi got stuck unable to refresh its tailscale session.
-# Tailscale SSH still handles tailnet-internal access; system sshd
-# adds a LAN fallback.
 
 mkdir -p /var/lib/led-wifi-setup
 date -u +%FT%TZ > /var/lib/led-wifi-setup/tailscale-joined
 
-# The auth key is sensitive; once we've joined, scrub it from the env file.
+# Auth key is sensitive; scrub from the env file once we've joined.
 if grep -q '^TAILSCALE_AUTHKEY=' /etc/led/init.env; then
     sed -i '/^TAILSCALE_AUTHKEY=/d' /etc/led/init.env
 fi
