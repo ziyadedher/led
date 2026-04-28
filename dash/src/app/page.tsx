@@ -17,7 +17,7 @@ import { PanelContext } from "@/app/context";
 import { entries, panels, useRealtimeRevalidation } from "@/utils/actions";
 
 export default function Page() {
-  useRealtimeRevalidation();
+  const realtimeStatus = useRealtimeRevalidation();
   const { mutate } = useSWRConfig();
   const { data: panelsData } = panels.get.useSWR();
 
@@ -29,6 +29,7 @@ export default function Page() {
     );
   }, [panelsData]);
   const panelId = chosenPanelId ?? defaultPanelId;
+  const activePanel = panelsData?.find((p) => p.id === panelId);
 
   const [message, setMessage] = useState("");
   const [color, setColor] = useState<ColorState>({
@@ -38,6 +39,15 @@ export default function Page() {
   const [effects, setEffects] = useState<EffectsState>({ marqueeSpeed: 0 });
 
   const isSubmittable = message.length > 0 && panelId.length > 0;
+
+  // Mirror the auto-force logic from `handleSubmit` so the live
+  // preview shows what the entry will actually look like once it
+  // hits the panel (auto-bump to 16 when message is too long to fit
+  // and the user hasn't picked a speed).
+  const previewMarqueeSpeed =
+    effects.marqueeSpeed === 0 && message.length >= FORCE_ENABLE_MARQUEE_LENGTH
+      ? 16
+      : effects.marqueeSpeed;
 
   const handleSubmit = useCallback(async () => {
     if (!panelId) return;
@@ -50,53 +60,130 @@ export default function Page() {
               speed: color.speed,
             },
           };
-    const marqueeSpeed =
-      effects.marqueeSpeed === 0 && message.length >= FORCE_ENABLE_MARQUEE_LENGTH
-        ? 16
-        : effects.marqueeSpeed;
     await entries.add.call(panelId, {
       text: message,
       options: {
         color: wireColor,
-        marquee: { speed: marqueeSpeed },
+        marquee: { speed: previewMarqueeSpeed },
       },
     });
     setMessage("");
     await mutate(`/entries/${panelId}`);
     await mutate(`/entries/scroll/${panelId}`);
     await mutate(`/pause/${panelId}`);
-  }, [color, effects, message, mutate, panelId]);
+  }, [color, message, mutate, panelId, previewMarqueeSpeed]);
 
   return (
     <PanelContext.Provider value={panelId}>
-      <div className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-8 px-4 pb-16 pt-6 sm:px-6 lg:px-8">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
+      <div className="mx-auto flex min-h-dvh max-w-6xl flex-col gap-6 px-4 pb-16 pt-6 sm:px-6 lg:px-10">
+        {/* ─── masthead ─────────────────────────────────────────── */}
+        <header className="flex items-end justify-between gap-4 border-b border-dashed border-(--color-hairline) pb-4">
+          <h1 className="flex items-baseline gap-2 font-mono text-2xl font-semibold leading-none tracking-tight sm:text-3xl">
+            <span className="text-(--color-text-dim)">ziyad&apos;s</span>
+            <span className="text-(--color-accent) drop-shadow-[0_0_14px_var(--color-accent-fade)]">
               led
             </span>
-            <span className="font-mono text-2xl font-semibold tracking-tight">
-              <span className="text-(--color-accent) [text-shadow:0_0_18px_var(--color-accent-fade)]">
-                wall
-              </span>
-              <span className="text-(--color-text)">.</span>
-            </span>
-            <LiveDot />
-          </div>
-          <PanelSwitcher panelId={panelId} onChange={setChosenPanelId} />
+            <span className="text-(--color-text)">panels</span>
+          </h1>
+          <LiveDot status={realtimeStatus} />
         </header>
 
-        <div className="flex justify-center">
-          <div className="w-full max-w-md">
-            <MatrixPreview
-              preview={{
-                text: message,
-                color,
-              }}
-            />
-          </div>
-        </div>
+        {/* ─── instrument: matrix simulator ───────────────────────── */}
+        <section
+          className="grid gap-4 lg:grid-cols-[1fr_220px]"
+          aria-label="Live simulator"
+        >
+          <div className="relative">
+            {/* Instrument frame — corner brackets + heading bar above
+             * the matrix. The MatrixPreview component itself draws the
+             * black canvas + LEDs; we wrap it for the frame chrome. */}
+            <div className="mb-2 flex items-end justify-between">
+              <div className="flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.3em]">
+                <span className="text-(--color-text-faint)">::</span>
+                <span className="text-(--color-text-dim)">simulator</span>
+                <span className="text-(--color-text-faint)">/</span>
+                <span className="text-(--color-text-muted)">
+                  wasm · driver-core
+                </span>
+              </div>
+              <div className="flex items-center gap-3 font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint) tabular-nums">
+                <span style={{ fontFamily: "var(--font-pixel)", fontSize: 13 }}>
+                  64 × 64
+                </span>
+                <span>{"//"}</span>
+                <span style={{ fontFamily: "var(--font-pixel)", fontSize: 13 }}>
+                  rgb888
+                </span>
+              </div>
+            </div>
 
+            <div className="relative">
+              {/* Inner corner brackets */}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -left-1.5 -top-1.5 z-10 h-3 w-3 border-l border-t border-(--color-border-strong)"
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -right-1.5 -top-1.5 z-10 h-3 w-3 border-r border-t border-(--color-border-strong)"
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -bottom-1.5 -left-1.5 z-10 h-3 w-3 border-b border-l border-(--color-border-strong)"
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -bottom-1.5 -right-1.5 z-10 h-3 w-3 border-b border-r border-(--color-border-strong)"
+              />
+              <MatrixPreview
+                preview={{
+                  text: message,
+                  color,
+                  marqueeSpeed: previewMarqueeSpeed,
+                }}
+              />
+            </div>
+
+            <div className="mt-2 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint) tabular-nums">
+              <span>signal · phosphor</span>
+              <span className="flex items-center gap-2">
+                <span className="inline-block h-1 w-1 animate-pulse rounded-[1px] bg-(--color-phosphor)" />
+                live · rAF
+              </span>
+            </div>
+          </div>
+
+          {/* Side rail: panel selector + live preview readout */}
+          <aside className="flex flex-col gap-5 border-l border-dashed border-(--color-hairline) pl-4 lg:pl-6">
+            <PanelSwitcher panelId={panelId} onChange={setChosenPanelId} />
+
+            <div className="border-t border-dashed border-(--color-hairline)" />
+
+            <div className="space-y-1.5 font-mono text-[10px] uppercase tracking-[0.25em]">
+              <div className="text-(--color-text-dim)">:: preview</div>
+              <div className="text-(--color-text-faint)">
+                len{" "}
+                <span className="text-(--color-text) tabular-nums">
+                  {String(message.length).padStart(2, "0")}
+                </span>
+              </div>
+              <div className="text-(--color-text-faint)">
+                mode{" "}
+                <span className="text-(--color-text)">
+                  {color.mode === "rgb" ? "rgb" : "rainbow"}
+                </span>
+              </div>
+              <div className="text-(--color-text-faint)">
+                marquee{" "}
+                <span className="text-(--color-text) tabular-nums">
+                  {String(effects.marqueeSpeed).padStart(2, "0")}
+                </span>
+              </div>
+            </div>
+          </aside>
+        </section>
+
+        {/* ─── composer + queue ──────────────────────────────────── */}
         <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_1fr]">
           <Composer
             message={message}
@@ -108,19 +195,34 @@ export default function Page() {
             onSubmit={handleSubmit}
             disabled={!isSubmittable}
           />
-          <section className="flex min-h-0 flex-col gap-3">
-            <div className="flex items-baseline justify-between">
-              <h2 className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-dim)">
-                queue
-              </h2>
-              <span className="font-mono text-[10px] text-(--color-text-dim)">
-                top 7 fit on the matrix
+          <section
+            className="flex min-h-0 flex-col gap-3"
+            aria-label="Queue"
+          >
+            <div className="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-[0.3em]">
+              <span className="text-(--color-text-dim)">:: queue</span>
+              <span className="text-(--color-text-faint)">
+                fifo · top 7 on-air
               </span>
             </div>
             <EntriesList />
           </section>
         </div>
+
+        {/* ─── footer hairline ──────────────────────────────────── */}
+        <footer className="mt-auto flex items-center justify-between border-t border-dashed border-(--color-hairline) pt-3 font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint)">
+          <span>
+            led.wall · v0.3 · panel{" "}
+            <span className="text-(--color-text-dim)">
+              {activePanel?.name ?? "—"}
+            </span>
+          </span>
+          <span className="hidden sm:inline">
+            press <span className="text-(--color-text-dim)">↵</span> to transmit
+          </span>
+        </footer>
       </div>
     </PanelContext.Provider>
   );
 }
+

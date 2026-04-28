@@ -36,6 +36,7 @@ type Frame = {
 type PreviewEntry = {
   text: string;
   color: ColorState;
+  marqueeSpeed: number;
 };
 
 const DEFAULT_COLOR: WireColor = { Rgb: { r: 255, g: 138, b: 44 } };
@@ -112,7 +113,10 @@ export function MatrixPreview({ preview }: { preview?: PreviewEntry } = {}) {
         entries: [
           {
             text: preview.text,
-            options: { color: previewWire, marquee: { speed: 0 } },
+            options: {
+              color: previewWire,
+              marquee: { speed: preview.marqueeSpeed },
+            },
           },
           ...fromStore,
         ],
@@ -142,7 +146,10 @@ export function MatrixPreview({ preview }: { preview?: PreviewEntry } = {}) {
     const padding = 24;
     const target = Math.max(120, containerWidth - padding);
     const fit = Math.max(3, Math.floor((target - GAP) / COLS) - 1);
-    const cell = Math.min(6, fit);
+    // Adafruit P2.5/P3 panels use SMD LEDs with ~70-80% fill per cell
+    // — capping at 5px cell + 1px gap (~83/17) reads close enough at
+    // dashboard scale and keeps the simulator from dominating the page.
+    const cell = Math.min(5, fit);
     const w = COLS * (cell + GAP) + GAP;
     const h = ROWS * (cell + GAP) + GAP;
     const dpr = window.devicePixelRatio || 1;

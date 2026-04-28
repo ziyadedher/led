@@ -4,14 +4,14 @@ import { Switch } from "@headlessui/react";
 import { useState } from "react";
 
 const PRESET_COLORS = [
-  "#FF8A2C",
-  "#FF4D6D",
-  "#FFE066",
-  "#A6E22E",
-  "#4DE0E0",
-  "#4DA3FF",
-  "#A04DFF",
-  "#FFFFFF",
+  { hex: "#FF8A2C", label: "amber" },
+  { hex: "#FF4D6D", label: "rose" },
+  { hex: "#FFE066", label: "sun" },
+  { hex: "#A6E22E", label: "lime" },
+  { hex: "#4DE0E0", label: "cyan" },
+  { hex: "#4DA3FF", label: "azure" },
+  { hex: "#A04DFF", label: "violet" },
+  { hex: "#FFFFFF", label: "white" },
 ];
 
 const rgbToHex = ({ r, g, b }: { r: number; g: number; b: number }) =>
@@ -63,34 +63,89 @@ export function ColorPicker({
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-(--color-border) bg-(--color-surface-2) p-4">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-dim)">
-          color
+        <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
+          {"// color"}
         </span>
-        <Switch
-          checked={value.mode === "rainbow"}
-          onChange={(on) => {
-            if (on) {
-              onChange({ mode: "rainbow", perLetter: false, speed: 16 });
-            } else {
-              onChange({ mode: "rgb", rgb: { r: 255, g: 138, b: 44 } });
-            }
-          }}
-          className={`${value.mode === "rainbow" ? "bg-(--color-accent)" : "bg-(--color-border-strong)"} relative inline-flex h-6 w-11 items-center rounded-full transition`}
-        >
-          <span className="sr-only">Rainbow mode</span>
+        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
+          <span className={value.mode === "rgb" ? "text-(--color-text)" : ""}>
+            rgb
+          </span>
+          <Switch
+            checked={value.mode === "rainbow"}
+            onChange={(on) => {
+              if (on) {
+                onChange({ mode: "rainbow", perLetter: false, speed: 16 });
+              } else {
+                onChange({ mode: "rgb", rgb: { r: 255, g: 138, b: 44 } });
+              }
+            }}
+            className={[
+              "relative inline-flex h-4 w-7 items-center rounded-sm border transition",
+              value.mode === "rainbow"
+                ? "border-(--color-accent) bg-(--color-accent)/15"
+                : "border-(--color-border-strong) bg-(--color-surface-2)",
+            ].join(" ")}
+          >
+            <span className="sr-only">Rainbow mode</span>
+            <span
+              className={[
+                "inline-block h-2.5 w-2.5 rounded-[1px] transition-transform",
+                value.mode === "rainbow"
+                  ? "translate-x-3.5 bg-(--color-accent) shadow-[0_0_6px_var(--color-accent)]"
+                  : "translate-x-0.5 bg-(--color-text-dim)",
+              ].join(" ")}
+            />
+          </Switch>
           <span
-            className={`${value.mode === "rainbow" ? "translate-x-6" : "translate-x-1"} inline-block h-4 w-4 rounded-full bg-white transition`}
-          />
-        </Switch>
+            className={value.mode === "rainbow" ? "text-(--color-accent)" : ""}
+          >
+            rainbow
+          </span>
+        </div>
       </div>
 
       {value.mode === "rgb" ? (
         <div className="space-y-3">
-          <div className="grid grid-cols-8 gap-1.5">
+          <div className="flex items-stretch gap-2">
+            <div
+              className="aspect-square w-14 shrink-0 border border-(--color-border-strong)"
+              style={{
+                backgroundColor: rgbToHex(value.rgb),
+                boxShadow: `0 0 18px -4px ${rgbToHex(value.rgb)}`,
+              }}
+              aria-hidden
+            />
+            <div className="flex flex-1 flex-col justify-between gap-1">
+              <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint)">
+                hex
+              </span>
+              <input
+                type="text"
+                value={hexDraft}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setHexDraft(next);
+                  const rgb = hexToRgb(next);
+                  if (rgb) onChange({ mode: "rgb", rgb });
+                }}
+                spellCheck={false}
+                className="w-full border-0 border-b border-(--color-border-strong) bg-transparent p-0 pb-1 font-mono text-2xl font-medium uppercase tracking-wider text-(--color-text) focus:border-(--color-accent) focus:outline-none focus:ring-0"
+                placeholder="#RRGGBB"
+                maxLength={7}
+              />
+              <div className="flex justify-between font-mono text-[9px] uppercase tracking-[0.25em] tabular-nums text-(--color-text-faint)">
+                <span>r:{String(value.rgb.r).padStart(3, "0")}</span>
+                <span>g:{String(value.rgb.g).padStart(3, "0")}</span>
+                <span>b:{String(value.rgb.b).padStart(3, "0")}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-8 gap-1">
             {PRESET_COLORS.map((preset) => {
-              const rgb = hexToRgb(preset);
+              const rgb = hexToRgb(preset.hex);
               if (!rgb) return null;
               const active =
                 rgb.r === value.rgb.r &&
@@ -98,46 +153,44 @@ export function ColorPicker({
                 rgb.b === value.rgb.b;
               return (
                 <button
-                  key={preset}
+                  key={preset.hex}
                   type="button"
                   onClick={() => onChange({ mode: "rgb", rgb })}
                   className={[
-                    "aspect-square rounded-md border transition hover:scale-110",
+                    "relative aspect-square border transition",
                     active
-                      ? "border-white ring-2 ring-white/30"
-                      : "border-(--color-border)",
+                      ? "border-(--color-text)"
+                      : "border-(--color-border) hover:border-(--color-border-strong)",
                   ].join(" ")}
-                  style={{ backgroundColor: preset }}
-                  aria-label={`Pick ${preset}`}
-                />
+                  style={{ backgroundColor: preset.hex }}
+                  title={`${preset.label} ${preset.hex}`}
+                  aria-label={`Pick ${preset.hex}`}
+                >
+                  {active ? (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-0 ring-1 ring-(--color-text)/60 ring-offset-1 ring-offset-(--color-bg)"
+                    />
+                  ) : null}
+                </button>
               );
             })}
-          </div>
-          <div className="flex items-center gap-2">
-            <span
-              className="h-9 w-9 rounded-md border border-(--color-border)"
-              style={{ backgroundColor: rgbToHex(value.rgb) }}
-            />
-            <input
-              type="text"
-              value={hexDraft}
-              onChange={(e) => {
-                const next = e.target.value;
-                setHexDraft(next);
-                const rgb = hexToRgb(next);
-                if (rgb) onChange({ mode: "rgb", rgb });
-              }}
-              spellCheck={false}
-              className="block w-full rounded-md border border-(--color-border) bg-(--color-bg) px-3 py-2 font-mono text-sm uppercase tracking-wider text-(--color-text) focus:border-(--color-accent) focus:outline-none"
-              placeholder="#RRGGBB"
-            />
           </div>
         </div>
       ) : (
         <div className="space-y-3">
-          <RainbowGradient />
-          <div className="flex items-center gap-3 font-mono text-xs text-(--color-text-muted)">
-            <span>slow</span>
+          <div
+            aria-hidden
+            className="h-3 w-full"
+            style={{
+              background:
+                "linear-gradient(90deg, #ff4d6d, #ff8a2c, #ffe066, #a6e22e, #4de0e0, #4da3ff, #a04dff, #ff4d6d)",
+            }}
+          />
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
+              slow
+            </span>
             <input
               type="range"
               min={1}
@@ -146,39 +199,34 @@ export function ColorPicker({
               onChange={(e) =>
                 onChange({ ...value, speed: Number(e.target.value) })
               }
-              className="flex-1 accent-(--color-accent)"
+              className="fader flex-1"
+              style={
+                {
+                  ["--fader-pos" as string]: `${(value.speed / 50) * 100}%`,
+                } as React.CSSProperties
+              }
+              aria-label="Rainbow speed"
             />
-            <span>fast</span>
-            <span className="w-8 text-right tabular-nums text-(--color-text)">
-              {value.speed}
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
+              fast
+            </span>
+            <span className="w-8 text-right font-mono text-[10px] tabular-nums text-(--color-text)">
+              {String(value.speed).padStart(2, "0")}
             </span>
           </div>
-          <label className="flex cursor-pointer items-center gap-2 font-mono text-xs text-(--color-text-muted)">
+          <label className="flex cursor-pointer items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-text-muted)">
             <input
               type="checkbox"
               checked={value.perLetter}
               onChange={(e) =>
                 onChange({ ...value, perLetter: e.target.checked })
               }
-              className="h-3.5 w-3.5 rounded border-(--color-border-strong) bg-(--color-bg) text-(--color-accent) focus:ring-0 focus:ring-offset-0"
+              className="h-3 w-3 rounded-[1px] border-(--color-border-strong) bg-(--color-bg) text-(--color-accent) focus:ring-0 focus:ring-offset-0"
             />
-            per-letter rainbow
+            per-letter phase
           </label>
         </div>
       )}
     </div>
-  );
-}
-
-function RainbowGradient() {
-  return (
-    <div
-      aria-hidden
-      className="h-3 w-full rounded-full"
-      style={{
-        background:
-          "linear-gradient(90deg, #ff4d6d, #ff8a2c, #ffe066, #a6e22e, #4de0e0, #4da3ff, #a04dff, #ff4d6d)",
-      }}
-    />
   );
 }

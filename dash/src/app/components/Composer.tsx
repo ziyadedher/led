@@ -1,10 +1,11 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { useRef, useState } from "react";
 
 import { ColorPicker, type ColorState } from "./ColorPicker";
 import { EffectsPanel, type EffectsState } from "./EffectsPanel";
+
+const MAX_LEN = 64;
 
 export function Composer({
   message,
@@ -40,62 +41,123 @@ export function Composer({
     }
   };
 
+  const status = submitting
+    ? "transmitting"
+    : disabled
+      ? "awaiting payload"
+      : "ready / press ↵";
+
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
-      className="rounded-2xl border border-(--color-border) bg-(--color-surface) p-5 shadow-2xl shadow-black/40"
+    <section
+      className="relative border border-(--color-border) bg-(--color-surface)/70 backdrop-blur-sm"
+      aria-label="Composer"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -left-px -top-px h-2.5 w-2.5 border-l border-t border-(--color-border-strong)"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -right-px -top-px h-2.5 w-2.5 border-r border-t border-(--color-border-strong)"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -bottom-px -left-px h-2.5 w-2.5 border-b border-l border-(--color-border-strong)"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -bottom-px -right-px h-2.5 w-2.5 border-b border-r border-(--color-border-strong)"
+      />
+
+      <header className="flex items-center justify-between border-b border-(--color-border) bg-(--color-surface-2)/40 px-4 py-2">
+        <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
+          :: composer
+        </span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
+          {status}
+        </span>
+      </header>
+
+      <form onSubmit={handleSubmit} className="space-y-5 px-4 py-4">
         <div className="space-y-2">
-          <label
-            htmlFor="msg"
-            className="block font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-dim)"
-          >
-            message
-          </label>
-          <div className="relative">
+          <div className="flex items-center justify-between">
+            <label
+              htmlFor="msg"
+              className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)"
+            >
+              :: payload
+            </label>
+            <span className="font-mono text-[10px] tabular-nums text-(--color-text-faint)">
+              {String(message.length).padStart(2, "0")}/
+              {String(MAX_LEN).padStart(2, "0")}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 border-b border-(--color-border-strong) pb-1.5 focus-within:border-(--color-accent)">
+            <span
+              aria-hidden
+              className="font-mono text-base text-(--color-accent)"
+            >
+              ▸
+            </span>
             <input
               id="msg"
               ref={inputRef}
               type="text"
               value={message}
-              onChange={(e) => onMessageChange(e.target.value)}
-              placeholder="say something"
+              onChange={(e) =>
+                onMessageChange(e.target.value.slice(0, MAX_LEN))
+              }
+              placeholder="say something to the wall"
               disabled={submitting}
               autoComplete="off"
-              className="block w-full rounded-xl border border-(--color-border) bg-(--color-bg) px-4 py-3 font-mono text-base text-(--color-text) placeholder:text-(--color-text-dim) focus:border-(--color-accent) focus:outline-none focus:ring-0 disabled:opacity-60"
+              spellCheck={false}
+              className="w-full border-0 bg-transparent p-0 font-mono text-base text-(--color-text) placeholder:text-(--color-text-faint) focus:outline-none focus:ring-0 disabled:opacity-60"
             />
-            {message.length > 0 ? (
-              <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 font-mono text-xs text-(--color-text-dim)">
-                {message.length}
+            {message.length === 0 ? (
+              <span
+                aria-hidden
+                className="animate-cursor select-none font-mono text-base text-(--color-accent)"
+              >
+                ▌
               </span>
             ) : null}
           </div>
         </div>
 
+        <div className="border-t border-dashed border-(--color-hairline)" />
+
         <ColorPicker value={color} onChange={onColorChange} />
+
+        <div className="border-t border-dashed border-(--color-hairline)" />
+
         <EffectsPanel
           value={effects}
           onChange={onEffectsChange}
           messageLength={message.length}
         />
 
+        <div className="border-t border-dashed border-(--color-hairline)" />
+
         <button
           type="submit"
           disabled={disabled || submitting}
-          className="group relative w-full overflow-hidden rounded-xl bg-(--color-accent) py-3 font-medium text-black shadow-(--shadow-glow) transition disabled:opacity-40 disabled:shadow-none"
+          className="group relative flex w-full items-center justify-between overflow-hidden border border-(--color-accent)/60 bg-(--color-accent)/10 px-4 py-3 text-(--color-accent) transition hover:bg-(--color-accent)/20 disabled:cursor-not-allowed disabled:border-(--color-border) disabled:bg-transparent disabled:text-(--color-text-faint)"
         >
-          <span className="relative z-10 inline-flex items-center justify-center gap-2 font-mono text-sm uppercase tracking-[0.2em]">
-            {submitting ? "sending…" : "send to matrix"}
+          <span className="font-mono text-xs uppercase tracking-[0.4em]">
+            {submitting ? "transmit ··· " : "transmit"}
+          </span>
+          <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] opacity-70">
+            <span>↵ enter</span>
+            <span aria-hidden className="text-base">
+              →
+            </span>
           </span>
           <span
             aria-hidden
-            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 transition group-hover:opacity-100 group-disabled:hidden"
+            className="pointer-events-none absolute inset-y-0 -left-1/2 w-1/2 -skew-x-12 bg-gradient-to-r from-transparent via-white/15 to-transparent transition-all duration-700 group-hover:left-full group-disabled:hidden"
           />
         </button>
       </form>
-    </motion.section>
+    </section>
   );
 }

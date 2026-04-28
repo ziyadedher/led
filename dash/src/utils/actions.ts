@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 
 import { Database } from "@/types/supabase";
@@ -76,8 +76,11 @@ const useSWRFactory = <Result>(
  * trigger SWR revalidation for the affected keys. Mount once at the top of
  * the app.
  */
-export const useRealtimeRevalidation = () => {
+export type RealtimeStatus = "connecting" | "live" | "down";
+
+export const useRealtimeRevalidation = (): RealtimeStatus => {
   const { mutate } = useSWRConfig();
+  const [status, setStatus] = useState<RealtimeStatus>("connecting");
 
   useEffect(() => {
     const channel = supabase
@@ -109,12 +112,19 @@ export const useRealtimeRevalidation = () => {
           }
         },
       )
-      .subscribe();
+      .subscribe((s) => {
+        if (s === "SUBSCRIBED") setStatus("live");
+        else if (s === "CLOSED" || s === "CHANNEL_ERROR" || s === "TIMED_OUT")
+          setStatus("down");
+        else setStatus("connecting");
+      });
 
     return () => {
       void supabase.removeChannel(channel);
     };
   }, [mutate]);
+
+  return status;
 };
 
 const updatePanelLastUpdated = async (panelId: string) => {
