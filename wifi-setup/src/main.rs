@@ -327,6 +327,10 @@ async fn apply_network(ssid: &str, psk: &str, _country: &str) -> Result<()> {
 async fn bring_up_ap(ssid: &str) -> Result<()> {
     let _ = nmcli(["connection", "delete", AP_CONNECTION]).await;
 
+    // OPEN AP: do NOT pass `wifi-sec.key-mgmt`. NetworkManager treats
+    // `key-mgmt=none` as legacy WEP and demands a `wep-key0`, which fails
+    // activation. Omitting the security block entirely yields a true
+    // open network (which is what we want for the captive-portal flow).
     nmcli([
         "connection",
         "add",
@@ -346,8 +350,6 @@ async fn bring_up_ap(ssid: &str) -> Result<()> {
         "10.42.0.1/24",
         "ipv6.method",
         "ignore",
-        "wifi-sec.key-mgmt",
-        "none",
         "connection.autoconnect",
         "no",
     ])

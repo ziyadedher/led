@@ -16,7 +16,7 @@ use opentelemetry::global;
 use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter};
 use opentelemetry::KeyValue;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
-use opentelemetry_otlp::{LogExporter, MetricExporter, Protocol, WithExportConfig};
+use opentelemetry_otlp::{LogExporter, MetricExporter, Protocol, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::Resource;
@@ -130,8 +130,14 @@ where
         ));
     };
 
+    // The HTTP exporter requires an explicit reqwest client in 0.30 — the
+    // feature flags alone don't install a default client. Reuse one shared
+    // client for both metrics and logs.
+    let http_client = reqwest::Client::new();
+
     let metric_exporter = MetricExporter::builder()
         .with_http()
+        .with_http_client(http_client.clone())
         .with_protocol(Protocol::HttpBinary)
         .with_endpoint(format!("{}/v1/metrics", endpoint.trim_end_matches('/')))
         .build()
@@ -147,6 +153,7 @@ where
 
     let log_exporter = LogExporter::builder()
         .with_http()
+        .with_http_client(http_client)
         .with_protocol(Protocol::HttpBinary)
         .with_endpoint(format!("{}/v1/logs", endpoint.trim_end_matches('/')))
         .build()
