@@ -2,7 +2,10 @@
 Description=LED matrix WiFi onboarding (AP + captive portal until configured)
 After=NetworkManager.service
 Wants=NetworkManager.service
-Before=network-online.target led-tailscale-init.service led-driver.service
+Before=network-online.target led-tailscale-init.service
+# led-driver intentionally NOT in `Before=` — it runs concurrently
+# and renders the setup frame (or boot frame) until this service
+# finishes and the panel state syncs.
 
 [Service]
 Type=oneshot

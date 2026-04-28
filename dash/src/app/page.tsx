@@ -21,15 +21,15 @@ import {
   ClockComposer,
   clockFrameFromConfig,
   parseClockConfig,
-} from "@/app/modes/clock";
-import { ImageComposer, parseImageConfig } from "@/app/modes/image";
+} from "@/app/frames/clock";
+import { ImageComposer, parseImageConfig } from "@/app/frames/image";
 import {
   LifeComposer,
   parseLifeConfig,
   useLifeFrame,
-} from "@/app/modes/life";
-import { ModeSwitcher } from "@/app/modes/ModeSwitcher";
-import type { ModeFrame, TextEntry } from "@/app/modes/types";
+} from "@/app/frames/life";
+import { ModeSwitcher } from "@/app/frames/ModeSwitcher";
+import type { ModeFrame, TextEntry } from "@/app/frames/types";
 import {
   entries,
   panels,

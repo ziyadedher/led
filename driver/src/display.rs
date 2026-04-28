@@ -4,12 +4,15 @@ use std::time::Instant;
 use anyhow::Context;
 use chrono::{Local, Timelike};
 use display_core::{
+    boot::BootFrame,
     clock::{ClockFrame, ClockTime},
     image::ImageFrame,
     life::{Lattice, LifeFrame},
+    setup::SetupFrame,
     text::TextFrame,
     Frame, Mode, PanelState,
 };
+use std::path::Path;
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::DrawTarget;
 use parking_lot::RwLock;
@@ -99,6 +102,33 @@ pub async fn drive(
     }
 }
 
+/// Read the wifi-setup marker file. wifi-setup writes this when it
+/// brings the AP up and removes it on successful STA connect; the
+/// content is two lines: the AP SSID and the portal URL. Absence =
+/// not in setup mode.
+fn read_setup_marker() -> Option<SetupFrame> {
+    let path = Path::new("/run/led-wifi-setup.active");
+    let raw = std::fs::read_to_string(path).ok()?;
+    let mut lines = raw.lines();
+    let ssid = lines.next()?.trim().to_string();
+    let portal_url = lines
+        .next()
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "10.42.0.1".to_string());
+    if ssid.is_empty() {
+        return None;
+    }
+    Some(SetupFrame {
+        color: Rgb {
+            r: 0xff,
+            g: 0xb8,
+            b: 0x4d,
+        },
+        ssid,
+        portal_url,
+    })
+}
+
 /// Driver-local state for life mode. Held across frames so the
 /// lattice can evolve between renders. Reset to None when the panel
 /// switches away from life mode.
@@ -162,10 +192,23 @@ impl LifeState {
     }
 }
 
-/// Pick the per-mode render input based on the panel's `mode`. Falls
-/// back to text mode on unknown modes so a misconfigured panel
-/// doesn't black out — text is the lowest-surprise default.
+/// Pick the per-mode render input based on the panel's `mode`. Two
+/// pre-conditions short-circuit the configured mode:
+///   1. wifi-setup is running its onboarding AP — show the setup
+///      frame (SSID + portal URL) so the user can join from a phone.
+///   2. State sync hasn't resolved a panel id yet — show the boot
+///      frame as a "we're alive, just waking up" indicator.
+/// Falls back to text mode on unknown modes so a misconfigured
+/// panel doesn't black out.
 fn build_mode(snapshot: &State, life_state: &mut Option<LifeState>) -> Mode {
+    if let Some(setup_frame) = read_setup_marker() {
+        *life_state = None;
+        return Mode::Setup(setup_frame);
+    }
+    if snapshot.panel.id.is_empty() {
+        *life_state = None;
+        return Mode::Boot(BootFrame::default());
+    }
     match snapshot.panel.mode.as_str() {
         "clock" => {
             *life_state = None;

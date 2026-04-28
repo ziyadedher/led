@@ -10,7 +10,7 @@ import {
 } from "react";
 
 import { PanelContext } from "@/app/context";
-import type { ModeFrame, WireColor } from "@/app/modes/types";
+import type { ModeFrame, WireColor } from "@/app/frames/types";
 import { entries as entriesActions } from "@/utils/actions";
 
 // 64×64 to match the rpi-led-panel default; the WASM core runs the same

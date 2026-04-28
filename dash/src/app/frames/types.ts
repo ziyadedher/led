@@ -1,8 +1,8 @@
 /**
  * Per-mode contracts shared between the dash UI and the WASM-bound
- * Frame shape. Each mode owns its own file under src/app/modes/ and
- * exports the components + helpers the page composes — keeps the
- * driver/dash modes isomorphic by file layout.
+ * Frame shape. Each mode owns its own file under src/app/frames/
+ * and exports the components + helpers the page composes — keeps
+ * the driver/dash frame layout isomorphic.
  */
 
 import type { PanelMode } from "@/utils/actions";

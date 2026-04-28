@@ -32,6 +32,8 @@ use tokio::sync::Notify;
 
 const AP_CONNECTION: &str = "led-setup-ap";
 const CONNECTED_MARK: &str = "/var/lib/led-wifi-setup/configured";
+const ACTIVE_MARK: &str = "/run/led-wifi-setup.active";
+const PORTAL_URL: &str = "10.42.0.1";
 const CHECK_INTERVAL: Duration = Duration::from_secs(2);
 const APPLY_TIMEOUT: Duration = Duration::from_secs(45);
 
@@ -87,6 +89,7 @@ async fn main() -> Result<()> {
     tracing::info!(networks = networks.len(), "scanned");
 
     bring_up_ap(&ssid).await.context("bring up AP")?;
+    write_active_marker(&ssid).await.ok();
 
     let shutdown = Arc::new(Notify::new());
     let app_state = Arc::new(AppState {
@@ -125,6 +128,7 @@ async fn main() -> Result<()> {
         .context("axum serve")?;
 
     tear_down_ap().await.ok();
+    clear_active_marker().await.ok();
     mark_configured(&args.marker).await?;
     tracing::info!("exiting after successful WiFi configuration");
     Ok(())
@@ -520,6 +524,24 @@ async fn mark_configured(path: &Path) -> Result<()> {
         tokio::fs::create_dir_all(parent).await.ok();
     }
     tokio::fs::write(path, b"").await?;
+    Ok(())
+}
+
+/// Drop a marker file the led-driver reads to swap in the setup
+/// frame. Two lines: SSID, portal URL. Lives in /run so it gets
+/// nuked on reboot.
+async fn write_active_marker(ssid: &str) -> Result<()> {
+    let parent = Path::new(ACTIVE_MARK)
+        .parent()
+        .unwrap_or_else(|| Path::new("/run"));
+    tokio::fs::create_dir_all(parent).await.ok();
+    let body = format!("{ssid}\n{PORTAL_URL}\n");
+    tokio::fs::write(ACTIVE_MARK, body).await?;
+    Ok(())
+}
+
+async fn clear_active_marker() -> Result<()> {
+    let _ = tokio::fs::remove_file(ACTIVE_MARK).await;
     Ok(())
 }
 

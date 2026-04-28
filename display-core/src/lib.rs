@@ -16,14 +16,15 @@ use embedded_graphics::{
 };
 use serde::{Deserialize, Serialize};
 
-pub mod clock;
-pub mod image;
-pub mod life;
-pub mod text;
+pub mod frames;
+
+// Re-export each frame module under its old top-level path so
+// existing callers (driver, wasm-sim) keep compiling without churn.
+pub use frames::{boot, clock, image, life, setup, text};
 
 // Re-export the most-used text types so existing callers can grab
 // them from the crate root without reaching into the module.
-pub use text::{
+pub use frames::text::{
     MarqueeOptions, RainbowOptions, Rgb, TextEntry, TextEntryColor, TextEntryOptions,
 };
 
@@ -52,6 +53,8 @@ pub enum Mode {
     Clock(clock::ClockFrame),
     Life(life::LifeFrame),
     Image(image::ImageFrame),
+    Boot(boot::BootFrame),
+    Setup(setup::SetupFrame),
 }
 
 impl Default for Mode {
@@ -83,6 +86,8 @@ where
         Mode::Clock(c) => clock::render(c, canvas)?,
         Mode::Life(l) => life::render(l, canvas)?,
         Mode::Image(i) => image::render(i, canvas)?,
+        Mode::Boot(b) => boot::render(b, step, canvas)?,
+        Mode::Setup(s) => setup::render(s, step, canvas)?,
     }
 
     apply_flash(canvas, &frame.panel, step)?;
