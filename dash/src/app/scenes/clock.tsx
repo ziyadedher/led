@@ -1,6 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import {
+  Combobox,
+  ComboboxButton,
+  ComboboxInput,
+  ComboboxOption,
+  ComboboxOptions,
+} from "@headlessui/react";
+import { useMemo, useState } from "react";
 
 import {
   type ClockModeConfig,
@@ -191,10 +198,13 @@ function Row({
   );
 }
 
+const AUTO_VALUE = "__AUTO__";
+
 /**
- * IANA-timezone dropdown. Uses `Intl.supportedValuesOf("timeZone")`
- * (available in modern browsers); the empty value means "follow Pi
- * system local time".
+ * Searchable IANA-timezone combobox. ~600 zones via
+ * `Intl.supportedValuesOf("timeZone")` is too many for a native
+ * dropdown; this filters as you type. Empty value (`__AUTO__`)
+ * means "follow Pi system local time".
  */
 function TimezoneSelect({
   value,
@@ -203,31 +213,77 @@ function TimezoneSelect({
   value: string | null;
   onChange: (next: string | null) => void;
 }) {
-  const options =
-    typeof Intl.supportedValuesOf === "function"
-      ? Intl.supportedValuesOf("timeZone")
-      : [
-          "UTC",
-          "America/Los_Angeles",
-          "America/New_York",
-          "Europe/London",
-          "Europe/Paris",
-          "Asia/Tokyo",
-          "Australia/Sydney",
-        ];
+  const options = useMemo<string[]>(
+    () =>
+      typeof Intl.supportedValuesOf === "function"
+        ? Intl.supportedValuesOf("timeZone")
+        : [
+            "UTC",
+            "America/Los_Angeles",
+            "America/New_York",
+            "Europe/London",
+            "Europe/Paris",
+            "Asia/Tokyo",
+            "Australia/Sydney",
+          ],
+    [],
+  );
+
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => {
+    if (query.length === 0) return options.slice(0, 50);
+    const q = query.toLowerCase();
+    return options.filter((tz) => tz.toLowerCase().includes(q)).slice(0, 50);
+  }, [options, query]);
+
+  const display = value === null ? "auto · system local" : value;
+
   return (
-    <select
-      value={value ?? ""}
-      onChange={(e) => onChange(e.target.value || null)}
-      className="border border-(--color-border) bg-(--color-surface-2) px-2 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text) focus:border-(--color-accent) focus:outline-none"
+    <Combobox
+      value={value ?? AUTO_VALUE}
+      onChange={(v: string | null) => onChange(v === AUTO_VALUE || !v ? null : v)}
+      immediate
     >
-      <option value="">auto (system local)</option>
-      {options.map((tz) => (
-        <option key={tz} value={tz}>
-          {tz}
-        </option>
-      ))}
-    </select>
+      <div className="relative w-56">
+        <ComboboxInput
+          aria-label="Timezone"
+          displayValue={() => display}
+          onChange={(e) => setQuery(e.target.value)}
+          className="w-full border border-(--color-border) bg-(--color-surface-2) px-2 py-1 pr-6 font-mono text-[10px] tracking-[0.1em] text-(--color-text) focus:border-(--color-accent) focus:outline-none"
+          spellCheck={false}
+        />
+        <ComboboxButton
+          aria-label="Toggle timezone list"
+          className="absolute inset-y-0 right-0 flex items-center px-1.5 text-(--color-text-faint) hover:text-(--color-text)"
+        >
+          <span aria-hidden style={{ fontFamily: "var(--font-pixel)", fontSize: 10 }}>
+            ▾
+          </span>
+        </ComboboxButton>
+        <ComboboxOptions className="absolute z-10 mt-1 max-h-60 w-full overflow-auto border border-(--color-border-strong) bg-(--color-bg) py-1 shadow-lg">
+          <ComboboxOption
+            value={AUTO_VALUE}
+            className="cursor-pointer px-2 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint) data-[focus]:bg-(--color-accent)/15 data-[focus]:text-(--color-accent)"
+          >
+            auto · system local
+          </ComboboxOption>
+          {filtered.map((tz) => (
+            <ComboboxOption
+              key={tz}
+              value={tz}
+              className="cursor-pointer px-2 py-1 font-mono text-[10px] tracking-[0.05em] text-(--color-text-muted) data-[focus]:bg-(--color-accent)/15 data-[focus]:text-(--color-accent) data-[selected]:text-(--color-accent)"
+            >
+              {tz}
+            </ComboboxOption>
+          ))}
+          {filtered.length === 0 ? (
+            <div className="px-2 py-1 font-mono text-[10px] text-(--color-text-faint)">
+              no match
+            </div>
+          ) : null}
+        </ComboboxOptions>
+      </div>
+    </Combobox>
   );
 }
 
