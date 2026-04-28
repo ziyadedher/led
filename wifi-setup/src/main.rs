@@ -297,6 +297,13 @@ async fn apply_network(ssid: &str, psk: &str, _country: &str) -> Result<()> {
     // Remove any prior connection of the same name to keep state idempotent.
     let _ = nmcli(["connection", "delete", "led-wifi"]).await;
 
+    // IPv6 is disabled on this connection. Reason: home routers
+    // commonly hand out a SLAAC global address but don't actually
+    // forward IPv6 upstream. With v6 enabled, NetworkManager sets it
+    // as the default for routing+DNS; tailscaled then prefers the
+    // AAAA record for controlplane.tailscale.com and stalls on TCP
+    // connect for the full timeout. Disabling v6 entirely sidesteps
+    // happy-eyeballs corner cases on cheap CPE.
     nmcli([
         "connection",
         "add",
@@ -312,6 +319,8 @@ async fn apply_network(ssid: &str, psk: &str, _country: &str) -> Result<()> {
         "wpa-psk",
         "wifi-sec.psk",
         psk,
+        "ipv6.method",
+        "disabled",
         "connection.autoconnect",
         "yes",
     ])
