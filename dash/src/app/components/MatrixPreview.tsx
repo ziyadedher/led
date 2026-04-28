@@ -59,7 +59,13 @@ const FLASH_OFF = { is_active: false, on_steps: 0, total_steps: 0 };
  * canvas. Same code path as the Pi: marquee scroll, rainbow,
  * flash all behave identically.
  */
-export function MatrixPreview({ preview }: { preview?: PreviewEntry } = {}) {
+export function MatrixPreview({
+  preview,
+  offline,
+}: {
+  preview?: PreviewEntry;
+  offline?: boolean;
+} = {}) {
   const panelId = useContext(PanelContext);
   const entriesData = entriesActions.get.useSWR(panelId);
   const scrollData = entriesActions.scroll.get.useSWR(panelId);
@@ -169,11 +175,16 @@ export function MatrixPreview({ preview }: { preview?: PreviewEntry } = {}) {
     const draw = () => {
       const renderer = rendererRef.current;
       let pixels: Uint8Array | null = null;
-      try {
-        pixels = renderer?.tick() ?? null;
-      } catch {
-        // Renderer not yet initialized or transient error — fall through
-        // to drawing the unlit grid.
+      // Don't tick the renderer when the panel is offline — there's
+      // no real state to mirror, and advancing `step` against a stale
+      // frame would just animate ghosts.
+      if (!offline) {
+        try {
+          pixels = renderer?.tick() ?? null;
+        } catch {
+          // Renderer not yet initialized or transient error — fall
+          // through to drawing the unlit grid.
+        }
       }
 
       ctx.clearRect(0, 0, w, h);
@@ -257,7 +268,7 @@ export function MatrixPreview({ preview }: { preview?: PreviewEntry } = {}) {
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [containerWidth]);
+  }, [containerWidth, offline]);
 
   const matrixIdle =
     preview &&
@@ -278,7 +289,16 @@ export function MatrixPreview({ preview }: { preview?: PreviewEntry } = {}) {
         aria-label="LED matrix simulator"
         className="relative mx-auto block"
       />
-      {matrixIdle ? (
+      {offline ? (
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/40 font-mono uppercase tracking-[0.3em] backdrop-blur-[1px]">
+          <span className="text-[11px] text-(--color-danger)">
+            panel offline
+          </span>
+          <span className="text-[9px] text-(--color-text-faint)">
+            no heartbeat
+          </span>
+        </div>
+      ) : matrixIdle ? (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
           matrix idle
         </div>

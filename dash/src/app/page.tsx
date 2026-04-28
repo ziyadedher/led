@@ -12,7 +12,10 @@ import {
 import { EntriesList } from "@/app/components/EntriesList";
 import { LiveDot } from "@/app/components/LiveDot";
 import { MatrixPreview } from "@/app/components/MatrixPreview";
-import { PanelSwitcher } from "@/app/components/PanelSwitcher";
+import {
+  isOffline,
+  PanelSwitcher,
+} from "@/app/components/PanelSwitcher";
 import { PanelContext } from "@/app/context";
 import { entries, panels, useRealtimeRevalidation } from "@/utils/actions";
 
@@ -29,6 +32,15 @@ export default function Page() {
     return panelsData[0].id;
   }, [panelsData]);
   const panelId = chosenPanelId ?? defaultPanelId;
+  const activePanel = panelsData?.find((p) => p.id === panelId);
+
+  // Tick `now` so the offline indicator updates between panel pulls.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(id);
+  }, []);
+  const activePanelOffline = isOffline(activePanel?.last_seen, now);
 
   const [message, setMessage] = useState("");
   const [color, setColor] = useState<ColorState>({
@@ -114,6 +126,7 @@ export default function Page() {
               <Bracket pos="bl" />
               <Bracket pos="br" />
               <MatrixPreview
+                offline={activePanelOffline}
                 preview={{
                   text: message,
                   color,
