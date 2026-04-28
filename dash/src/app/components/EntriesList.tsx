@@ -158,7 +158,10 @@ export function EntriesList() {
                   type="button"
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => handleDelete(entry.id)}
-                  className="shrink-0 cursor-pointer p-1 text-(--color-text-faint) opacity-0 transition-colors hover:text-(--color-danger) group-hover:opacity-100"
+                  // Touch devices don't fire :hover, so the
+                  // group-hover gate would render the button
+                  // unreachable; show it always there.
+                  className="shrink-0 cursor-pointer p-1 text-(--color-text-faint) transition-colors hover:text-(--color-danger) sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
                   aria-label="Delete"
                 >
                   <TrashIcon className="h-3 w-3" />

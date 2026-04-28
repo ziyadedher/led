@@ -15,7 +15,18 @@ export type ModeFrame =
   | { Text: TextModeFrame }
   | { Clock: ClockModeFrame }
   | { Life: LifeModeFrame }
-  | { Image: ImageModeFrame };
+  | { Image: ImageModeFrame }
+  // Driver-only frames the dash never constructs but the type
+  // includes for completeness with display_core::Mode. The simulator
+  // would render them correctly if it ever received one.
+  | { Boot: { color: { r: number; g: number; b: number } } }
+  | {
+      Setup: {
+        color: { r: number; g: number; b: number };
+        ssid: string;
+        portal_url: string;
+      };
+    };
 
 export type TextEntry = {
   text: string;
@@ -56,10 +67,12 @@ export const DEFAULT_CLOCK_CONFIG: ClockModeConfig = {
 };
 
 /**
- * Game of Life. The simulator always seeds and ticks driver-side;
- * the dash never sees per-cell state — its frame just carries the
- * current cell bitset that the driver evolved (or the WASM
- * simulator's local seed for preview).
+ * Game of Life. Both the dash (in TS) and the driver (in Rust) tick
+ * an independent simulation locally; the dash ships its current cell
+ * bitset to the WASM renderer so the preview animates without
+ * round-tripping through Supabase. The driver keeps its own lattice
+ * — `cells` here is just the current snapshot for whichever side is
+ * doing the rendering.
  */
 export type LifeModeFrame = {
   color: { r: number; g: number; b: number };

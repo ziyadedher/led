@@ -49,6 +49,17 @@ export default function Page() {
     if (!panelsData || panelsData.length === 0) return "";
     return panelsData[0].id;
   }, [panelsData]);
+  // If the chosen panel got deleted on the server, drop the pin
+  // during render (no setState-in-effect): React 19 will re-run with
+  // the cleared state, no extra paint. Skip the reset while the panel
+  // list is still loading (panelsData undefined).
+  if (
+    chosenPanelId != null &&
+    panelsData &&
+    !panelsData.some((p) => p.id === chosenPanelId)
+  ) {
+    setChosenPanelId(null);
+  }
   const panelId = chosenPanelId ?? defaultPanelId;
   const activePanel = panelsData?.find((p) => p.id === panelId);
   const activeMode: PanelMode =
@@ -140,7 +151,6 @@ export default function Page() {
   // simulation.
   const modeFrame = useModeFrame({
     mode: activeMode,
-    panelId,
     message,
     color,
     marqueeSpeed: effectiveMarqueeSpeed,
@@ -252,7 +262,6 @@ function useModeFrame({
   now,
 }: {
   mode: PanelMode;
-  panelId: string;
   message: string;
   color: ColorState;
   marqueeSpeed: number;

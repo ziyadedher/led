@@ -114,7 +114,7 @@ export function PanelSwitcher({
                     ? "text-(--color-text-faint) hover:bg-(--color-surface-2)"
                     : "text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
               ].join(" ")}
-              title={p.description ?? p.name}
+              title={p.description || p.name}
             >
               <span className="flex items-center gap-2.5">
                 <span

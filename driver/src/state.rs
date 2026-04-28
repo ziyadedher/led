@@ -40,8 +40,12 @@ async fn get_panel_id(panel_name: &str, client: &Postgrest) -> anyhow::Result<St
     match panels.len() {
         0 => {
             tracing::warn!("Panel not found, creating...");
+            // `Default` for Panel leaves `mode = ""` (empty string), but the
+            // dash and dispatch logic both expect `"text"`. Fill it explicitly
+            // so freshly auto-created panels render text mode.
             let new_panel = Panel {
                 name: panel_name.to_string(),
+                mode: "text".to_string(),
                 ..Default::default()
             };
             let created_panel: Panel = serde_json::from_str(
@@ -139,8 +143,8 @@ async fn maybe_download(
             .text()
             .await?,
     )?
-    .iter()
-    .map(|x| x.data.clone())
+    .into_iter()
+    .map(|x| x.data)
     .collect();
 
     tracing::info!("Downloaded state, got {} entries", entries.len());

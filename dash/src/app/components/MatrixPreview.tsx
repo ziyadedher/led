@@ -110,7 +110,10 @@ export function MatrixPreview({
                 },
               })),
             ],
-            scroll: mode.Text.scroll || scroll,
+            // ?? not || — 0 is a legitimate scroll value the page can
+            // pass deliberately (no scroll); only fall back to the SWR
+            // value when the page didn't supply one.
+            scroll: mode.Text.scroll ?? scroll,
           },
         }
       : mode;

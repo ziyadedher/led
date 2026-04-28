@@ -139,7 +139,12 @@ where
     // client because opentelemetry-rust 0.30 removed the runtime abstraction
     // and runs exporters on plain `std::thread`s; the async reqwest client
     // panics with "no reactor running" on DNS resolve from those threads.
-    let http_client = reqwest::blocking::Client::new();
+    // 10s request timeout so a stuck collector doesn't queue exports
+    // forever on the export thread.
+    let http_client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| anyhow::anyhow!("reqwest client build: {e}"))?;
 
     let mut headers = std::collections::HashMap::new();
     if let Some(auth) = authorization {

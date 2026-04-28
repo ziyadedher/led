@@ -9,6 +9,7 @@ import {
 } from "./types";
 
 import { panels } from "@/utils/actions";
+import { hexToRgb, rgbToHex } from "@/utils/color";
 
 const W = 64;
 const H = 64;
@@ -199,15 +200,3 @@ export function LifeComposer({
   );
 }
 
-const rgbToHex = ({ r, g, b }: { r: number; g: number; b: number }) =>
-  `#${[r, g, b]
-    .map((v) => v.toString(16).padStart(2, "0").toUpperCase())
-    .join("")}`;
-
-function hexToRgb(hex: string) {
-  const cleaned = hex.replace(/^#/, "");
-  const value = cleaned.length === 3 ? cleaned.replace(/./g, "$&$&") : cleaned;
-  if (!/^[0-9a-fA-F]{6}$/.test(value)) return null;
-  const n = parseInt(value, 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}

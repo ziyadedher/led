@@ -14,18 +14,7 @@ const PRESET_COLORS = [
   { hex: "#FFFFFF", label: "white" },
 ];
 
-const rgbToHex = ({ r, g, b }: { r: number; g: number; b: number }) =>
-  `#${[r, g, b]
-    .map((v) => v.toString(16).padStart(2, "0").toUpperCase())
-    .join("")}`;
-
-const hexToRgb = (hex: string) => {
-  const cleaned = hex.replace(/^#/, "");
-  const value = cleaned.length === 3 ? cleaned.replace(/./g, "$&$&") : cleaned;
-  if (!/^[0-9a-fA-F]{6}$/.test(value)) return null;
-  const n = parseInt(value, 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-};
+import { hexToRgb, rgbToHex } from "@/utils/color";
 
 export type ColorState =
   | {

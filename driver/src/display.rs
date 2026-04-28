@@ -178,11 +178,16 @@ impl LifeState {
         // Shift populations and record current.
         self.recent_populations.rotate_left(1);
         self.recent_populations[3] = self.lattice.population();
-        // Reseed if stagnant: oscillating with period 1 or 2 is the
-        // most common still-life pattern, both manifest as flat
-        // population over the recent window.
-        let stalled = self.recent_populations[0] != 0
-            && self.recent_populations.iter().all(|p| *p == self.recent_populations[3]);
+        // Reseed if stagnant. Two patterns to catch:
+        //   - period-1 (still life, blinker that's somehow off): all
+        //     four samples equal.
+        //   - period-2 (e.g. blinker oscillating 4↔5): even-indexed
+        //     samples equal AND odd-indexed samples equal.
+        let pops = self.recent_populations;
+        let warmed_up = pops[0] != 0;
+        let period_one = pops[0] == pops[1] && pops[1] == pops[2] && pops[2] == pops[3];
+        let period_two = pops[0] == pops[2] && pops[1] == pops[3] && pops[0] != pops[1];
+        let stalled = warmed_up && (period_one || period_two);
         if stalled
             || self.generations >= LIFE_RESEED_GENERATIONS
             || self.lattice.population() < 5
