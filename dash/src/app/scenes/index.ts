@@ -1,13 +1,14 @@
 /**
- * Frame registry. One entry per renderable mode; each entry owns
+ * Scene registry. One entry per renderable mode; each entry owns
  * its parse helper, its composer component, and the function that
- * builds the WASM-bound `ModeFrame` from saved config + ephemeral
- * inputs (e.g. typed message, current time, life lattice).
+ * builds the WASM-bound `ModeFrame` (the per-frame render input)
+ * from saved config + ephemeral inputs (typed message, current
+ * time, life lattice).
  *
- * Page.tsx looks up `FRAMES[panel.mode]` and uses its members
- * directly — adding a new mode means: write a frame module, add it
- * to PanelMode in actions.ts, add a MODES entry in types.ts, and
- * register it here.
+ * Page.tsx looks up `SCENES[panel.mode]` and uses its members
+ * directly — adding a new scene means: write a module under
+ * src/app/scenes/, add it to PanelMode in actions.ts, add a MODES
+ * entry in types.ts, and register it here.
  */
 
 import {
@@ -30,7 +31,7 @@ import type { ColorState } from "@/app/components/ColorPicker";
 import type { PanelMode } from "@/utils/actions";
 
 /** Inputs every frame's `buildFrame` may use. */
-export type FrameInputs = {
+export type SceneInputs = {
   // text-mode preview
   message: string;
   color: ColorState;
@@ -48,23 +49,23 @@ type ComposerProps<C> = { panelId: string; config: C };
  * receives it. The outer types are `unknown` so the registry can
  * hold heterogeneous entries in one Record without per-key generics.
  */
-type FrameRegistration = {
+type SceneRegistration = {
   parse: (raw: unknown) => unknown;
-  buildFrame: (config: unknown, inputs: FrameInputs) => ModeFrame;
+  buildFrame: (config: unknown, inputs: SceneInputs) => ModeFrame;
   Composer: React.ComponentType<ComposerProps<unknown>>;
 };
 
 /**
  * Builder helper. Take a strongly-typed parse + buildFrame +
- * Composer triple and erase to FrameRegistration. The single cast
+ * Composer triple and erase to SceneRegistration. The single cast
  * here is sound because the parse output, buildFrame input, and
  * Composer config prop are all bound to the same `C` per call.
  */
-function frame<C>(
+function scene<C>(
   parse: (raw: unknown) => C,
-  build: (config: C, inputs: FrameInputs) => ModeFrame,
+  build: (config: C, inputs: SceneInputs) => ModeFrame,
   Composer: React.ComponentType<ComposerProps<C>>,
-): FrameRegistration {
+): SceneRegistration {
   return {
     parse,
     buildFrame: (config, inputs) => build(config as C, inputs),
@@ -76,8 +77,8 @@ function frame<C>(
 // not via a single Composer component. Stub Composer here.
 const TextComposerStub: React.ComponentType<ComposerProps<null>> = () => null;
 
-export const FRAMES: Record<PanelMode, FrameRegistration> = {
-  text: frame<null>(
+export const SCENES: Record<PanelMode, SceneRegistration> = {
+  text: scene<null>(
     () => null,
     (_config, inputs) => {
       const previewEntry: TextEntry | null =
@@ -110,19 +111,19 @@ export const FRAMES: Record<PanelMode, FrameRegistration> = {
     TextComposerStub,
   ),
 
-  clock: frame<ClockModeConfig>(
+  clock: scene<ClockModeConfig>(
     parseClockConfig,
     (config) => ({ Clock: clockFrameFromConfig(config) }),
     ClockComposer,
   ),
 
-  life: frame<LifeModeConfig>(
+  life: scene<LifeModeConfig>(
     parseLifeConfig,
     (_config, inputs) => ({ Life: inputs.lifeFrame }),
     LifeComposer,
   ),
 
-  image: frame<ImageModeConfig>(
+  image: scene<ImageModeConfig>(
     parseImageConfig,
     (config) => ({
       Image: {

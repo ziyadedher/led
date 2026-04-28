@@ -9,7 +9,7 @@ import {
 } from "./types";
 
 import { ComposerShell } from "@/app/components/ComposerShell";
-import { HexColorInput } from "@/app/components/HexColorInput";
+import { SolidColorPicker } from "@/app/components/SolidColorPicker";
 import { panels } from "@/utils/actions";
 
 const W = 64;
@@ -213,15 +213,10 @@ export function LifeComposer({
             })}
           </div>
         </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-            :: hex
-          </span>
-          <HexColorInput
-            value={local.color}
-            onChange={(next) => persist({ ...local, color: next })}
-          />
-        </div>
+        <SolidColorPicker
+          value={local.color}
+          onChange={(next) => persist({ ...local, color: next })}
+        />
       </div>
     </ComposerShell>
   );

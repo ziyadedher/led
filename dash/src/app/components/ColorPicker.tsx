@@ -1,20 +1,8 @@
 "use client";
 
 import { Switch } from "@headlessui/react";
-import { useState } from "react";
 
-const PRESET_COLORS = [
-  { hex: "#FF8A2C", label: "amber" },
-  { hex: "#FF4D6D", label: "rose" },
-  { hex: "#FFE066", label: "sun" },
-  { hex: "#A6E22E", label: "lime" },
-  { hex: "#4DE0E0", label: "cyan" },
-  { hex: "#4DA3FF", label: "azure" },
-  { hex: "#A04DFF", label: "violet" },
-  { hex: "#FFFFFF", label: "white" },
-];
-
-import { hexToRgb, rgbToHex } from "@/utils/color";
+import { SolidColorPicker } from "@/app/components/SolidColorPicker";
 
 export type ColorState =
   | {
@@ -34,23 +22,6 @@ export function ColorPicker({
   value: ColorState;
   onChange: (c: ColorState) => void;
 }) {
-  const [hexDraft, setHexDraft] = useState(() =>
-    value.mode === "rgb" ? rgbToHex(value.rgb) : "#FF8A2C",
-  );
-  const [prevRgb, setPrevRgb] = useState(
-    value.mode === "rgb" ? value.rgb : null,
-  );
-  if (
-    value.mode === "rgb" &&
-    (!prevRgb ||
-      prevRgb.r !== value.rgb.r ||
-      prevRgb.g !== value.rgb.g ||
-      prevRgb.b !== value.rgb.b)
-  ) {
-    setPrevRgb(value.rgb);
-    setHexDraft(rgbToHex(value.rgb));
-  }
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -96,76 +67,10 @@ export function ColorPicker({
       </div>
 
       {value.mode === "rgb" ? (
-        <div className="space-y-3">
-          <div className="flex items-stretch gap-2">
-            <div
-              className="aspect-square w-14 shrink-0 border border-(--color-border-strong)"
-              style={{
-                backgroundColor: rgbToHex(value.rgb),
-                boxShadow: `0 0 18px -4px ${rgbToHex(value.rgb)}`,
-              }}
-              aria-hidden
-            />
-            <div className="flex flex-1 flex-col justify-between gap-1">
-              <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint)">
-                hex
-              </span>
-              <input
-                type="text"
-                value={hexDraft}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setHexDraft(next);
-                  const rgb = hexToRgb(next);
-                  if (rgb) onChange({ mode: "rgb", rgb });
-                }}
-                spellCheck={false}
-                className="w-full border-0 border-b border-(--color-border-strong) bg-transparent p-0 pb-1 font-mono text-2xl font-medium uppercase tracking-wider text-(--color-text) focus:border-(--color-accent) focus:outline-none focus:ring-0"
-                placeholder="#RRGGBB"
-                maxLength={7}
-              />
-              <div className="flex justify-between font-mono text-[9px] uppercase tracking-[0.25em] tabular-nums text-(--color-text-faint)">
-                <span>r:{String(value.rgb.r).padStart(3, "0")}</span>
-                <span>g:{String(value.rgb.g).padStart(3, "0")}</span>
-                <span>b:{String(value.rgb.b).padStart(3, "0")}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-8 gap-1">
-            {PRESET_COLORS.map((preset) => {
-              const rgb = hexToRgb(preset.hex);
-              if (!rgb) return null;
-              const active =
-                rgb.r === value.rgb.r &&
-                rgb.g === value.rgb.g &&
-                rgb.b === value.rgb.b;
-              return (
-                <button
-                  key={preset.hex}
-                  type="button"
-                  onClick={() => onChange({ mode: "rgb", rgb })}
-                  className={[
-                    "relative aspect-square border transition",
-                    active
-                      ? "border-(--color-text)"
-                      : "border-(--color-border) hover:border-(--color-border-strong)",
-                  ].join(" ")}
-                  style={{ backgroundColor: preset.hex }}
-                  title={`${preset.label} ${preset.hex}`}
-                  aria-label={`Pick ${preset.hex}`}
-                >
-                  {active ? (
-                    <span
-                      aria-hidden
-                      className="pointer-events-none absolute inset-0 ring-1 ring-(--color-text)/60 ring-offset-1 ring-offset-(--color-bg)"
-                    />
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <SolidColorPicker
+          value={value.rgb}
+          onChange={(rgb) => onChange({ mode: "rgb", rgb })}
+        />
       ) : (
         <div className="space-y-3">
           <div

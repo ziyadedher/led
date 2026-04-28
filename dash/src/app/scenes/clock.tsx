@@ -9,7 +9,7 @@ import {
 } from "./types";
 
 import { ComposerShell } from "@/app/components/ComposerShell";
-import { HexColorInput } from "@/app/components/HexColorInput";
+import { SolidColorPicker } from "@/app/components/SolidColorPicker";
 import { panels } from "@/utils/actions";
 
 /** Build a renderable clock frame from saved config + current time. */
@@ -165,12 +165,10 @@ export function ClockComposer({
           />
         </Row>
 
-        <Row label="hex">
-          <HexColorInput
-            value={local.color}
-            onChange={(next) => persist({ ...local, color: next })}
-          />
-        </Row>
+        <SolidColorPicker
+          value={local.color}
+          onChange={(next) => persist({ ...local, color: next })}
+        />
       </div>
     </ComposerShell>
   );

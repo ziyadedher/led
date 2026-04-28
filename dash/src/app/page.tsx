@@ -15,10 +15,10 @@ import { LiveDot } from "@/app/components/LiveDot";
 import { MatrixPreview } from "@/app/components/MatrixPreview";
 import { PanelSwitcher } from "@/app/components/PanelSwitcher";
 import { PanelContext } from "@/app/context";
-import { FRAMES } from "@/app/frames";
-import { parseLifeConfig, useLifeFrame } from "@/app/frames/life";
-import { ModeSwitcher } from "@/app/frames/ModeSwitcher";
-import { MODES } from "@/app/frames/types";
+import { SCENES } from "@/app/scenes";
+import { parseLifeConfig, useLifeFrame } from "@/app/scenes/life";
+import { ModeSwitcher } from "@/app/scenes/ModeSwitcher";
+import { MODES } from "@/app/scenes/types";
 import {
   entries,
   panels,
@@ -52,12 +52,12 @@ export default function Page() {
   const panelId = chosenPanelId ?? defaultPanelId;
   const activePanel = panelsData?.find((p) => p.id === panelId);
 
-  // Resolve the active mode against the FRAMES registry. Anything
+  // Resolve the active mode against the SCENES registry. Anything
   // unknown falls through to text mode.
   const activeMode: PanelMode = MODES.some((m) => m.id === activePanel?.mode)
     ? (activePanel!.mode as PanelMode)
     : "text";
-  const frame = FRAMES[activeMode];
+  const frame = SCENES[activeMode];
 
   // 1Hz tick for the clock simulator + offline indicator.
   const now = useNow(1_000);
@@ -119,7 +119,7 @@ export default function Page() {
 
   // Life mode owns its own animation loop (rAF-driven cellular tick).
   // Always running so previewing is instant when the user switches
-  // in. Bypasses the FRAMES registry's erased types — this is the
+  // in. Bypasses the SCENES registry's erased types — this is the
   // one consumer that needs the life-typed config directly.
   const lifeConfig = useMemo(
     () => parseLifeConfig(activePanel?.mode_config),
@@ -208,7 +208,7 @@ export default function Page() {
         {activeMode === "text" ? (
           // Text mode is special — it pairs the composer with the live
           // entries queue, side by side on lg+. Other modes are
-          // single-pane composers and route through FRAMES[mode].Composer.
+          // single-pane composers and route through SCENES[mode].Composer.
           <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_1fr]">
             <Composer
               message={message}
