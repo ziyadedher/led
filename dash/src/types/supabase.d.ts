@@ -51,6 +51,8 @@ export type Database = {
           is_paused: boolean;
           last_seen: string;
           last_updated: string;
+          mode: string;
+          mode_config: Json;
           name: string;
           scroll: number;
         };
@@ -63,6 +65,8 @@ export type Database = {
           is_paused?: boolean;
           last_seen?: string;
           last_updated?: string;
+          mode?: string;
+          mode_config?: Json;
           name?: string;
           scroll?: number;
         };
@@ -75,6 +79,8 @@ export type Database = {
           is_paused?: boolean;
           last_seen?: string;
           last_updated?: string;
+          mode?: string;
+          mode_config?: Json;
           name?: string;
           scroll?: number;
         };

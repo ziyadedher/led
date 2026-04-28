@@ -124,6 +124,8 @@ export const useRealtimeRevalidation = (): RealtimeStatus => {
   return status;
 };
 
+export type PanelMode = "text" | "clock";
+
 export const panels = {
   get: {
     call: async () => {
@@ -136,6 +138,24 @@ export const panels = {
       return data;
     },
     useSWR: () => useSWRFactory("/panels", panels.get.call),
+  },
+
+  setMode: {
+    call: async (
+      panelId: string,
+      mode: PanelMode,
+      modeConfig: Record<string, unknown>,
+    ) => {
+      await supabase
+        .from("panels")
+        .update({
+          mode,
+          mode_config: modeConfig as Database["public"]["Tables"]["panels"]["Update"]["mode_config"],
+          last_updated: new Date().toISOString(),
+        })
+        .eq("id", panelId)
+        .throwOnError();
+    },
   },
 };
 

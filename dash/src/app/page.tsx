@@ -17,7 +17,19 @@ import {
   PanelSwitcher,
 } from "@/app/components/PanelSwitcher";
 import { PanelContext } from "@/app/context";
-import { entries, panels, useRealtimeRevalidation } from "@/utils/actions";
+import {
+  ClockComposer,
+  clockFrameFromConfig,
+  parseClockConfig,
+} from "@/app/modes/clock";
+import { ModeSwitcher } from "@/app/modes/ModeSwitcher";
+import type { ModeFrame, TextEntry } from "@/app/modes/types";
+import {
+  entries,
+  panels,
+  type PanelMode,
+  useRealtimeRevalidation,
+} from "@/utils/actions";
 
 const AUTO_FORCED_DEFAULT = 10;
 
@@ -33,11 +45,14 @@ export default function Page() {
   }, [panelsData]);
   const panelId = chosenPanelId ?? defaultPanelId;
   const activePanel = panelsData?.find((p) => p.id === panelId);
+  const activeMode: PanelMode =
+    activePanel?.mode === "clock" ? "clock" : "text";
 
-  // Tick `now` so the offline indicator updates between panel pulls.
+  // Tick `now` every 1s so the clock simulator advances and so the
+  // offline indicator rolls over without a fresh data pull.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 5_000);
+    const id = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(id);
   }, []);
   const activePanelOffline = isOffline(activePanel?.last_seen, now);
@@ -49,11 +64,10 @@ export default function Page() {
   });
   const [effects, setEffects] = useState<EffectsState>({ marqueeSpeed: 0 });
 
-  const isSubmittable = message.length > 0 && panelId.length > 0;
+  const isSubmittable =
+    activeMode === "text" && message.length > 0 && panelId.length > 0;
   const isMarqueeForced = message.length >= FORCE_ENABLE_MARQUEE_LENGTH;
 
-  // Snap the marquee slider on the upward crossing of the auto-force
-  // threshold so the UI shows what'll actually be transmitted.
   const wasForced = useRef(false);
   useEffect(() => {
     if (isMarqueeForced && !wasForced.current && effects.marqueeSpeed === 0) {
@@ -62,8 +76,6 @@ export default function Page() {
     wasForced.current = isMarqueeForced;
   }, [isMarqueeForced, effects.marqueeSpeed]);
 
-  // Effective speed for preview + submit, in case the user types and
-  // submits within the same render before the snap effect fires.
   const effectiveMarqueeSpeed =
     isMarqueeForced && effects.marqueeSpeed === 0
       ? AUTO_FORCED_DEFAULT
@@ -90,6 +102,24 @@ export default function Page() {
     setMessage("");
     await mutate(`/entries/${panelId}`);
   }, [color, message, mutate, panelId, effectiveMarqueeSpeed]);
+
+  const clockConfig = useMemo(
+    () => parseClockConfig(activePanel?.mode_config),
+    [activePanel?.mode_config],
+  );
+
+  // Build the ModeFrame the simulator should render. Text mode mixes
+  // in the live composer preview; clock mode ticks current time on
+  // each `now` change.
+  const modeFrame = useModeFrame({
+    mode: activeMode,
+    panelId,
+    message,
+    color,
+    marqueeSpeed: effectiveMarqueeSpeed,
+    clockConfig,
+    now,
+  });
 
   return (
     <PanelContext.Provider value={panelId}>
@@ -125,14 +155,7 @@ export default function Page() {
               <Bracket pos="tr" />
               <Bracket pos="bl" />
               <Bracket pos="br" />
-              <MatrixPreview
-                offline={activePanelOffline}
-                preview={{
-                  text: message,
-                  color,
-                  marqueeSpeed: effectiveMarqueeSpeed,
-                }}
-              />
+              <MatrixPreview offline={activePanelOffline} mode={modeFrame} />
             </div>
           </div>
 
@@ -146,34 +169,98 @@ export default function Page() {
           </aside>
         </section>
 
-        {/* ─── composer + messages ──────────────────────────────── */}
-        <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_1fr]">
-          <Composer
-            message={message}
-            onMessageChange={setMessage}
-            color={color}
-            onColorChange={setColor}
-            effects={effects}
-            onEffectsChange={setEffects}
-            onSubmit={handleSubmit}
-            disabled={!isSubmittable}
-          />
-          <section
-            className="flex min-h-0 flex-col gap-3"
-            aria-label="Messages"
-          >
-            <div className="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-[0.3em]">
-              <span className="text-(--color-text-dim)">:: messages</span>
-              <span className="text-(--color-text-faint)">
-                top 7 fit on the matrix
-              </span>
-            </div>
-            <EntriesList />
-          </section>
-        </div>
+        {/* ─── mode switcher ─────────────────────────────────────── */}
+        {panelId.length > 0 ? (
+          <ModeSwitcher panelId={panelId} current={activeMode} />
+        ) : null}
+
+        {/* ─── per-mode bottom half ──────────────────────────────── */}
+        {activeMode === "text" ? (
+          <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_1fr]">
+            <Composer
+              message={message}
+              onMessageChange={setMessage}
+              color={color}
+              onColorChange={setColor}
+              effects={effects}
+              onEffectsChange={setEffects}
+              onSubmit={handleSubmit}
+              disabled={!isSubmittable}
+            />
+            <section
+              className="flex min-h-0 flex-col gap-3"
+              aria-label="Messages"
+            >
+              <div className="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-[0.3em]">
+                <span className="text-(--color-text-dim)">:: messages</span>
+                <span className="text-(--color-text-faint)">
+                  top 7 fit on the matrix
+                </span>
+              </div>
+              <EntriesList />
+            </section>
+          </div>
+        ) : (
+          <ClockComposer panelId={panelId} config={clockConfig} />
+        )}
       </div>
     </PanelContext.Provider>
   );
+}
+
+function useModeFrame({
+  mode,
+  message,
+  color,
+  marqueeSpeed,
+  clockConfig,
+  now,
+}: {
+  mode: PanelMode;
+  panelId: string;
+  message: string;
+  color: ColorState;
+  marqueeSpeed: number;
+  clockConfig: ReturnType<typeof parseClockConfig>;
+  now: number;
+}): ModeFrame {
+  return useMemo<ModeFrame>(() => {
+    if (mode === "clock") {
+      return { Clock: clockFrameFromConfig(clockConfig) };
+    }
+    // Text mode: live preview prepends to whatever's stored.
+    const previewEntry: TextEntry | null =
+      message.length > 0
+        ? {
+            text: message,
+            options: {
+              color:
+                color.mode === "rgb"
+                  ? { Rgb: color.rgb }
+                  : {
+                      Rainbow: {
+                        is_per_letter: color.perLetter,
+                        speed: color.speed,
+                      },
+                    },
+              marquee: { speed: marqueeSpeed },
+            },
+          }
+        : null;
+    return {
+      Text: {
+        // EntriesList drives entry storage; MatrixPreview merges in
+        // store-side entries via SWR. The frame here just carries the
+        // live preview entry that hasn't been transmitted yet.
+        entries: previewEntry ? [previewEntry] : [],
+        scroll: 0,
+      },
+    };
+    // `now` IS intentionally a dep — re-runs the memo every tick so
+    // clock mode picks up the new ClockTime. eslint can't see the
+    // dependency through clockFrameFromConfig's Date.now() read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, message, color, marqueeSpeed, clockConfig, now]);
 }
 
 function Bracket({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {

@@ -9,9 +9,8 @@ import {
   useState,
 } from "react";
 
-import type { ColorState } from "./ColorPicker";
-
 import { PanelContext } from "@/app/context";
+import type { ModeFrame, WireColor } from "@/app/modes/types";
 import { entries as entriesActions } from "@/utils/actions";
 
 // 64×64 to match the rpi-led-panel default; the WASM core runs the same
@@ -24,29 +23,13 @@ const COLS = 64;
 const GAP = 2;
 const CELL_CAP = 3;
 
-type WireColor =
-  | { Rgb: { r: number; g: number; b: number } }
-  | { Rainbow: { is_per_letter: boolean; speed: number } };
-
-type TextEntry = {
-  text: string;
-  options: { color: WireColor; marquee: { speed: number } };
-};
-
-// Mirrors display_core::Frame. Externally-tagged Mode enum; `Text`
-// variant carries the entry list + scroll position.
+// Mirrors display_core::Frame. Externally-tagged Mode enum.
 type Frame = {
-  mode: { Text: { entries: TextEntry[]; scroll: number } };
+  mode: ModeFrame;
   panel: {
     is_paused: boolean;
     flash: { is_active: boolean; on_steps: number; total_steps: number };
   };
-};
-
-type PreviewEntry = {
-  text: string;
-  color: ColorState;
-  marqueeSpeed: number;
 };
 
 const DEFAULT_COLOR: WireColor = { Rgb: { r: 255, g: 138, b: 44 } };
@@ -58,14 +41,19 @@ const FLASH_OFF = { is_active: false, on_steps: 0, total_steps: 0 };
  * the resulting RGBA buffer through ImageData onto a square-LED
  * canvas. Same code path as the Pi: marquee scroll, rainbow,
  * flash all behave identically.
+ *
+ * `mode` is the ModeFrame the page wants rendered. For text mode the
+ * page passes just the live-preview entry; we fold in the queued
+ * entries from Supabase here so the simulator shows the full panel
+ * state. Other modes pass their full frame and we pass it through.
  */
 export function MatrixPreview({
-  preview,
+  mode,
   offline,
 }: {
-  preview?: PreviewEntry;
+  mode: ModeFrame;
   offline?: boolean;
-} = {}) {
+}) {
   const panelId = useContext(PanelContext);
   const entriesData = entriesActions.get.useSWR(panelId);
   const scrollData = entriesActions.scroll.get.useSWR(panelId);
@@ -105,41 +93,32 @@ export function MatrixPreview({
   );
   const scroll = scrollData.data?.scroll ?? 0;
 
-  // Build the Frame the WASM renderer consumes. Live preview becomes
-  // the first entry, then real entries from Supabase.
+  // Build the Frame the WASM renderer consumes. For text mode we
+  // append store entries to whatever the page passed (the live
+  // preview); other modes pass through unchanged.
   const frame = useMemo<Frame>(() => {
-    const fromStore = items.map((e) => ({
-      text: e.data?.text ?? "",
-      options: {
-        color: (e.data?.options?.color ?? DEFAULT_COLOR) as WireColor,
-        marquee: { speed: e.data?.options?.marquee?.speed ?? 0 },
-      },
-    }));
-    const entries: TextEntry[] = preview && preview.text.length > 0
-      ? [
-          {
-            text: preview.text,
-            options: {
-              color:
-                preview.color.mode === "rgb"
-                  ? { Rgb: preview.color.rgb }
-                  : {
-                      Rainbow: {
-                        is_per_letter: preview.color.perLetter,
-                        speed: preview.color.speed,
-                      },
-                    },
-              marquee: { speed: preview.marqueeSpeed },
-            },
+    const expanded: ModeFrame = "Text" in mode
+      ? {
+          Text: {
+            entries: [
+              ...mode.Text.entries,
+              ...items.map((e) => ({
+                text: e.data?.text ?? "",
+                options: {
+                  color: (e.data?.options?.color ?? DEFAULT_COLOR) as WireColor,
+                  marquee: { speed: e.data?.options?.marquee?.speed ?? 0 },
+                },
+              })),
+            ],
+            scroll: mode.Text.scroll || scroll,
           },
-          ...fromStore,
-        ]
-      : fromStore;
+        }
+      : mode;
     return {
-      mode: { Text: { entries, scroll } },
+      mode: expanded,
       panel: { is_paused: false, flash: FLASH_OFF },
     };
-  }, [items, preview, scroll]);
+  }, [items, mode, scroll]);
 
   // Push state into the renderer whenever it changes.
   useEffect(() => {
@@ -271,9 +250,7 @@ export function MatrixPreview({
   }, [containerWidth, offline]);
 
   const matrixIdle =
-    preview &&
-    preview.text.length === 0 &&
-    items.length === 0;
+    "Text" in mode && mode.Text.entries.length === 0 && items.length === 0;
 
   return (
     <div
