@@ -5,6 +5,7 @@ import { useSWRConfig } from "swr";
 
 import { Composer } from "@/app/components/Composer";
 import { type ColorState } from "@/app/components/ColorPicker";
+import { CornerBracket } from "@/app/components/ComposerShell";
 import {
   FORCE_ENABLE_MARQUEE_LENGTH,
   type EffectsState,
@@ -12,30 +13,19 @@ import {
 import { EntriesList } from "@/app/components/EntriesList";
 import { LiveDot } from "@/app/components/LiveDot";
 import { MatrixPreview } from "@/app/components/MatrixPreview";
-import {
-  isOffline,
-  PanelSwitcher,
-} from "@/app/components/PanelSwitcher";
+import { PanelSwitcher } from "@/app/components/PanelSwitcher";
 import { PanelContext } from "@/app/context";
-import {
-  ClockComposer,
-  clockFrameFromConfig,
-  parseClockConfig,
-} from "@/app/frames/clock";
-import { ImageComposer, parseImageConfig } from "@/app/frames/image";
-import {
-  LifeComposer,
-  parseLifeConfig,
-  useLifeFrame,
-} from "@/app/frames/life";
+import { FRAMES, useLifeFrame } from "@/app/frames";
 import { ModeSwitcher } from "@/app/frames/ModeSwitcher";
-import type { ModeFrame, TextEntry } from "@/app/frames/types";
+import { MODES } from "@/app/frames/types";
 import {
   entries,
   panels,
   type PanelMode,
   useRealtimeRevalidation,
 } from "@/utils/actions";
+import { isOffline } from "@/utils/offline";
+import { useNow } from "@/utils/useNow";
 
 const AUTO_FORCED_DEFAULT = 10;
 
@@ -49,10 +39,8 @@ export default function Page() {
     if (!panelsData || panelsData.length === 0) return "";
     return panelsData[0].id;
   }, [panelsData]);
-  // If the chosen panel got deleted on the server, drop the pin
-  // during render (no setState-in-effect): React 19 will re-run with
-  // the cleared state, no extra paint. Skip the reset while the panel
-  // list is still loading (panelsData undefined).
+  // Drop the chosen pin when its panel disappears server-side. Set
+  // during render — React 19 deduplicates and skips the extra paint.
   if (
     chosenPanelId != null &&
     panelsData &&
@@ -62,24 +50,19 @@ export default function Page() {
   }
   const panelId = chosenPanelId ?? defaultPanelId;
   const activePanel = panelsData?.find((p) => p.id === panelId);
-  const activeMode: PanelMode =
-    activePanel?.mode === "clock"
-      ? "clock"
-      : activePanel?.mode === "life"
-        ? "life"
-        : activePanel?.mode === "image"
-          ? "image"
-          : "text";
 
-  // Tick `now` every 1s so the clock simulator advances and so the
-  // offline indicator rolls over without a fresh data pull.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1_000);
-    return () => clearInterval(id);
-  }, []);
+  // Resolve the active mode against the FRAMES registry. Anything
+  // unknown falls through to text mode.
+  const activeMode: PanelMode = MODES.some((m) => m.id === activePanel?.mode)
+    ? (activePanel!.mode as PanelMode)
+    : "text";
+  const frame = FRAMES[activeMode];
+
+  // 1Hz tick for the clock simulator + offline indicator.
+  const now = useNow(1_000);
   const activePanelOffline = isOffline(activePanel?.last_seen, now);
 
+  // Composer state (text mode).
   const [message, setMessage] = useState("");
   const [color, setColor] = useState<ColorState>({
     mode: "rgb",
@@ -126,39 +109,46 @@ export default function Page() {
     await mutate(`/entries/${panelId}`);
   }, [color, message, mutate, panelId, effectiveMarqueeSpeed]);
 
-  const clockConfig = useMemo(
-    () => parseClockConfig(activePanel?.mode_config),
-    [activePanel?.mode_config],
-  );
-  const lifeConfig = useMemo(
-    () => parseLifeConfig(activePanel?.mode_config),
-    [activePanel?.mode_config],
-  );
-  const imageConfig = useMemo(
-    () => parseImageConfig(activePanel?.mode_config),
-    [activePanel?.mode_config],
+  // Parse the active mode's config once per mode_config change. Only
+  // the active mode's parser runs.
+  const activeConfig = useMemo(
+    () => frame.parse(activePanel?.mode_config),
+    [frame, activePanel?.mode_config],
   );
 
   // Life mode owns its own animation loop (rAF-driven cellular tick).
-  // It always runs so we can preview the simulation regardless of
-  // which mode is active — but we only feed it into the simulator
-  // when life is the active mode.
+  // Always running so previewing is instant when the user switches in.
+  // The hook seeds + reseeds on its own; takes the saved color from
+  // whatever the active life config is (or the default).
+  const lifeConfig = useMemo(
+    () => FRAMES.life.parse(activePanel?.mode_config),
+    [activePanel?.mode_config],
+  );
   const lifeFrame = useLifeFrame(lifeConfig);
 
-  // Build the ModeFrame the simulator should render. Text mode mixes
-  // in the live composer preview; clock mode ticks current time on
-  // each `now` change; life mode passes through its independent
-  // simulation.
-  const modeFrame = useModeFrame({
-    mode: activeMode,
-    message,
-    color,
-    marqueeSpeed: effectiveMarqueeSpeed,
-    clockConfig,
-    lifeFrame,
-    imageConfig,
-    now,
-  });
+  // Build the ModeFrame the simulator renders. `now` is in deps so
+  // clock mode advances each tick.
+  const modeFrame = useMemo(
+    () =>
+      frame.buildFrame(activeConfig, {
+        message,
+        color,
+        marqueeSpeed: effectiveMarqueeSpeed,
+        lifeFrame,
+      }),
+    // `now` reruns the memo every tick — needed for clock mode to
+    // pick up the current time. eslint can't see through `frame.buildFrame`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      frame,
+      activeConfig,
+      message,
+      color,
+      effectiveMarqueeSpeed,
+      lifeFrame,
+      now,
+    ],
+  );
 
   return (
     <PanelContext.Provider value={panelId}>
@@ -190,10 +180,10 @@ export default function Page() {
             </div>
 
             <div className="relative">
-              <Bracket pos="tl" />
-              <Bracket pos="tr" />
-              <Bracket pos="bl" />
-              <Bracket pos="br" />
+              <CornerBracket pos="tl" size="lg" />
+              <CornerBracket pos="tr" size="lg" />
+              <CornerBracket pos="bl" size="lg" />
+              <CornerBracket pos="br" size="lg" />
               <MatrixPreview offline={activePanelOffline} mode={modeFrame} />
             </div>
           </div>
@@ -215,6 +205,9 @@ export default function Page() {
 
         {/* ─── per-mode bottom half ──────────────────────────────── */}
         {activeMode === "text" ? (
+          // Text mode is special — it pairs the composer with the live
+          // entries queue, side by side on lg+. Other modes are
+          // single-pane composers and route through FRAMES[mode].Composer.
           <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_1fr]">
             <Composer
               message={message}
@@ -239,108 +232,10 @@ export default function Page() {
               <EntriesList />
             </section>
           </div>
-        ) : activeMode === "clock" ? (
-          <ClockComposer panelId={panelId} config={clockConfig} />
-        ) : activeMode === "image" ? (
-          <ImageComposer panelId={panelId} config={imageConfig} />
         ) : (
-          <LifeComposer panelId={panelId} config={lifeConfig} />
+          <frame.Composer panelId={panelId} config={activeConfig} />
         )}
       </div>
     </PanelContext.Provider>
-  );
-}
-
-function useModeFrame({
-  mode,
-  message,
-  color,
-  marqueeSpeed,
-  clockConfig,
-  lifeFrame,
-  imageConfig,
-  now,
-}: {
-  mode: PanelMode;
-  message: string;
-  color: ColorState;
-  marqueeSpeed: number;
-  clockConfig: ReturnType<typeof parseClockConfig>;
-  lifeFrame: ReturnType<typeof useLifeFrame>;
-  imageConfig: ReturnType<typeof parseImageConfig>;
-  now: number;
-}): ModeFrame {
-  return useMemo<ModeFrame>(() => {
-    if (mode === "clock") {
-      return { Clock: clockFrameFromConfig(clockConfig) };
-    }
-    if (mode === "life") {
-      return { Life: lifeFrame };
-    }
-    if (mode === "image") {
-      return {
-        Image: {
-          width: imageConfig.width,
-          height: imageConfig.height,
-          bitmap: imageConfig.bitmap,
-        },
-      };
-    }
-    // Text mode: live preview prepends to whatever's stored.
-    const previewEntry: TextEntry | null =
-      message.length > 0
-        ? {
-            text: message,
-            options: {
-              color:
-                color.mode === "rgb"
-                  ? { Rgb: color.rgb }
-                  : {
-                      Rainbow: {
-                        is_per_letter: color.perLetter,
-                        speed: color.speed,
-                      },
-                    },
-              marquee: { speed: marqueeSpeed },
-            },
-          }
-        : null;
-    return {
-      Text: {
-        // EntriesList drives entry storage; MatrixPreview merges in
-        // store-side entries via SWR. The frame here just carries the
-        // live preview entry that hasn't been transmitted yet.
-        entries: previewEntry ? [previewEntry] : [],
-        scroll: 0,
-      },
-    };
-    // `now` IS intentionally a dep — re-runs the memo every tick so
-    // clock mode picks up the new ClockTime. eslint can't see the
-    // dependency through clockFrameFromConfig's Date.now() read.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    mode,
-    message,
-    color,
-    marqueeSpeed,
-    clockConfig,
-    lifeFrame,
-    imageConfig,
-    now,
-  ]);
-}
-
-function Bracket({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
-  const sides: Record<string, string> = {
-    tl: "-left-1.5 -top-1.5 border-l border-t",
-    tr: "-right-1.5 -top-1.5 border-r border-t",
-    bl: "-bottom-1.5 -left-1.5 border-b border-l",
-    br: "-bottom-1.5 -right-1.5 border-b border-r",
-  };
-  return (
-    <span
-      aria-hidden
-      className={`pointer-events-none absolute z-10 h-3 w-3 border-(--color-border-strong) ${sides[pos]}`}
-    />
   );
 }

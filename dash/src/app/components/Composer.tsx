@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 
 import { ColorPicker, type ColorState } from "./ColorPicker";
+import { ComposerShell } from "./ComposerShell";
 import { EffectsPanel, type EffectsState } from "./EffectsPanel";
 
 const MAX_LEN = 64;
@@ -48,36 +49,7 @@ export function Composer({
       : "ready / press ↵";
 
   return (
-    <section
-      className="relative border border-(--color-border) bg-(--color-surface)/70 backdrop-blur-sm"
-      aria-label="Composer"
-    >
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -left-px -top-px h-2.5 w-2.5 border-l border-t border-(--color-border-strong)"
-      />
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -right-px -top-px h-2.5 w-2.5 border-r border-t border-(--color-border-strong)"
-      />
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -bottom-px -left-px h-2.5 w-2.5 border-b border-l border-(--color-border-strong)"
-      />
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -bottom-px -right-px h-2.5 w-2.5 border-b border-r border-(--color-border-strong)"
-      />
-
-      <header className="flex items-center justify-between border-b border-(--color-border) bg-(--color-surface-2)/40 px-4 py-2">
-        <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-          :: composer
-        </span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
-          {status}
-        </span>
-      </header>
-
+    <ComposerShell title="composer" status={status} ariaLabel="Composer">
       <form onSubmit={handleSubmit} className="space-y-5 px-4 py-4">
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -158,6 +130,6 @@ export function Composer({
           />
         </button>
       </form>
-    </section>
+    </ComposerShell>
   );
 }

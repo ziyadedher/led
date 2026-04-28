@@ -1,22 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { panels } from "@/utils/actions";
-
-// 3× the driver's 30s heartbeat — gives one full miss of breathing
-// room before flagging offline. Bigger than this and stale panels
-// linger in green; smaller and a single packet loss flaps the badge.
-export const OFFLINE_THRESHOLD_MS = 90_000;
+import { isOffline } from "@/utils/offline";
+import { useNow } from "@/utils/useNow";
 
 type VersionState = "current" | "stale" | "dirty" | "unreported";
-
-export function isOffline(lastSeen: string | null | undefined, now: number): boolean {
-  if (!lastSeen) return true;
-  const ts = Date.parse(lastSeen);
-  if (Number.isNaN(ts)) return true;
-  return now - ts > OFFLINE_THRESHOLD_MS;
-}
 
 /** Derive each panel's version state relative to the rest of the fleet. */
 function classifyVersions(versions: (string | null)[]): VersionState[] {
@@ -62,13 +52,9 @@ export function PanelSwitcher({
     [list],
   );
 
-  // Tick `now` every 5s so the offline badge updates without
-  // requiring a fresh data pull.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 5_000);
-    return () => clearInterval(id);
-  }, []);
+  // Cheap re-render every 5s so the offline badge rolls over
+  // without a fresh data pull.
+  const now = useNow(5_000);
 
   return (
     <div className="flex flex-col gap-2 font-mono text-[11px]">

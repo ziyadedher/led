@@ -7,6 +7,7 @@ import {
   type ImageModeConfig,
 } from "./types";
 
+import { ComposerShell } from "@/app/components/ComposerShell";
 import { panels } from "@/utils/actions";
 
 const PANEL_W = 64;
@@ -131,19 +132,7 @@ export function ImageComposer({
   const hasImage = config.bitmap.length > 0;
 
   return (
-    <section
-      className="relative border border-(--color-border) bg-(--color-surface)/70 backdrop-blur-sm"
-      aria-label="Image configuration"
-    >
-      <header className="flex items-center justify-between border-b border-(--color-border) bg-(--color-surface-2)/40 px-4 py-2">
-        <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-          :: image
-        </span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
-          static · 64×64 max
-        </span>
-      </header>
-
+    <ComposerShell title="image" status="static · 64×64 max" ariaLabel="Image configuration">
       <div className="space-y-4 px-4 py-4">
         <div className="space-y-2">
           <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
@@ -219,6 +208,6 @@ export function ImageComposer({
           </p>
         ) : null}
       </div>
-    </section>
+    </ComposerShell>
   );
 }

@@ -8,8 +8,9 @@ import {
   type LifeModeFrame,
 } from "./types";
 
+import { ComposerShell } from "@/app/components/ComposerShell";
+import { HexColorInput } from "@/app/components/HexColorInput";
 import { panels } from "@/utils/actions";
-import { hexToRgb, rgbToHex } from "@/utils/color";
 
 const W = 64;
 const H = 64;
@@ -152,19 +153,7 @@ export function LifeComposer({
   };
 
   return (
-    <section
-      className="relative border border-(--color-border) bg-(--color-surface)/70 backdrop-blur-sm"
-      aria-label="Life configuration"
-    >
-      <header className="flex items-center justify-between border-b border-(--color-border) bg-(--color-surface-2)/40 px-4 py-2">
-        <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-          :: life
-        </span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
-          conway · ambient
-        </span>
-      </header>
-
+    <ComposerShell title="life" status="conway · ambient" ariaLabel="Life configuration">
       <div className="space-y-4 px-4 py-4">
         <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-text-faint)">
           live cells reseed automatically when the simulation stalls
@@ -174,29 +163,13 @@ export function LifeComposer({
           <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
             :: hex
           </span>
-          <input
-            type="text"
-            value={rgbToHex(local.color)}
-            onChange={(e) => {
-              const next = hexToRgb(e.target.value);
-              if (next) persist({ color: next });
-            }}
-            spellCheck={false}
-            className="w-32 border-0 border-b border-(--color-border-strong) bg-transparent p-0 pb-1 font-mono text-base uppercase tracking-wider text-(--color-text) focus:border-(--color-accent) focus:outline-none focus:ring-0"
-            placeholder="#RRGGBB"
-            maxLength={7}
-          />
-          <span
-            className="inline-block h-5 w-5 border border-(--color-border-strong)"
-            style={{
-              backgroundColor: rgbToHex(local.color),
-              boxShadow: `0 0 12px -2px ${rgbToHex(local.color)}`,
-            }}
-            aria-hidden
+          <HexColorInput
+            value={local.color}
+            onChange={(next) => persist({ color: next })}
           />
         </div>
       </div>
-    </section>
+    </ComposerShell>
   );
 }
 
