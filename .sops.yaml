@@ -1,3 +1,18 @@
 creation_rules:
-  - path_regex: ^secrets\.sops\.json$
+  # Admin / management secrets — read by `just tf`, `just supabase`,
+  # one-off ops scripts. Stay on the local box, never flashed onto
+  # the Pi.
+  - path_regex: ^secrets/admin\.sops\.json$
+    pgp: 9A7D74D21300FB45F5711E604131B010CF69F27A
+
+  # Fleet secrets — baked into Pi SD cards by `just flash-sd` / `just
+  # init`. Anything used by led-driver / led-tailscale-init at
+  # runtime lives here.
+  - path_regex: ^secrets/fleet\.sops\.json$
+    pgp: 9A7D74D21300FB45F5711E604131B010CF69F27A
+
+  # Local dev secrets — used by `just dev` when running the driver
+  # natively against real Supabase. Same key as fleet for now (just
+  # us); created on demand.
+  - path_regex: ^secrets/dev\.sops\.json$
     pgp: 9A7D74D21300FB45F5711E604131B010CF69F27A

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::Context;
 use chrono::{Local, Timelike};
 use display_core::{
     boot::BootFrame,
@@ -12,15 +11,12 @@ use display_core::{
     text::TextFrame,
     Frame, Mode, PanelState,
 };
-use std::path::Path;
-use embedded_graphics::pixelcolor::Rgb888;
-use embedded_graphics::prelude::DrawTarget;
 use parking_lot::RwLock;
-use rpi_led_panel::{RGBMatrix, RGBMatrixConfig};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use tokio::task::block_in_place;
+use std::path::Path;
 
+use crate::sink::{MatrixSink, PixelBuffer};
 use crate::state::State;
 use crate::telemetry::Metrics;
 
@@ -63,21 +59,20 @@ fn default_mode() -> String {
 }
 
 pub async fn drive(
-    config: RGBMatrixConfig,
+    mut sink: Box<dyn MatrixSink>,
     state: Arc<RwLock<State>>,
     metrics: Arc<Metrics>,
 ) -> anyhow::Result<()> {
     tracing::info!("Initializing display...");
-    let (mut matrix, canvas) = RGBMatrix::new(config, 0).context("Matrix initialization failed")?;
+    let (width, height) = sink.dimensions();
+    let mut buffer = PixelBuffer::new(width, height);
 
     let mut step: usize = 0;
     let mut life_state: Option<LifeState> = None;
     loop {
         let frame_started = Instant::now();
 
-        let mut canvas = canvas.clone();
         let snapshot = state.read().clone();
-
         let frame = Frame {
             mode: build_mode(&snapshot, &mut life_state),
             panel: PanelState {
@@ -86,16 +81,15 @@ pub async fn drive(
             },
         };
 
-        // Convert rpi-led-panel's anyhow-returning DrawTarget impl to a
-        // typed error so display_core's signature matches.
-        display_core::render(&frame, step, &mut MatrixCanvas(canvas.as_mut()))
-            .map_err(|err| anyhow::anyhow!("render failed: {err}"))?;
+        // PixelBuffer's DrawTarget impl is Infallible — `render`
+        // can't fail here, so unwrap is fine.
+        display_core::render(&frame, step, &mut buffer).expect("infallible draw target");
 
         if !frame.panel.is_paused {
             step += 1;
         }
 
-        block_in_place(|| matrix.update_on_vsync(canvas));
+        sink.present(&buffer)?;
         metrics
             .frame_time_ms
             .record(frame_started.elapsed().as_secs_f64() * 1000.0, &[]);
@@ -252,24 +246,3 @@ fn build_mode(snapshot: &State, life_state: &mut Option<LifeState>) -> Mode {
     }
 }
 
-// Newtype wrapper so we can implement DrawTarget for an &mut Canvas
-// (rpi-led-panel implements DrawTarget on Canvas itself).
-struct MatrixCanvas<'a>(&'a mut rpi_led_panel::Canvas);
-
-impl<'a> DrawTarget for MatrixCanvas<'a> {
-    type Color = Rgb888;
-    type Error = <rpi_led_panel::Canvas as DrawTarget>::Error;
-
-    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
-    where
-        I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>>,
-    {
-        self.0.draw_iter(pixels)
-    }
-}
-
-impl<'a> embedded_graphics::geometry::OriginDimensions for MatrixCanvas<'a> {
-    fn size(&self) -> embedded_graphics::geometry::Size {
-        self.0.size()
-    }
-}

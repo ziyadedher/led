@@ -15,13 +15,17 @@ Restart=always
 RestartSec=2s
 User=root
 
-# rpi-led-panel drives the HUB75 protocol via tight CPU + DMA loops; any
-# preemption mid-frame shows up as visible flicker. On the Pi Zero W's
-# single core we can't isolate a CPU, but we can ask the scheduler to
-# never preempt this process for normal-priority work. SCHED_FIFO + max
-# priority is what hzeller's reference C library does too.
-CPUSchedulingPolicy=fifo
-CPUSchedulingPriority=99
+# rpi-led-panel drives HUB75 via tight CPU + DMA loops, so preemption
+# mid-frame shows up as visible flicker. We *want* SCHED_FIFO here,
+# but on the Zero W's single core, FIFO=99 with no budget cap starved
+# PID 1 systemd to the point that it couldn't pet the BCM2835 hardware
+# watchdog (1-min timeout) and the kernel rebooted before multi-user
+# was ever reached — see the led-delta forensics on 2026-04-28 (20
+# boots in 100 minutes, none reached multi-user.target). Until we wire
+# up CPUQuota + LimitRTPRIO + a tuned kernel.sched_rt_runtime_us, we
+# stick with nice/io preference only. Visible flicker may regress on
+# the Pi Zero W; the fix path is to add bounded RT later, not to
+# reinstate unbounded FIFO.
 Nice=-20
 IOSchedulingClass=realtime
 IOSchedulingPriority=0

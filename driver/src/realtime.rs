@@ -1,105 +1,152 @@
-//! Postgres LISTEN/NOTIFY listener.
+//! Supabase Realtime WebSocket subscriber.
 //!
-//! Subscribes to the `panel_change` channel emitted by the migration
-//! triggers on `entries` and `panels`. Each notification carries the
-//! affected panel id; we filter against ours and signal the sync loop
-//! to re-pull state. Reconnects on connection loss; the sync loop's
-//! polling fallback covers any gap.
+//! Subscribes to `postgres_changes` for our panel — both the `panels`
+//! row (`id=eq.<panel_id>`) and the `entries` rows
+//! (`panel_id=eq.<panel_id>`) — over `wss://<ref>.supabase.co/realtime/v1`.
+//! Each event nudges the sync loop, which then re-pulls authoritative
+//! state via PostgREST.
+//!
+//! The endpoint is part of the public `*.supabase.co` cert chain, so
+//! tungstenite's webpki-roots-backed rustls config trusts it without
+//! any custom CA — same chain PostgREST already rides on.
+//!
+//! Phoenix Channels protocol notes: messages are JSON objects with
+//! `topic`/`event`/`payload`/`ref`/`join_ref`. Heartbeats go to topic
+//! `phoenix`; the server boots us if it doesn't see one within ~60s.
 
 use std::time::Duration;
 
-use anyhow::Context as _;
-use futures_channel::mpsc as futures_mpsc;
-use futures_util::{stream, SinkExt as _, StreamExt as _};
-use rustls::ClientConfig;
+use anyhow::Context;
+use futures_util::{SinkExt, StreamExt};
+use serde_json::{json, Value};
 use tokio::sync::mpsc;
-use tokio::time::sleep;
-use tokio_postgres::{AsyncMessage, Config as PgConfig};
-use tokio_postgres_rustls::MakeRustlsConnect;
+use tokio::time::{interval, sleep};
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 
+const HEARTBEAT_PERIOD: Duration = Duration::from_secs(30);
 const RECONNECT_BACKOFF: Duration = Duration::from_secs(5);
 
 /// Run the listener forever. Sends `()` on `nudge_tx` whenever a
-/// `panel_change` notification arrives matching `panel_id`. Returns
-/// only on unrecoverable errors — transient disconnects retry.
+/// `postgres_changes` event arrives for our panel. Returns only on
+/// unrecoverable errors — transient disconnects retry.
 pub async fn run(
-    database_url: String,
+    supabase_url: String,
+    anon_key: String,
     panel_id: String,
     nudge_tx: mpsc::Sender<()>,
 ) -> anyhow::Result<()> {
-    let pg_config: PgConfig = database_url
-        .parse()
-        .context("parse database_url as Postgres connection string")?;
-    let tls = make_tls()?;
+    let ws_url = build_ws_url(&supabase_url, &anon_key)?;
 
     loop {
-        match connect_and_listen(&pg_config, &tls, &panel_id, &nudge_tx).await {
-            Ok(()) => {
-                // Stream ended cleanly (rare). Reconnect after backoff.
-                tracing::warn!("Postgres LISTEN stream ended, reconnecting");
-            }
-            Err(err) => {
-                tracing::warn!(error = %err, "Postgres LISTEN failed, retrying");
-            }
+        match connect_and_listen(&ws_url, &anon_key, &panel_id, &nudge_tx).await {
+            Ok(()) => tracing::warn!("Realtime WebSocket closed cleanly, reconnecting"),
+            Err(err) => tracing::warn!(error = ?err, "Realtime WebSocket failed, retrying"),
         }
         sleep(RECONNECT_BACKOFF).await;
     }
 }
 
+fn build_ws_url(supabase_url: &str, anon_key: &str) -> anyhow::Result<String> {
+    let base = supabase_url.trim_end_matches('/');
+    let scheme_swap = base
+        .strip_prefix("https://")
+        .map(|rest| format!("wss://{rest}"))
+        .or_else(|| base.strip_prefix("http://").map(|rest| format!("ws://{rest}")))
+        .with_context(|| format!("supabase_url has unrecognized scheme: {supabase_url}"))?;
+    Ok(format!(
+        "{scheme_swap}/realtime/v1/websocket?apikey={anon_key}&vsn=1.0.0"
+    ))
+}
+
 async fn connect_and_listen(
-    pg_config: &PgConfig,
-    tls: &MakeRustlsConnect,
+    ws_url: &str,
+    anon_key: &str,
     panel_id: &str,
     nudge_tx: &mpsc::Sender<()>,
 ) -> anyhow::Result<()> {
-    tracing::info!("Connecting to Postgres for LISTEN/NOTIFY...");
-    let (client, mut connection) = pg_config
-        .connect(tls.clone())
-        .await
-        .context("Postgres connect")?;
+    tracing::info!("Connecting to Supabase Realtime...");
+    let (mut ws, _resp) = connect_async(ws_url).await.context("realtime connect")?;
 
-    // tokio-postgres's Connection drives I/O and exposes async messages
-    // (notifications, notices) only via `poll_message`. Wrap it in a
-    // stream and forward into a channel so the main task can `await`.
-    let (mut msg_tx, mut msg_rx) = futures_mpsc::unbounded::<AsyncMessage>();
-    let stream = stream::poll_fn(move |cx| connection.poll_message(cx));
-    tokio::spawn(async move {
-        let mut s = std::pin::pin!(stream);
-        while let Some(msg) = s.next().await {
-            let Ok(msg) = msg else { break };
-            if msg_tx.send(msg).await.is_err() {
-                break;
-            }
-        }
+    // Topic must be unique per channel and start with `realtime:`.
+    // The actual filter lives in the `config.postgres_changes` array.
+    let topic = format!("realtime:driver:{panel_id}");
+    let join = json!({
+        "topic": topic,
+        "event": "phx_join",
+        "payload": {
+            "config": {
+                "postgres_changes": [
+                    { "event": "*", "schema": "public", "table": "panels",
+                      "filter": format!("id=eq.{panel_id}") },
+                    { "event": "*", "schema": "public", "table": "entries",
+                      "filter": format!("panel_id=eq.{panel_id}") }
+                ]
+            },
+            "access_token": anon_key
+        },
+        "ref": "1",
+        "join_ref": "1"
     });
-
-    client
-        .batch_execute("LISTEN panel_change")
+    ws.send(Message::Text(join.to_string()))
         .await
-        .context("LISTEN panel_change")?;
-    tracing::info!(panel_id, "Postgres LISTEN active");
+        .context("send phx_join")?;
+    tracing::info!(topic = %topic, "Realtime channel joined");
 
-    // Nudge once on every fresh connection — covers initial startup
-    // and the race window between a dropped subscription and the
-    // re-LISTEN where notifications would otherwise be lost.
+    // Refresh state on every fresh connection — covers initial startup
+    // and the race window between drop and re-join where events would
+    // otherwise be lost.
     let _ = nudge_tx.try_send(());
 
-    while let Some(msg) = msg_rx.next().await {
-        if let AsyncMessage::Notification(n) = msg {
-            if n.channel() == "panel_change" && n.payload() == panel_id {
-                // try_send so a slow consumer never blocks the listener.
-                let _ = nudge_tx.try_send(());
+    let mut heartbeat = interval(HEARTBEAT_PERIOD);
+    heartbeat.tick().await; // skip the immediate fire
+    let mut next_ref: u64 = 2;
+
+    loop {
+        tokio::select! {
+            _ = heartbeat.tick() => {
+                let hb = json!({
+                    "topic": "phoenix",
+                    "event": "heartbeat",
+                    "payload": {},
+                    "ref": next_ref.to_string()
+                });
+                next_ref += 1;
+                ws.send(Message::Text(hb.to_string()))
+                    .await
+                    .context("send heartbeat")?;
+            }
+            incoming = ws.next() => {
+                let Some(msg) = incoming else { return Ok(()); };
+                let msg = msg.context("ws recv")?;
+                match msg {
+                    Message::Text(text) => handle_event(&text, nudge_tx),
+                    Message::Ping(payload) => {
+                        ws.send(Message::Pong(payload)).await.ok();
+                    }
+                    Message::Close(_) => return Ok(()),
+                    Message::Binary(_) | Message::Pong(_) | Message::Frame(_) => {}
+                }
             }
         }
     }
-    Ok(())
 }
 
-fn make_tls() -> anyhow::Result<MakeRustlsConnect> {
-    let mut roots = rustls::RootCertStore::empty();
-    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let config = ClientConfig::builder()
-        .with_root_certificates(roots)
-        .with_no_client_auth();
-    Ok(MakeRustlsConnect::new(config))
+fn handle_event(text: &str, nudge_tx: &mpsc::Sender<()>) {
+    let Ok(value) = serde_json::from_str::<Value>(text) else {
+        tracing::trace!(raw = %text, "Realtime: non-JSON frame ignored");
+        return;
+    };
+    let event = value.get("event").and_then(Value::as_str).unwrap_or("");
+    match event {
+        "postgres_changes" => {
+            // try_send so a slow consumer never blocks the listener.
+            // sync.rs re-pulls canonical state — no need to parse the
+            // payload's record/old_record diff.
+            let _ = nudge_tx.try_send(());
+        }
+        "phx_error" | "phx_close" => {
+            tracing::warn!(frame = %value, "Realtime control frame indicates trouble");
+        }
+        _ => {} // phx_reply, system, presence, etc.
+    }
 }

@@ -30,11 +30,6 @@ pub struct Config {
     /// Supabase API key (anon role) sent as the `apikey` header.
     pub supabase_anon_key: String,
 
-    /// Direct Postgres connection string for LISTEN/NOTIFY-based push
-    /// updates, e.g. `postgresql://postgres:PASS@db.<ref>.supabase.co:5432/postgres`.
-    /// Required — the driver runs realtime-only.
-    pub database_url: String,
-
     /// OTLP/HTTP endpoint for telemetry export, e.g. `http://infra:4318`.
     ///
     /// If absent or empty, telemetry export is disabled and the driver only

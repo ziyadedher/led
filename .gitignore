@@ -3,10 +3,19 @@
 debug/
 target/
 
-# Optional local override for secrets (`secrets.sops.env` is the source of
-# truth, committed encrypted). Anything in `secrets.env` overrides values
-# from the decrypted SOPS file.
+# Optional local override for secrets. Anything in `secrets.env` overrides
+# values from the decrypted SOPS files in secrets/.
 secrets.env
+
+# Plaintext leak guard: sops --decrypt or partial encryption can leave
+# unencrypted JSON in secrets/. Block any *.json under secrets/ that
+# isn't the encrypted .sops.json form so `git add -A` can't ever pick
+# up plaintext secrets.
+/secrets/*.json
+!/secrets/*.sops.json
+/dev.toml
+/dev.toml.local
+/dev/
 
 # Local notes / scratch.
 deployments.txt

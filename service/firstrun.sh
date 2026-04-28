@@ -68,6 +68,18 @@ raspi-config nonint do_wifi_country "$WIFI_COUNTRY" 2>/dev/null || true
 
 echo "[firstrun] enabling boot services"
 systemctl daemon-reload
+# Enable system sshd as the LAN fallback. Tailscale SSH covers the
+# tailnet path; this covers the case where tailnet is wedged
+# (control-plane unreachable, key expired, etc.) and we need to ssh
+# in from the local LAN to recover. Raspbian-lite ships sshd
+# *installed but disabled*; without an explicit enable here, port
+# 22 is refused on first boot.
+systemctl enable ssh.service
+# `systemd-time-wait-sync.service` populates time-sync.target once
+# NTP has synced. led-tailscale-init's apt-get otherwise runs with
+# the raspbian image's build-date clock and rejects today's
+# package signatures. Pi Zero W has no RTC, so this matters.
+systemctl enable systemd-time-wait-sync.service
 systemctl enable led-wifi-setup.service
 systemctl enable led-tailscale-init.service
 systemctl enable led-driver.service

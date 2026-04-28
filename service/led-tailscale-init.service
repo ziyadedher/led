@@ -1,7 +1,14 @@
 [Unit]
 Description=Install Tailscale (if needed) and join the tailnet on first boot
-After=led-wifi-setup.service network-online.target
-Wants=network-online.target
+# `time-sync.target` is what we *really* depend on: tailscale's apt
+# repo signatures (and Tailscale auth-key validation later) reject
+# requests when the system clock is too far off, and the Pi Zero W
+# has no RTC — first boot has wall clock pinned to the raspbian
+# image build date until NTP syncs. Without this dep, apt-get
+# update bails with "Not live until <future>" on signed packages
+# and the service exits 100. See 2026-04-28 led-delta forensics.
+After=led-wifi-setup.service network-online.target time-sync.target
+Wants=network-online.target time-sync.target
 Requires=led-wifi-setup.service
 ConditionPathExists=!/var/lib/led-wifi-setup/tailscale-joined
 

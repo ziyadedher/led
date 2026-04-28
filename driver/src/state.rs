@@ -77,22 +77,44 @@ async fn try_get_panel_id(panel_name: &str, client: &Postgrest) -> anyhow::Resul
             tracing::warn!("Panel not found, creating...");
             // `Default` for Panel leaves `mode = ""` (empty string), but the
             // dash and dispatch logic both expect `"text"`. Fill it explicitly
-            // so freshly auto-created panels render text mode.
+            // so freshly auto-created panels render text mode. mode_config
+            // must be a JSON object too — the column is `not null` and our
+            // Default for JsonValue is `Null`, which PostgREST refuses.
             let new_panel = Panel {
                 name: panel_name.to_string(),
                 mode: "text".to_string(),
+                mode_config: serde_json::json!({}),
                 ..Default::default()
             };
-            let created_panel: Panel = serde_json::from_str(
+            let response = client
+                .from("panels")
+                .insert(serde_json::to_string(&new_panel)?)
+                .execute()
+                .await?;
+            if !response.status().is_success() {
+                let status = response.status();
+                let text = response.text().await.unwrap_or_default();
+                anyhow::bail!("panel insert returned {status}: {text}");
+            }
+            // Discard the insert response body — its shape depends on the
+            // PostgREST `Prefer` header which the postgrest crate manages
+            // opaquely. Re-select by name for an authoritative read instead.
+            let _ = response.text().await;
+            let panels: Vec<Panel> = serde_json::from_str(
                 &client
                     .from("panels")
-                    .insert(serde_json::to_string(&new_panel)?)
+                    .select("*")
+                    .eq("name", panel_name)
                     .execute()
                     .await?
                     .text()
                     .await?,
             )?;
-            Ok(created_panel.id)
+            panels
+                .into_iter()
+                .next()
+                .map(|p| p.id)
+                .ok_or_else(|| anyhow::anyhow!("freshly-created panel disappeared on read-back"))
         }
         1 => {
             tracing::debug!("Panel found with ID {}", panels[0].id);
@@ -189,15 +211,14 @@ async fn maybe_download(
 
 pub async fn sync(
     panel_name: String,
-    supabase_url: &str,
-    supabase_anon_key: &str,
-    database_url: String,
+    supabase_url: String,
+    supabase_anon_key: String,
     state: Arc<RwLock<State>>,
     metrics: Arc<Metrics>,
 ) -> anyhow::Result<()> {
     tracing::info!("Initializing state sync...");
     let postgrest_url = format!("{}/rest/v1", supabase_url.trim_end_matches('/'));
-    let client = Postgrest::new(&postgrest_url).insert_header("apikey", supabase_anon_key);
+    let client = Postgrest::new(&postgrest_url).insert_header("apikey", &supabase_anon_key);
 
     let panel_id = get_panel_id(&panel_name, &client).await;
     tracing::info!("Using panel ID: {}", panel_id);
@@ -209,19 +230,19 @@ pub async fn sync(
         tracing::warn!(error = %err, "couldn't write driver_version");
     }
 
-    // Realtime listener: each Postgres NOTIFY for our panel pushes a
-    // nudge here. The listener also nudges on every fresh connection
-    // (initial startup + reconnect after drop), so we always do a
-    // full pull when the channel comes up — no separate polling
-    // loop.
+    // Realtime subscriber: each postgres_changes event for our panel
+    // pushes a nudge here. The subscriber also nudges on every fresh
+    // connection (initial startup + reconnect after drop), so we
+    // always do a full pull when the channel comes up.
     let (nudge_tx, mut nudge_rx) = mpsc::channel::<()>(8);
     {
-        let url = database_url;
+        let url = supabase_url.clone();
+        let key = supabase_anon_key.clone();
         let panel_id = panel_id.clone();
         let tx = nudge_tx.clone();
         tokio::spawn(async move {
-            if let Err(err) = crate::realtime::run(url, panel_id, tx).await {
-                tracing::error!(error = %err, "realtime listener exited (unrecoverable)");
+            if let Err(err) = crate::realtime::run(url, key, panel_id, tx).await {
+                tracing::error!(error = %err, "realtime subscriber exited (unrecoverable)");
             }
         });
     }
@@ -244,7 +265,7 @@ pub async fn sync(
         }
     });
 
-    tracing::info!("Sync loop running — pulling on each realtime nudge");
+    tracing::info!("Sync loop running — pulling on realtime nudges");
     while let Some(()) = nudge_rx.recv().await {
         // Drain any coalesced nudges; we only need one pull.
         while nudge_rx.try_recv().is_ok() {}

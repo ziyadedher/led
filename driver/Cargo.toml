@@ -3,6 +3,14 @@ name = "led-driver"
 version = "0.3.0"
 edition = "2021"
 
+[features]
+# `rpi` pulls in the Pi-only RGB matrix bindings. Default-on so prod
+# crosses build the same way they always did. Disable for native dev
+# (`cargo run --no-default-features` / `just dev`) — the binary then
+# only knows about the terminal sink.
+default = ["rpi"]
+rpi = ["dep:rpi-led-panel"]
+
 [dependencies]
 display-core = { path = "../display-core" }
 anyhow = "1.0.86"
@@ -36,13 +44,12 @@ reqwest = { version = "0.12.5", default-features = false, features = [
     "rustls-tls",
     "blocking",
 ] }
-futures-channel = "0.3"
 futures-util = "0.3"
-tokio-postgres = "0.7"
-tokio-postgres-rustls = "0.13"
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
-webpki-roots = "0.26"
-rpi-led-panel = "0.5.1"
+tokio-tungstenite = { version = "0.24", default-features = false, features = [
+    "rustls-tls-webpki-roots",
+    "connect",
+] }
+rpi-led-panel = { version = "0.5.1", optional = true }
 serde = { version = "1.0.208", features = ["derive"] }
 serde_json = "1.0.125"
 thiserror = "1.0.63"
