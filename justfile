@@ -7,7 +7,6 @@ arch := "arm-unknown-linux-gnueabihf"
 # (`just OTEL_ENDPOINT=… flash-sd …`) or via secrets.env if you need.
 export OTEL_ENDPOINT := env_var_or_default("OTEL_ENDPOINT", "https://otel.ziyadedher.com")
 export WIFI_COUNTRY := env_var_or_default("WIFI_COUNTRY", "US")
-export SSH_AUTHORIZED_KEYS_FILE := env_var_or_default("SSH_AUTHORIZED_KEYS_FILE", env_var("HOME") + "/.ssh/id_ed25519.pub")
 
 # Local paths of the cross-compiled binaries for the current `arch`.
 driver_bin := "target" / arch / "release" / "led-driver"
@@ -59,12 +58,15 @@ _download-image:
 refresh-image-cache:
     rm -f "{{ cache_dir }}/raspios-lite-{{ arch }}.img.xz"
 
-# Flash an SD card with a fully provisioned image: Pi OS Lite + driver baked in,
-# first-boot script for hostname/WiFi/Tailscale.
+# Flash an SD card with a fully provisioned image. Everything is baked
+# at flash time on the dev box — no first-boot reconfigure step. Pi
+# powers on, hits multi-user.target, our services come up. Tailscale
+# joins, you SSH in via tailnet (no system sshd / pi user / userconf
+# / authorized_keys plumbing — Tailscale SSH is the only entry).
 #
-# Pulls Supabase URL + anon key from `tofu output` (so the source of truth
-# is the TF state) and the rest from `secrets.sops.json` via SOPS. Run
-# `tofu -chdir=terraform apply` first if you haven't.
+# Pulls Supabase URL + anon key from `tofu output` and TAILSCALE_AUTHKEY
+# from `secrets/fleet.sops.json`. Run `tofu -chdir=terraform apply`
+# first if you haven't.
 flash-sd id host device: build
     #!/usr/bin/env bash
     set -euo pipefail
@@ -79,7 +81,6 @@ flash-sd id host device: build
     : "${SUPABASE_URL:?tofu output supabase_url is empty — run \`tofu -chdir=terraform apply\` first}"
     : "${SUPABASE_ANON_KEY:?tofu output anon_key is empty — run \`tofu -chdir=terraform apply\` first}"
     : "${TAILSCALE_AUTHKEY:?need TAILSCALE_AUTHKEY in secrets/fleet.sops.json}"
-    [ -f "$SSH_AUTHORIZED_KEYS_FILE" ] || { echo "ERROR: $SSH_AUTHORIZED_KEYS_FILE missing" >&2; exit 1; }
 
     dev="{{ device }}"
     [ -b "$dev" ] || { echo "ERROR: $dev is not a block device" >&2; exit 1; }
@@ -131,8 +132,15 @@ flash-sd id host device: build
     sudo mount "$boot_part" "$boot_mnt"
     sudo mount "$root_part" "$root_mnt"
 
-    # Per-host first-boot env (secrets land here; firstrun.sh translates into
-    # /etc/led/init.env on the rootfs and deletes the boot copy).
+    # cmdline.txt: append cfg80211 regdomain. Equivalent to running
+    # `raspi-config nonint do_wifi_country` on the Pi, but baked at
+    # flash time so we don't need a first-boot script.
+    cmdline=$(sudo tr -d '\n' < "$boot_mnt/cmdline.txt")
+    echo "$cmdline cfg80211.ieee80211_regdom=$WIFI_COUNTRY" \
+        | sudo tee "$boot_mnt/cmdline.txt" > /dev/null
+
+    # /etc/led/init.env — runtime env file consumed by
+    # led-wifi-setup and led-tailscale-init via EnvironmentFile=.
     env_tmp=$(mktemp)
     chmod 600 "$env_tmp"
     {
@@ -140,29 +148,22 @@ flash-sd id host device: build
         printf 'PANEL_ID=%q\n' "{{ id }}"
         printf 'WIFI_COUNTRY=%q\n' "$WIFI_COUNTRY"
         printf 'TAILSCALE_AUTHKEY=%q\n' "$TAILSCALE_AUTHKEY"
-        printf 'AUTHORIZED_KEYS=%q\n' "$(cat "$SSH_AUTHORIZED_KEYS_FILE")"
     } > "$env_tmp"
-    sudo install -m 0600 "$env_tmp" "$boot_mnt/firstrun.env"
+    sudo install -D -m 0600 "$env_tmp" "$root_mnt/etc/led/init.env"
     rm -f "$env_tmp"
 
-    # Raspbian-bookworm doesn't pre-create the `pi` user; without
-    # userconf.txt, userconfig.service leaves the account half-set
-    # with /usr/sbin/nologin as shell — sshd then says "account
-    # currently not available" even with our key in place. Pi Imager
-    # writes this file automatically; flash-sd needs to too. Default
-    # password `raspberry` is for serial-console fallback only —
-    # SSH still uses key auth from $SSH_AUTHORIZED_KEYS_FILE.
-    pi_pw_hash=$(openssl passwd -6 raspberry)
-    echo "pi:$pi_pw_hash" | sudo tee "$boot_mnt/userconf.txt" > /dev/null
-    sudo chmod 0600 "$boot_mnt/userconf.txt"
+    # Hostname.
+    echo "{{ host }}" | sudo tee "$root_mnt/etc/hostname" > /dev/null
+    sudo sed -i "s/^127\\.0\\.1\\.1.*/127.0.1.1\\t{{ host }}/" "$root_mnt/etc/hosts" || true
 
-    sudo install -m 0755 service/firstrun.sh "$boot_mnt/firstrun.sh"
+    # Persistent journald with 1-second sync — captures logs across
+    # power yanks (which is most of our debug loop). Empty
+    # /var/log/journal triggers persistent mode on Debian/Raspbian.
+    sudo install -D -m 0644 service/journald-persistent.conf \
+        "$root_mnt/etc/systemd/journald.conf.d/persistent.conf"
+    sudo install -d -m 2755 "$root_mnt/var/log/journal"
 
-    cmdline=$(sudo tr -d '\n' < "$boot_mnt/cmdline.txt")
-    new_cmdline="$cmdline systemd.run=/boot/firmware/firstrun.sh systemd.run_success_action=reboot systemd.unit=kernel-command-line.target"
-    echo "$new_cmdline" | sudo tee "$boot_mnt/cmdline.txt" > /dev/null
-
-    # Bake driver + WiFi-onboarding runtime artefacts into the rootfs.
+    # Render config.toml + bake driver / wifi-setup / tailscale-init.
     cfg_tmp=$(mktemp)
     sed \
         -e "s|@@ID@@|{{ id }}|g" \
@@ -172,17 +173,31 @@ flash-sd id host device: build
         -e "s|@@OTEL_ENDPOINT@@|${OTEL_ENDPOINT:-}|g" \
         -e "s|@@OTEL_AUTHORIZATION@@|${OTEL_AUTHORIZATION:-}|g" \
         service/config.toml.tmpl > "$cfg_tmp"
-    sudo install -D -m 0644 "$cfg_tmp"                              "$root_mnt/usr/local/etc/led/config.toml"
-    sudo install -D -m 0755 "{{ driver_bin }}"                      "$root_mnt/usr/local/bin/led-driver"
-    sudo install -D -m 0755 "{{ wifi_bin }}"                        "$root_mnt/usr/local/bin/led-wifi-setup"
-    sudo install -D -m 0755 service/led-tailscale-init              "$root_mnt/usr/local/bin/led-tailscale-init"
-    sudo install -D -m 0644 service/led-driver.service              "$root_mnt/etc/systemd/system/led-driver.service"
-    sudo install -D -m 0644 service/led-wifi-setup.service          "$root_mnt/etc/systemd/system/led-wifi-setup.service"
-    sudo install -D -m 0644 service/led-tailscale-init.service      "$root_mnt/etc/systemd/system/led-tailscale-init.service"
-    sudo install -D -m 0644 service/alsa-blacklist.conf             "$root_mnt/etc/modprobe.d/led-alsa-blacklist.conf"
-    sudo install -D -m 0644 service/captive-dnsmasq.conf            "$root_mnt/etc/NetworkManager/dnsmasq-shared.d/captive-portal.conf"
-    sudo install -D -m 0644 service/disable-ipv6.conf               "$root_mnt/etc/sysctl.d/99-led-disable-ipv6.conf"
+    sudo install -D -m 0644 "$cfg_tmp"                          "$root_mnt/usr/local/etc/led/config.toml"
+    sudo install -D -m 0755 "{{ driver_bin }}"                  "$root_mnt/usr/local/bin/led-driver"
+    sudo install -D -m 0755 "{{ wifi_bin }}"                    "$root_mnt/usr/local/bin/led-wifi-setup"
+    sudo install -D -m 0755 service/led-tailscale-init          "$root_mnt/usr/local/bin/led-tailscale-init"
+    sudo install -D -m 0644 service/led-driver.service          "$root_mnt/etc/systemd/system/led-driver.service"
+    sudo install -D -m 0644 service/led-wifi-setup.service      "$root_mnt/etc/systemd/system/led-wifi-setup.service"
+    sudo install -D -m 0644 service/led-tailscale-init.service  "$root_mnt/etc/systemd/system/led-tailscale-init.service"
+    sudo install -D -m 0644 service/alsa-blacklist.conf         "$root_mnt/etc/modprobe.d/led-alsa-blacklist.conf"
+    sudo install -D -m 0644 service/captive-dnsmasq.conf        "$root_mnt/etc/NetworkManager/dnsmasq-shared.d/captive-portal.conf"
+    sudo install -D -m 0644 service/disable-ipv6.conf           "$root_mnt/etc/sysctl.d/99-led-disable-ipv6.conf"
     rm -f "$cfg_tmp"
+
+    # Enable our services + systemd-time-wait-sync. The latter gates
+    # apt-get on NTP sync — Pi Zero W has no RTC, image build-date
+    # wall clock poisons apt InRelease verification on first boot
+    # otherwise. Symlink targets follow where each unit's source
+    # lives: ours under /etc/systemd/system, systemd-shipped under
+    # /lib/systemd/system.
+    sudo install -d -m 0755 "$root_mnt/etc/systemd/system/multi-user.target.wants"
+    for unit in led-driver.service led-wifi-setup.service led-tailscale-init.service; do
+        sudo ln -sf "/etc/systemd/system/$unit" \
+            "$root_mnt/etc/systemd/system/multi-user.target.wants/$unit"
+    done
+    sudo ln -sf /lib/systemd/system/systemd-time-wait-sync.service \
+        "$root_mnt/etc/systemd/system/multi-user.target.wants/systemd-time-wait-sync.service"
 
     sudo sync
     cleanup
@@ -190,8 +205,10 @@ flash-sd id host device: build
 
     echo
     echo "==> $dev ready. Insert into the Pi for {{ host }} ({{ id }}) and power it on."
-    echo "    First boot configures WiFi, Tailscale and the driver, then reboots."
-    echo "    Watch for it on tailnet: tailscale status | grep {{ host }}"
+    echo "    On first boot: led-wifi-setup brings up the captive-portal AP"
+    echo "    (SSID 'led-setup-{{ id }}'), pick your home wifi from a phone,"
+    echo "    led-tailscale-init joins the tailnet, you SSH in:"
+    echo "        tailscale ssh root@{{ host }}"
 
 # Re-init an existing Pi that's already on the tailnet (e.g. one provisioned
 # before flash-sd existed). Pushes config + service unit + ALSA blacklist +
@@ -279,7 +296,6 @@ nspawn host id:
     set +a
     : "${SUPABASE_URL:?tofu output supabase_url is empty}"
     : "${SUPABASE_ANON_KEY:?tofu output anon_key is empty}"
-    [ -f "$SSH_AUTHORIZED_KEYS_FILE" ] || { echo "ERROR: $SSH_AUTHORIZED_KEYS_FILE missing" >&2; exit 1; }
 
     # Native build for the host arch. Driver: terminal sink only
     # (no rpi feature → no GPIO/HUB75). Wifi-setup: default features.
@@ -330,9 +346,9 @@ nspawn host id:
     # since systemd-nspawn already gives us pid 1's stdout.
     sudo ln -sf /dev/null "$rootfs/etc/systemd/system/getty@tty1.service"
 
-    # /etc/led/init.env normally written by firstrun.sh — wifi-setup
-    # consumes PANEL_ID + WIFI_COUNTRY from it via EnvironmentFile=.
-    # No TAILSCALE_AUTHKEY: led-tailscale-init isn't enabled here.
+    # /etc/led/init.env — wifi-setup consumes PANEL_ID + WIFI_COUNTRY
+    # via EnvironmentFile=. No TAILSCALE_AUTHKEY: led-tailscale-init
+    # isn't enabled here.
     sudo install -d -m 0755 "$rootfs/etc/led"
     {
         printf 'HOSTNAME=%q\n' "{{ host }}"
@@ -355,10 +371,8 @@ nspawn host id:
     sudo ln -sf /etc/systemd/system/led-wifi-setup.service "$rootfs/etc/systemd/system/multi-user.target.wants/led-wifi-setup.service"
 
     echo "{{ host }}" | sudo tee "$rootfs/etc/hostname" > /dev/null
-    sudo install -D -m 0700 -d                       "$rootfs/root/.ssh"
-    sudo install -m 0600 "$SSH_AUTHORIZED_KEYS_FILE" "$rootfs/root/.ssh/authorized_keys"
-    # No console password — `machinectl shell led-test` from the host
-    # gets us in without auth, which is what we actually want.
+    # No password / no authorized_keys — `machinectl shell led-test`
+    # from the host gets us in without auth, which is what we want.
 
     # === wlan0 emulation via mac80211_hwsim ===
     # Create a private netns for the container; move one hwsim phy
