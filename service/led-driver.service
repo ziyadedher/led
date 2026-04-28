@@ -1,7 +1,12 @@
 [Unit]
 Description=LED matrix driver
-After=network-online.target led-tailscale-init.service
-Wants=network-online.target
+# No `After=network-online.target` or `After=led-tailscale-init`:
+# the driver needs to start as early as possible so it can render
+# the boot frame while wifi-setup runs the AP (and then the setup
+# frame once /run/led-wifi-setup.active appears). The driver
+# tolerates a missing network — the realtime listener auto-reconnects
+# and OTel exports time out gracefully.
+After=local-fs.target
 
 [Service]
 Type=simple
