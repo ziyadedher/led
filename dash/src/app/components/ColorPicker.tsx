@@ -63,9 +63,9 @@ export function ColorPicker({
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-[--color-border] bg-[--color-surface-2] p-4">
+    <div className="space-y-3 rounded-xl border border-(--color-border) bg-(--color-surface-2) p-4">
       <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[--color-text-dim]">
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-dim)">
           color
         </span>
         <Switch
@@ -77,7 +77,7 @@ export function ColorPicker({
               onChange({ mode: "rgb", rgb: { r: 255, g: 138, b: 44 } });
             }
           }}
-          className={`${value.mode === "rainbow" ? "bg-[--color-accent]" : "bg-[--color-border-strong]"} relative inline-flex h-6 w-11 items-center rounded-full transition`}
+          className={`${value.mode === "rainbow" ? "bg-(--color-accent)" : "bg-(--color-border-strong)"} relative inline-flex h-6 w-11 items-center rounded-full transition`}
         >
           <span className="sr-only">Rainbow mode</span>
           <span
@@ -105,7 +105,7 @@ export function ColorPicker({
                     "aspect-square rounded-md border transition hover:scale-110",
                     active
                       ? "border-white ring-2 ring-white/30"
-                      : "border-[--color-border]",
+                      : "border-(--color-border)",
                   ].join(" ")}
                   style={{ backgroundColor: preset }}
                   aria-label={`Pick ${preset}`}
@@ -115,7 +115,7 @@ export function ColorPicker({
           </div>
           <div className="flex items-center gap-2">
             <span
-              className="h-9 w-9 rounded-md border border-[--color-border]"
+              className="h-9 w-9 rounded-md border border-(--color-border)"
               style={{ backgroundColor: rgbToHex(value.rgb) }}
             />
             <input
@@ -128,7 +128,7 @@ export function ColorPicker({
                 if (rgb) onChange({ mode: "rgb", rgb });
               }}
               spellCheck={false}
-              className="block w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 font-mono text-sm uppercase tracking-wider text-[--color-text] focus:border-[--color-accent] focus:outline-none"
+              className="block w-full rounded-md border border-(--color-border) bg-(--color-bg) px-3 py-2 font-mono text-sm uppercase tracking-wider text-(--color-text) focus:border-(--color-accent) focus:outline-none"
               placeholder="#RRGGBB"
             />
           </div>
@@ -136,7 +136,7 @@ export function ColorPicker({
       ) : (
         <div className="space-y-3">
           <RainbowGradient />
-          <div className="flex items-center gap-3 font-mono text-xs text-[--color-text-muted]">
+          <div className="flex items-center gap-3 font-mono text-xs text-(--color-text-muted)">
             <span>slow</span>
             <input
               type="range"
@@ -146,21 +146,21 @@ export function ColorPicker({
               onChange={(e) =>
                 onChange({ ...value, speed: Number(e.target.value) })
               }
-              className="flex-1 accent-[--color-accent]"
+              className="flex-1 accent-(--color-accent)"
             />
             <span>fast</span>
-            <span className="w-8 text-right tabular-nums text-[--color-text]">
+            <span className="w-8 text-right tabular-nums text-(--color-text)">
               {value.speed}
             </span>
           </div>
-          <label className="flex cursor-pointer items-center gap-2 font-mono text-xs text-[--color-text-muted]">
+          <label className="flex cursor-pointer items-center gap-2 font-mono text-xs text-(--color-text-muted)">
             <input
               type="checkbox"
               checked={value.perLetter}
               onChange={(e) =>
                 onChange({ ...value, perLetter: e.target.checked })
               }
-              className="h-3.5 w-3.5 rounded border-[--color-border-strong] bg-[--color-bg] text-[--color-accent] focus:ring-0 focus:ring-offset-0"
+              className="h-3.5 w-3.5 rounded border-(--color-border-strong) bg-(--color-bg) text-(--color-accent) focus:ring-0 focus:ring-offset-0"
             />
             per-letter rainbow
           </label>

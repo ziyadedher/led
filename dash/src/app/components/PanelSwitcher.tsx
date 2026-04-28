@@ -16,7 +16,7 @@ export function PanelSwitcher({
 
   if (error) {
     return (
-      <div className="font-mono text-xs text-[--color-danger]">
+      <div className="font-mono text-xs text-(--color-danger)">
         couldn&apos;t load panels
       </div>
     );
@@ -24,7 +24,7 @@ export function PanelSwitcher({
 
   if (list.length === 0) {
     return (
-      <div className="font-mono text-xs text-[--color-text-dim]">
+      <div className="font-mono text-xs text-(--color-text-dim)">
         no panels yet
       </div>
     );
@@ -34,7 +34,7 @@ export function PanelSwitcher({
     <div
       role="tablist"
       aria-label="Panel"
-      className="flex snap-x snap-mandatory items-center gap-1 overflow-x-auto rounded-full border border-[--color-border] bg-[--color-surface] p-1"
+      className="flex snap-x snap-mandatory items-center gap-1 overflow-x-auto rounded-full border border-(--color-border) bg-(--color-surface) p-1"
     >
       {list.map((p) => {
         const active = p.id === panelId;
@@ -47,8 +47,8 @@ export function PanelSwitcher({
             className={[
               "snap-start whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium transition",
               active
-                ? "bg-[--color-accent] text-black shadow-[--shadow-glow]"
-                : "text-[--color-text-muted] hover:bg-[--color-surface-2] hover:text-[--color-text]",
+                ? "bg-(--color-accent) text-black shadow-(--shadow-glow)"
+                : "text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
             ].join(" ")}
             title={p.description ?? p.name}
           >

@@ -69,55 +69,56 @@ export default function Page() {
 
   return (
     <PanelContext.Provider value={panelId}>
-      <div className="mx-auto flex min-h-dvh max-w-6xl flex-col px-4 pb-16 pt-6 sm:px-6 lg:px-8">
-        <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-8 px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <span className="font-mono text-xs uppercase tracking-[0.3em] text-[--color-text-dim]">
+            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
               led
             </span>
-            <span className="text-2xl font-bold tracking-tight">
-              <span className="bg-gradient-to-r from-[--color-accent] to-[--color-accent-glow] bg-clip-text text-transparent">
+            <span className="font-mono text-2xl font-semibold tracking-tight">
+              <span className="text-(--color-accent) [text-shadow:0_0_18px_var(--color-accent-fade)]">
                 wall
               </span>
-              <span className="text-[--color-text]">.</span>
+              <span className="text-(--color-text)">.</span>
             </span>
             <LiveDot />
           </div>
           <PanelSwitcher panelId={panelId} onChange={setChosenPanelId} />
         </header>
 
-        <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_1.1fr]">
-          <div className="space-y-6">
-            <Composer
-              message={message}
-              onMessageChange={setMessage}
-              color={color}
-              onColorChange={setColor}
-              effects={effects}
-              onEffectsChange={setEffects}
-              onSubmit={handleSubmit}
-              disabled={!isSubmittable}
+        <div className="flex justify-center">
+          <div className="w-full max-w-md">
+            <MatrixPreview
+              preview={{
+                text: message,
+                color,
+              }}
             />
-            <div className="hidden lg:block">
-              <MatrixPreview />
-            </div>
           </div>
+        </div>
 
-          <section className="space-y-3">
+        <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_1fr]">
+          <Composer
+            message={message}
+            onMessageChange={setMessage}
+            color={color}
+            onColorChange={setColor}
+            effects={effects}
+            onEffectsChange={setEffects}
+            onSubmit={handleSubmit}
+            disabled={!isSubmittable}
+          />
+          <section className="flex min-h-0 flex-col gap-3">
             <div className="flex items-baseline justify-between">
-              <h2 className="font-mono text-[10px] uppercase tracking-[0.2em] text-[--color-text-dim]">
-                entries
+              <h2 className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-dim)">
+                queue
               </h2>
-              <span className="font-mono text-[10px] text-[--color-text-dim]">
+              <span className="font-mono text-[10px] text-(--color-text-dim)">
                 top 7 fit on the matrix
               </span>
             </div>
             <EntriesList />
           </section>
-
-          <div className="lg:hidden">
-            <MatrixPreview />
-          </div>
         </div>
       </div>
     </PanelContext.Provider>

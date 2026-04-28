@@ -63,7 +63,7 @@ const getEntries = async (panel_id: string) => {
 const FALLBACK_REFRESH_INTERVAL = 30_000;
 
 const useSWRFactory = <Result>(
-  key: string,
+  key: string | null,
   func: () => Promise<Result>,
   { refreshInterval = FALLBACK_REFRESH_INTERVAL }: { refreshInterval?: number } = {},
 ) =>
@@ -148,7 +148,9 @@ export const pause = {
       is_paused: (await getPanel(panelId)).is_paused,
     }),
     useSWR: (panelId: string) =>
-      useSWRFactory(`/pause/${panelId}`, () => pause.get.call(panelId)),
+      useSWRFactory(panelId ? `/pause/${panelId}` : null, () =>
+        pause.get.call(panelId),
+      ),
   },
 
   set: {
@@ -169,7 +171,9 @@ export const entries = {
       entries: await getEntries(panelId),
     }),
     useSWR: (panelId: string) =>
-      useSWRFactory(`/entries/${panelId}`, () => entries.get.call(panelId)),
+      useSWRFactory(panelId ? `/entries/${panelId}` : null, () =>
+        entries.get.call(panelId),
+      ),
   },
 
   add: {
@@ -235,7 +239,7 @@ export const entries = {
         scroll: (await getPanel(panelId)).scroll,
       }),
       useSWR: (panelId: string) =>
-        useSWRFactory(`/entries/scroll/${panelId}`, () =>
+        useSWRFactory(panelId ? `/entries/scroll/${panelId}` : null, () =>
           entries.scroll.get.call(panelId),
         ),
     },
@@ -260,7 +264,9 @@ export const flash = {
     call: async (panelId: string) =>
       (await getPanel(panelId)).flash as FlashOptions,
     useSWR: (panelId: string) =>
-      useSWRFactory(`/flash/${panelId}`, () => flash.get.call(panelId)),
+      useSWRFactory(panelId ? `/flash/${panelId}` : null, () =>
+        flash.get.call(panelId),
+      ),
   },
 
   post: {
