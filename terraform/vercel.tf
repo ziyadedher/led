@@ -18,6 +18,12 @@ resource "vercel_project" "led_dash" {
   # Vercel deprecated 18.x in 2026; 24.x is the current LTS.
   node_version   = "24.x"
 
+  # Use Bun for install + build. Vercel also auto-detects `bun.lockb` in the
+  # repo, but being explicit keeps the lockfile and the runtime in sync if
+  # something else introduces a `package-lock.json` later.
+  install_command = "bun install --frozen-lockfile"
+  build_command   = "bun run build"
+
   git_repository = {
     type              = "github"
     repo              = "ziyadedher/led"
