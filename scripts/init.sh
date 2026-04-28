@@ -34,9 +34,16 @@ scp service/captive-dnsmasq.conf "$USER@$HOST:/etc/NetworkManager/dnsmasq-shared
 scp service/disable-ipv6.conf    "$USER@$HOST:/etc/sysctl.d/99-led-disable-ipv6.conf"
 scp service/led-driver.service   "$USER@$HOST:/etc/systemd/system/led-driver.service"
 scp "$rendered"                  "$USER@$HOST:/usr/local/etc/led/config.toml"
-scp "$driver_bin"                "$USER@$HOST:/usr/local/bin/led-driver"
-ssh "$USER@$HOST" 'chmod 0755 /usr/local/bin/led-driver \
+# scp can't overwrite the running ELF; ship as .new and atomic-rename
+# under the running service, then restart so the new image takes
+# effect. `install` preserves perms, hands the running process its
+# old inode (still valid until restart), and exposes the new bytes
+# under the canonical path for the next ExecStart.
+scp "$driver_bin"                "$USER@$HOST:/usr/local/bin/led-driver.new"
+ssh "$USER@$HOST" 'install -m 0755 /usr/local/bin/led-driver.new /usr/local/bin/led-driver \
+    && rm /usr/local/bin/led-driver.new \
     && systemctl daemon-reload \
-    && systemctl enable led-driver.service'
-echo "==> initialized $HOST (id=$PANEL_ID)"
-echo "    if ALSA blacklist is new on this host, reboot before 'just deploy'."
+    && systemctl enable led-driver.service \
+    && systemctl restart led-driver.service'
+echo "==> initialized $HOST (id=$PANEL_ID); led-driver restarted with new binary"
+echo "    if ALSA blacklist is new on this host, reboot before further deploys."
