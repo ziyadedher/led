@@ -118,6 +118,14 @@ sudo install -D -m 0644 service/journald-persistent.conf \
     "$root_mnt/etc/systemd/journald.conf.d/persistent.conf"
 sudo install -d -m 2755 "$root_mnt/var/log/journal"
 
+# Pi OS Lite ships persisted rfkill state files marking wlan
+# soft-blocked (whichever build host produced the image left them
+# that way). systemd-rfkill restores that on first boot, which makes
+# NetworkManager refuse to bring wlan0 up and `led-wifi-setup` exit
+# 1 — the Pi never makes it onto the network. Pre-firstrun-removal
+# the raspi-config flow happened to clear it; nothing does now.
+sudo rm -f "$root_mnt"/var/lib/systemd/rfkill/*:wlan
+
 # Render config.toml + bake binaries / units / NM + sysctl drop-ins.
 cfg_tmp=$(mktemp)
 render_config_toml "$PANEL_ID" "/var/log/led/" "$cfg_tmp"
