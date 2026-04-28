@@ -10,5 +10,16 @@ Restart=always
 RestartSec=2s
 User=root
 
+# rpi-led-panel drives the HUB75 protocol via tight CPU + DMA loops; any
+# preemption mid-frame shows up as visible flicker. On the Pi Zero W's
+# single core we can't isolate a CPU, but we can ask the scheduler to
+# never preempt this process for normal-priority work. SCHED_FIFO + max
+# priority is what hzeller's reference C library does too.
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=99
+Nice=-20
+IOSchedulingClass=realtime
+IOSchedulingPriority=0
+
 [Install]
 WantedBy=multi-user.target
