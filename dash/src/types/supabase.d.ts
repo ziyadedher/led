@@ -45,6 +45,7 @@ export type Database = {
         Row: {
           created_at: string;
           description: string;
+          driver_version: string | null;
           flash: Json;
           id: string;
           is_paused: boolean;
@@ -56,6 +57,7 @@ export type Database = {
         Insert: {
           created_at?: string;
           description?: string;
+          driver_version?: string | null;
           flash: Json;
           id?: string;
           is_paused?: boolean;
@@ -67,6 +69,7 @@ export type Database = {
         Update: {
           created_at?: string;
           description?: string;
+          driver_version?: string | null;
           flash?: Json;
           id?: string;
           is_paused?: boolean;
