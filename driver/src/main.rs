@@ -80,6 +80,7 @@ async fn main() -> anyhow::Result<()> {
             config.id,
             &config.supabase_url,
             &config.supabase_anon_key,
+            config.database_url,
             state,
             metrics,
         )

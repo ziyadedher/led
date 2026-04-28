@@ -75,6 +75,9 @@ flash-sd id host device: build
     TF_VAR_tf_state_passphrase="$TF_STATE_PASSPHRASE"
     SUPABASE_URL=$(tofu -chdir=terraform output -raw supabase_url)
     SUPABASE_ANON_KEY=$(tofu -chdir=terraform output -raw anon_key)
+    PROJECT_REF=$(tofu -chdir=terraform output -raw project_ref)
+    DB_PASSWORD=$(tofu -chdir=terraform output -raw db_password)
+    DATABASE_URL="postgresql://postgres:${DB_PASSWORD}@db.${PROJECT_REF}.supabase.co:5432/postgres"
     [ -f secrets.env ] && source secrets.env
     set +a
     : "${SUPABASE_URL:?tofu output supabase_url is empty — run \`tofu -chdir=terraform apply\` first}"
@@ -158,6 +161,7 @@ flash-sd id host device: build
         -e "s|@@ID@@|{{ id }}|g" \
         -e "s|@@SUPABASE_URL@@|${SUPABASE_URL}|g" \
         -e "s|@@SUPABASE_ANON_KEY@@|${SUPABASE_ANON_KEY}|g" \
+        -e "s|@@DATABASE_URL@@|${DATABASE_URL}|g" \
         -e "s|@@OTEL_ENDPOINT@@|${OTEL_ENDPOINT:-}|g" \
         -e "s|@@OTEL_AUTHORIZATION@@|${OTEL_AUTHORIZATION:-}|g" \
         service/config.toml.tmpl > "$cfg_tmp"
@@ -191,6 +195,9 @@ init host id user="root": build
     TF_VAR_tf_state_passphrase="$TF_STATE_PASSPHRASE"
     SUPABASE_URL=$(tofu -chdir=terraform output -raw supabase_url)
     SUPABASE_ANON_KEY=$(tofu -chdir=terraform output -raw anon_key)
+    PROJECT_REF=$(tofu -chdir=terraform output -raw project_ref)
+    DB_PASSWORD=$(tofu -chdir=terraform output -raw db_password)
+    DATABASE_URL="postgresql://postgres:${DB_PASSWORD}@db.${PROJECT_REF}.supabase.co:5432/postgres"
     [ -f secrets.env ] && source secrets.env
     set +a
     rendered=$(mktemp)
@@ -199,7 +206,9 @@ init host id user="root": build
         -e "s|@@ID@@|{{ id }}|g" \
         -e "s|@@SUPABASE_URL@@|${SUPABASE_URL}|g" \
         -e "s|@@SUPABASE_ANON_KEY@@|${SUPABASE_ANON_KEY}|g" \
+        -e "s|@@DATABASE_URL@@|${DATABASE_URL}|g" \
         -e "s|@@OTEL_ENDPOINT@@|${OTEL_ENDPOINT:-}|g" \
+        -e "s|@@OTEL_AUTHORIZATION@@|${OTEL_AUTHORIZATION:-}|g" \
         service/config.toml.tmpl > "$rendered"
     ssh "{{ user }}@{{ host }}" 'mkdir -p /usr/local/etc/led /var/log/led'
     scp service/alsa-blacklist.conf "{{ user }}@{{ host }}:/etc/modprobe.d/led-alsa-blacklist.conf"

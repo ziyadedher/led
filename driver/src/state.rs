@@ -3,12 +3,13 @@ use std::{sync::Arc, time::Duration};
 use parking_lot::RwLock;
 use postgrest::Postgrest;
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 use tokio::time::Instant;
 
 use crate::display::{Panel, TextEntry};
 use crate::telemetry::Metrics;
 
-const REFRESH_PERIOD: Duration = Duration::from_millis(2500);
+const HEARTBEAT_PERIOD: Duration = Duration::from_secs(30);
 
 #[derive(PartialEq, Eq, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct State {
@@ -118,6 +119,7 @@ pub async fn sync(
     panel_name: String,
     supabase_url: &str,
     supabase_anon_key: &str,
+    database_url: String,
     state: Arc<RwLock<State>>,
     metrics: Arc<Metrics>,
 ) -> anyhow::Result<()> {
@@ -128,13 +130,38 @@ pub async fn sync(
     let panel_id = get_panel_id(&panel_name, &client).await?;
     tracing::info!("Using panel ID: {}", panel_id);
 
-    tracing::info!(
-        refresh_period_ms = REFRESH_PERIOD.as_millis() as u64,
-        "Starting state sync loop"
-    );
-    let mut interval = tokio::time::interval(REFRESH_PERIOD);
-    loop {
-        interval.tick().await;
+    // Realtime listener: each Postgres NOTIFY for our panel pushes a
+    // nudge here. The listener also nudges on every fresh connection
+    // (initial startup + reconnect after drop), so we always do a
+    // full pull when the channel comes up — no separate polling
+    // loop.
+    let (nudge_tx, mut nudge_rx) = mpsc::channel::<()>(8);
+    {
+        let url = database_url;
+        let panel_id = panel_id.clone();
+        let tx = nudge_tx.clone();
+        tokio::spawn(async move {
+            if let Err(err) = crate::realtime::run(url, panel_id, tx).await {
+                tracing::error!(error = %err, "realtime listener exited (unrecoverable)");
+            }
+        });
+    }
+
+    // Heartbeat metric on its own cadence so absence of changes still
+    // shows liveness in HyperDX.
+    let heartbeat_metrics = metrics.clone();
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(HEARTBEAT_PERIOD);
+        loop {
+            tick.tick().await;
+            heartbeat_metrics.heartbeat.add(1, &[]);
+        }
+    });
+
+    tracing::info!("Sync loop running — pulling on each realtime nudge");
+    while let Some(()) = nudge_rx.recv().await {
+        // Drain any coalesced nudges; we only need one pull.
+        while nudge_rx.try_recv().is_ok() {}
 
         let started = Instant::now();
         let last_updated = state.read().panel.last_updated.clone();
@@ -148,12 +175,12 @@ pub async fn sync(
                 *state_write = new_state;
             }
             Err(err) => {
-                tracing::warn!(error = %err, "Failed to download state, trying again");
+                tracing::warn!(error = %err, "pull failed; will retry on next nudge");
             }
         }
         metrics
             .sync_duration_ms
             .record(started.elapsed().as_secs_f64() * 1000.0, &[]);
-        metrics.heartbeat.add(1, &[]);
     }
+    Ok(())
 }

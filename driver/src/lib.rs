@@ -4,5 +4,6 @@
 
 pub mod config;
 pub mod display;
+pub mod realtime;
 pub mod state;
 pub mod telemetry;
