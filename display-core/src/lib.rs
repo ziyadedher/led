@@ -17,6 +17,7 @@ use embedded_graphics::{
 use serde::{Deserialize, Serialize};
 
 pub mod clock;
+pub mod image;
 pub mod life;
 pub mod text;
 
@@ -50,6 +51,7 @@ pub enum Mode {
     Text(text::TextFrame),
     Clock(clock::ClockFrame),
     Life(life::LifeFrame),
+    Image(image::ImageFrame),
 }
 
 impl Default for Mode {
@@ -80,6 +82,7 @@ where
         Mode::Text(t) => text::render(t, step, canvas)?,
         Mode::Clock(c) => clock::render(c, canvas)?,
         Mode::Life(l) => life::render(l, canvas)?,
+        Mode::Image(i) => image::render(i, canvas)?,
     }
 
     apply_flash(canvas, &frame.panel, step)?;

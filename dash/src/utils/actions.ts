@@ -124,7 +124,7 @@ export const useRealtimeRevalidation = (): RealtimeStatus => {
   return status;
 };
 
-export type PanelMode = "text" | "clock" | "life";
+export type PanelMode = "text" | "clock" | "life" | "image";
 
 export const panels = {
   get: {

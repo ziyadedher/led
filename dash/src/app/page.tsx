@@ -22,6 +22,7 @@ import {
   clockFrameFromConfig,
   parseClockConfig,
 } from "@/app/modes/clock";
+import { ImageComposer, parseImageConfig } from "@/app/modes/image";
 import {
   LifeComposer,
   parseLifeConfig,
@@ -55,7 +56,9 @@ export default function Page() {
       ? "clock"
       : activePanel?.mode === "life"
         ? "life"
-        : "text";
+        : activePanel?.mode === "image"
+          ? "image"
+          : "text";
 
   // Tick `now` every 1s so the clock simulator advances and so the
   // offline indicator rolls over without a fresh data pull.
@@ -120,6 +123,10 @@ export default function Page() {
     () => parseLifeConfig(activePanel?.mode_config),
     [activePanel?.mode_config],
   );
+  const imageConfig = useMemo(
+    () => parseImageConfig(activePanel?.mode_config),
+    [activePanel?.mode_config],
+  );
 
   // Life mode owns its own animation loop (rAF-driven cellular tick).
   // It always runs so we can preview the simulation regardless of
@@ -139,6 +146,7 @@ export default function Page() {
     marqueeSpeed: effectiveMarqueeSpeed,
     clockConfig,
     lifeFrame,
+    imageConfig,
     now,
   });
 
@@ -223,6 +231,8 @@ export default function Page() {
           </div>
         ) : activeMode === "clock" ? (
           <ClockComposer panelId={panelId} config={clockConfig} />
+        ) : activeMode === "image" ? (
+          <ImageComposer panelId={panelId} config={imageConfig} />
         ) : (
           <LifeComposer panelId={panelId} config={lifeConfig} />
         )}
@@ -238,6 +248,7 @@ function useModeFrame({
   marqueeSpeed,
   clockConfig,
   lifeFrame,
+  imageConfig,
   now,
 }: {
   mode: PanelMode;
@@ -247,6 +258,7 @@ function useModeFrame({
   marqueeSpeed: number;
   clockConfig: ReturnType<typeof parseClockConfig>;
   lifeFrame: ReturnType<typeof useLifeFrame>;
+  imageConfig: ReturnType<typeof parseImageConfig>;
   now: number;
 }): ModeFrame {
   return useMemo<ModeFrame>(() => {
@@ -255,6 +267,15 @@ function useModeFrame({
     }
     if (mode === "life") {
       return { Life: lifeFrame };
+    }
+    if (mode === "image") {
+      return {
+        Image: {
+          width: imageConfig.width,
+          height: imageConfig.height,
+          bitmap: imageConfig.bitmap,
+        },
+      };
     }
     // Text mode: live preview prepends to whatever's stored.
     const previewEntry: TextEntry | null =
@@ -288,7 +309,16 @@ function useModeFrame({
     // clock mode picks up the new ClockTime. eslint can't see the
     // dependency through clockFrameFromConfig's Date.now() read.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, message, color, marqueeSpeed, clockConfig, lifeFrame, now]);
+  }, [
+    mode,
+    message,
+    color,
+    marqueeSpeed,
+    clockConfig,
+    lifeFrame,
+    imageConfig,
+    now,
+  ]);
 }
 
 function Bracket({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {

@@ -5,6 +5,7 @@ use anyhow::Context;
 use chrono::{Local, Timelike};
 use display_core::{
     clock::{ClockFrame, ClockTime},
+    image::ImageFrame,
     life::{Lattice, LifeFrame},
     text::TextFrame,
     Frame, Mode, PanelState,
@@ -186,6 +187,12 @@ fn build_mode(snapshot: &State, life_state: &mut Option<LifeState>) -> Mode {
                 s.advance();
             }
             Mode::Life(LifeFrame::from(&s.lattice))
+        }
+        "image" => {
+            *life_state = None;
+            let frame: ImageFrame =
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
+            Mode::Image(frame)
         }
         _ => {
             *life_state = None;

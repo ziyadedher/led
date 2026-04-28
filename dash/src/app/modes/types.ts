@@ -14,7 +14,8 @@ import type { PanelMode } from "@/utils/actions";
 export type ModeFrame =
   | { Text: TextModeFrame }
   | { Clock: ClockModeFrame }
-  | { Life: LifeModeFrame };
+  | { Life: LifeModeFrame }
+  | { Image: ImageModeFrame };
 
 export type TextEntry = {
   text: string;
@@ -76,6 +77,29 @@ export const DEFAULT_LIFE_CONFIG: LifeModeConfig = {
   color: { r: 0x5d, g: 0xff, b: 0xa9 },
 };
 
+/**
+ * Static image frame. The dash downsamples uploads/URLs to fit the
+ * panel and stores raw RGB888 row-major bytes. Black pixels are
+ * treated as transparent on the panel side (matches the gif
+ * decoder's transparent-pixel convention).
+ */
+export type ImageModeFrame = {
+  width: number;
+  height: number;
+  bitmap: number[];
+};
+
+export type ImageModeConfig = ImageModeFrame & {
+  /** Source filename or URL — purely cosmetic, shown in the UI. */
+  source?: string;
+};
+
+export const DEFAULT_IMAGE_CONFIG: ImageModeConfig = {
+  width: 0,
+  height: 0,
+  bitmap: [],
+};
+
 export type ModeMeta = {
   id: PanelMode;
   label: string;
@@ -85,5 +109,6 @@ export type ModeMeta = {
 export const MODES: ModeMeta[] = [
   { id: "text", label: "text", blurb: "scrolling text payloads" },
   { id: "clock", label: "clock", blurb: "current local time" },
+  { id: "image", label: "image", blurb: "static 64×64 bitmap" },
   { id: "life", label: "life", blurb: "ambient cellular automaton" },
 ];
