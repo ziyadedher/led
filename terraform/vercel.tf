@@ -15,7 +15,8 @@ resource "vercel_project" "led_dash" {
   name           = "led"
   framework      = "nextjs"
   root_directory = "dash"
-  node_version   = "18.x"
+  # Vercel deprecated 18.x in 2026; 24.x is the current LTS.
+  node_version   = "24.x"
 
   git_repository = {
     type              = "github"
