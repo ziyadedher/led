@@ -7,7 +7,7 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
 codename=$(awk -F= '$1=="VERSION_CODENAME"{print $2}' /etc/os-release)
-: "${codename:?couldn't read VERSION_CODENAME from /etc/os-release}"
+: "${codename:?cannot read VERSION_CODENAME from /etc/os-release}"
 
 curl -fsSL "https://pkgs.tailscale.com/stable/raspbian/${codename}.noarmor.gpg" \
     > /usr/share/keyrings/tailscale-archive-keyring.gpg
