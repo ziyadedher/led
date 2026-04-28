@@ -14,8 +14,16 @@ import { panels } from "@/utils/actions";
 
 const W = 64;
 const H = 64;
-const STEP_INTERVAL_FRAMES = 8;
 const RESEED_GENERATIONS = 1500;
+
+/** Speed presets exposed in the composer UI. Values are render
+ * frames between lattice ticks — lower = faster. */
+const SPEED_PRESETS: { id: string; label: string; frames: number }[] = [
+  { id: "slow",    label: "slow",    frames: 30 },
+  { id: "medium",  label: "med",     frames: 8  },
+  { id: "fast",    label: "fast",    frames: 3  },
+  { id: "blazing", label: "blazing", frames: 1  },
+];
 
 export function parseLifeConfig(raw: unknown): LifeModeConfig {
   if (!raw || typeof raw !== "object") return DEFAULT_LIFE_CONFIG;
@@ -24,14 +32,20 @@ export function parseLifeConfig(raw: unknown): LifeModeConfig {
     obj.color && typeof obj.color === "object"
       ? (obj.color as Record<string, unknown>)
       : null;
-  if (!colorRaw) return DEFAULT_LIFE_CONFIG;
-  return {
-    color: {
-      r: clamp255(colorRaw.r),
-      g: clamp255(colorRaw.g),
-      b: clamp255(colorRaw.b),
-    },
-  };
+  const color = colorRaw
+    ? {
+        r: clamp255(colorRaw.r),
+        g: clamp255(colorRaw.g),
+        b: clamp255(colorRaw.b),
+      }
+    : DEFAULT_LIFE_CONFIG.color;
+  const stepRaw =
+    typeof obj.step_interval_frames === "number" ? obj.step_interval_frames : 0;
+  const step =
+    stepRaw >= 1 && stepRaw <= 120
+      ? Math.round(stepRaw)
+      : DEFAULT_LIFE_CONFIG.step_interval_frames;
+  return { color, step_interval_frames: step };
 }
 
 function clamp255(n: unknown): number {
@@ -45,21 +59,25 @@ function clamp255(n: unknown): number {
  * disallows reading ref.current during render). Tick counters stay
  * in refs since they don't drive output.
  *
- * Both simulators (driver and dash) use the same step interval and
- * reseed thresholds, so a fresh seed evolves through visually
- * comparable patterns.
+ * Both simulators (driver and dash) honor `step_interval_frames`
+ * from config so a fresh seed evolves through visually comparable
+ * patterns at matching wall-clock speed.
  */
 export function useLifeFrame(config: LifeModeConfig): LifeModeFrame {
   const [cells, setCells] = useState<Uint8Array>(() => seed());
   const framesRef = useRef(0);
   const generationsRef = useRef(0);
   const recentPopRef = useRef<number[]>([0, 0, 0, 0]);
+  // Read step_interval_frames via ref so the loop closure picks up
+  // changes without re-arming requestAnimationFrame.
+  const intervalRef = useRef(config.step_interval_frames);
+  intervalRef.current = Math.max(1, config.step_interval_frames);
 
   useEffect(() => {
     let raf = 0;
     const loop = () => {
       framesRef.current += 1;
-      if (framesRef.current >= STEP_INTERVAL_FRAMES) {
+      if (framesRef.current >= intervalRef.current) {
         framesRef.current = 0;
         setCells((prev) => {
           const next = step(prev);
@@ -152,20 +170,56 @@ export function LifeComposer({
     void panels.setMode.call(panelId, "life", next);
   };
 
+  // Map current step interval to the closest preset; if it doesn't
+  // match exactly, the closest one still highlights for context.
+  const activePreset =
+    SPEED_PRESETS.find((p) => p.frames === local.step_interval_frames)?.id ??
+    SPEED_PRESETS.reduce((best, p) =>
+      Math.abs(p.frames - local.step_interval_frames) <
+      Math.abs(best.frames - local.step_interval_frames)
+        ? p
+        : best,
+    ).id;
+
   return (
     <ComposerShell title="life" status="conway · ambient" ariaLabel="Life configuration">
-      <div className="space-y-4 px-4 py-4">
+      <div className="space-y-5 px-4 py-4">
         <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-text-faint)">
           live cells reseed automatically when the simulation stalls
           or goes extinct.
         </p>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
+            :: speed
+          </span>
+          <div className="flex items-center gap-px border border-(--color-border)">
+            {SPEED_PRESETS.map((p) => {
+              const active = p.id === activePreset;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => persist({ ...local, step_interval_frames: p.frames })}
+                  className={[
+                    "px-3 py-1 font-mono text-[10px] uppercase tracking-[0.3em] transition-colors",
+                    active
+                      ? "bg-(--color-accent) text-black"
+                      : "text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
+                  ].join(" ")}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-3">
           <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
             :: hex
           </span>
           <HexColorInput
             value={local.color}
-            onChange={(next) => persist({ color: next })}
+            onChange={(next) => persist({ ...local, color: next })}
           />
         </div>
       </div>

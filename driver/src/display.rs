@@ -2,11 +2,12 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use chrono::{Local, Timelike};
+use chrono_tz::Tz;
 use display_core::{
     boot::BootFrame,
-    clock::{ClockFrame, ClockTime},
+    clock::{ClockConfig, ClockTime},
     image::ImageFrame,
-    life::{Lattice, LifeFrame},
+    life::{Lattice, LifeConfig},
     setup::SetupFrame,
     text::TextFrame,
     Frame, Mode, PanelState,
@@ -137,8 +138,39 @@ struct LifeState {
     recent_populations: [u32; 4],
 }
 
-const LIFE_FRAMES_PER_STEP: u32 = 8; // ~8/60 s ≈ 130 ms.
+/// Reseed when the lattice has been ticking for this many generations.
+/// Independent of step interval so faster-stepping panels reseed at
+/// the same wall-clock rate as slow ones — wait, no: this is in
+/// generations not frames, so a slower interval = longer wall-clock
+/// before reseed. Acceptable; the reseed is a "stuck" detector and
+/// the period-2/period-1 checks catch shorter stalls.
 const LIFE_RESEED_GENERATIONS: u32 = 1500;
+
+/// Look up an IANA timezone (e.g. "America/Los_Angeles") and return
+/// the current local time there. Falls back to system local time
+/// when the timezone string is missing or doesn't parse.
+fn sample_time(timezone: Option<&str>) -> ClockTime {
+    let (h, m, s) = if let Some(tz_str) = timezone.filter(|s| !s.is_empty()) {
+        match tz_str.parse::<Tz>() {
+            Ok(tz) => {
+                let now = chrono::Utc::now().with_timezone(&tz);
+                (now.hour(), now.minute(), now.second())
+            }
+            Err(_) => {
+                let now = Local::now();
+                (now.hour(), now.minute(), now.second())
+            }
+        }
+    } else {
+        let now = Local::now();
+        (now.hour(), now.minute(), now.second())
+    };
+    ClockTime {
+        hour: h as u8,
+        minute: m as u8,
+        second: s as u8,
+    }
+}
 
 impl LifeState {
     fn new(width: u8, height: u8) -> Self {
@@ -211,24 +243,22 @@ fn build_mode(snapshot: &State, life_state: &mut Option<LifeState>) -> Mode {
     match snapshot.panel.mode.as_str() {
         "clock" => {
             *life_state = None;
-            let mut frame: ClockFrame =
+            let config: ClockConfig =
                 serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
-            let now = Local::now();
-            frame.now = ClockTime {
-                hour: now.hour() as u8,
-                minute: now.minute() as u8,
-                second: now.second() as u8,
-            };
-            Mode::Clock(frame)
+            let now = sample_time(config.timezone.as_deref());
+            Mode::Clock(config.into_frame(now))
         }
         "life" => {
+            let config: LifeConfig =
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
+            let interval = config.step_interval_frames.max(1);
             let s = life_state.get_or_insert_with(|| LifeState::new(64, 64));
             s.frames_since_step += 1;
-            if s.frames_since_step >= LIFE_FRAMES_PER_STEP {
+            if s.frames_since_step >= interval {
                 s.frames_since_step = 0;
                 s.advance();
             }
-            Mode::Life(LifeFrame::from(&s.lattice))
+            Mode::Life(config.into_frame(&s.lattice))
         }
         "image" => {
             *life_state = None;

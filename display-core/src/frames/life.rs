@@ -92,6 +92,58 @@ impl Lattice {
     }
 }
 
+fn default_life_color() -> Rgb {
+    Rgb {
+        r: 0x5d,
+        g: 0xff,
+        b: 0xa9,
+    }
+}
+
+/// Default lattice tick interval in render frames (~60 FPS render
+/// loop, so 8 → ~7.5 generations/sec).
+pub const DEFAULT_STEP_INTERVAL_FRAMES: u32 = 8;
+
+fn default_step_interval_frames() -> u32 {
+    DEFAULT_STEP_INTERVAL_FRAMES
+}
+
+/// Persisted shape — what the dash writes into `panels.mode_config`
+/// for life-mode panels. Mirrors `LifeModeConfig` in dash/types.ts.
+/// Driver merges this with its local lattice each frame.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LifeConfig {
+    #[serde(default = "default_life_color")]
+    pub color: Rgb,
+    /// Render frames between lattice ticks. Higher = slower
+    /// generations. Clamped to >= 1 by the renderer.
+    #[serde(default = "default_step_interval_frames")]
+    pub step_interval_frames: u32,
+}
+
+impl Default for LifeConfig {
+    fn default() -> Self {
+        Self {
+            color: default_life_color(),
+            step_interval_frames: DEFAULT_STEP_INTERVAL_FRAMES,
+        }
+    }
+}
+
+impl LifeConfig {
+    /// Build a render-ready frame from this config + the caller's
+    /// current lattice snapshot.
+    #[must_use]
+    pub fn into_frame(self, lattice: &Lattice) -> LifeFrame {
+        LifeFrame {
+            color: self.color,
+            lattice_width: lattice.width,
+            lattice_height: lattice.height,
+            cells: lattice.cells.clone(),
+        }
+    }
+}
+
 /// Per-frame life-mode payload. The lattice is JSON-serialized so
 /// the WASM simulator and driver share state shape; in practice the
 /// driver evolves it locally and the dash never sees per-cell state.
@@ -108,11 +160,7 @@ pub struct LifeFrame {
 impl Default for LifeFrame {
     fn default() -> Self {
         Self {
-            color: Rgb {
-                r: 0x5d,
-                g: 0xff,
-                b: 0xa9,
-            },
+            color: default_life_color(),
             lattice_width: 64,
             lattice_height: 64,
             cells: vec![0; 64 * 64],
@@ -123,11 +171,7 @@ impl Default for LifeFrame {
 impl From<&Lattice> for LifeFrame {
     fn from(l: &Lattice) -> Self {
         Self {
-            color: Rgb {
-                r: 0x5d,
-                g: 0xff,
-                b: 0xa9,
-            },
+            color: default_life_color(),
             lattice_width: l.width,
             lattice_height: l.height,
             cells: l.cells.clone(),

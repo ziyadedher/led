@@ -14,15 +14,45 @@ import { panels } from "@/utils/actions";
 
 /** Build a renderable clock frame from saved config + current time. */
 export function clockFrameFromConfig(config: ClockModeConfig): ClockModeFrame {
-  const d = new Date();
+  const { hour, minute, second } = sampleTime(config.timezone);
   return {
-    ...config,
-    now: {
-      hour: d.getHours(),
-      minute: d.getMinutes(),
-      second: d.getSeconds(),
-    },
+    format: config.format,
+    show_seconds: config.show_seconds,
+    show_meridiem: config.show_meridiem,
+    color: config.color,
+    now: { hour, minute, second },
   };
+}
+
+/**
+ * Sample wall-clock time honouring an IANA timezone if one is set.
+ * Falls back to the browser's local time when missing/invalid.
+ */
+function sampleTime(timezone: string | null) {
+  const d = new Date();
+  if (!timezone) {
+    return { hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds() };
+  }
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    const parts = Object.fromEntries(
+      fmt.formatToParts(d).map((p) => [p.type, p.value]),
+    );
+    const hour = Number(parts.hour ?? "0") % 24;
+    return {
+      hour,
+      minute: Number(parts.minute ?? "0"),
+      second: Number(parts.second ?? "0"),
+    };
+  } catch {
+    return { hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds() };
+  }
 }
 
 /** Read a stored mode_config jsonb back into a typed `ClockModeConfig`. */
@@ -41,10 +71,15 @@ export function parseClockConfig(raw: unknown): ClockModeConfig {
         b: clamp255(colorRaw.b),
       }
     : DEFAULT_CLOCK_CONFIG.color;
+  const timezone =
+    typeof obj.timezone === "string" && obj.timezone.length > 0
+      ? obj.timezone
+      : null;
   return {
     format: fmt,
     show_seconds: Boolean(obj.show_seconds),
     show_meridiem: Boolean(obj.show_meridiem),
+    timezone,
     color,
   };
 }
@@ -123,6 +158,13 @@ export function ClockComposer({
           </Row>
         ) : null}
 
+        <Row label="timezone">
+          <TimezoneSelect
+            value={local.timezone}
+            onChange={(next) => persist({ ...local, timezone: next })}
+          />
+        </Row>
+
         <Row label="hex">
           <HexColorInput
             value={local.color}
@@ -148,6 +190,46 @@ function Row({
       </span>
       <div className="flex items-center">{children}</div>
     </div>
+  );
+}
+
+/**
+ * IANA-timezone dropdown. Uses `Intl.supportedValuesOf("timeZone")`
+ * (available in modern browsers); the empty value means "follow Pi
+ * system local time".
+ */
+function TimezoneSelect({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (next: string | null) => void;
+}) {
+  const options =
+    typeof Intl.supportedValuesOf === "function"
+      ? Intl.supportedValuesOf("timeZone")
+      : [
+          "UTC",
+          "America/Los_Angeles",
+          "America/New_York",
+          "Europe/London",
+          "Europe/Paris",
+          "Asia/Tokyo",
+          "Australia/Sydney",
+        ];
+  return (
+    <select
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value || null)}
+      className="border border-(--color-border) bg-(--color-surface-2) px-2 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text) focus:border-(--color-accent) focus:outline-none"
+    >
+      <option value="">auto (system local)</option>
+      {options.map((tz) => (
+        <option key={tz} value={tz}>
+          {tz}
+        </option>
+      ))}
+    </select>
   );
 }
 

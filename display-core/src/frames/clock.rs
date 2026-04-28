@@ -29,6 +29,62 @@ pub struct ClockTime {
     pub second: u8, // 0..59
 }
 
+/// Persisted shape — what the dash writes into `panels.mode_config`
+/// for clock-mode panels. Mirrors `ClockModeConfig` in dash/types.ts.
+/// Driver constructs a `ClockFrame` per render by adding `now`.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ClockConfig {
+    #[serde(default)]
+    pub format: ClockFormat,
+    #[serde(default)]
+    pub show_seconds: bool,
+    #[serde(default)]
+    pub show_meridiem: bool,
+    /// IANA timezone (e.g. "America/Los_Angeles"). Empty/None means
+    /// use the Pi's system local time (which we never explicitly
+    /// configure, so it's UTC unless raspbian's tzdata default
+    /// applies).
+    #[serde(default)]
+    pub timezone: Option<String>,
+    #[serde(default = "default_clock_color")]
+    pub color: Rgb,
+}
+
+impl Default for ClockConfig {
+    fn default() -> Self {
+        Self {
+            format: ClockFormat::H24,
+            show_seconds: false,
+            show_meridiem: false,
+            timezone: None,
+            color: default_clock_color(),
+        }
+    }
+}
+
+impl ClockConfig {
+    /// Combine the persisted config with a freshly-sampled time into
+    /// a render-ready `ClockFrame`.
+    #[must_use]
+    pub fn into_frame(self, now: ClockTime) -> ClockFrame {
+        ClockFrame {
+            format: self.format,
+            show_seconds: self.show_seconds,
+            show_meridiem: self.show_meridiem,
+            color: self.color,
+            now,
+        }
+    }
+}
+
+fn default_clock_color() -> Rgb {
+    Rgb {
+        r: 0xff,
+        g: 0x8a,
+        b: 0x2c,
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ClockFrame {
     /// 12h or 24h.
@@ -38,8 +94,13 @@ pub struct ClockFrame {
     #[serde(default)]
     pub show_seconds: bool,
     /// Render color.
+    #[serde(default = "default_clock_color")]
     pub color: Rgb,
-    /// Current time. Caller fills this each frame.
+    /// Current time. Caller fills this each frame; deserializing a
+    /// stored `mode_config` (which never includes a clock value) lands
+    /// the default 00:00:00 here, then the driver overwrites it
+    /// before render.
+    #[serde(default)]
     pub now: ClockTime,
     /// Optional 12h marker shown after the time. Not rendered when
     /// `format` is H24.
@@ -52,11 +113,7 @@ impl Default for ClockFrame {
         Self {
             format: ClockFormat::H24,
             show_seconds: false,
-            color: Rgb {
-                r: 0xff,
-                g: 0x8a,
-                b: 0x2c,
-            },
+            color: default_clock_color(),
             now: ClockTime::default(),
             show_meridiem: false,
         }

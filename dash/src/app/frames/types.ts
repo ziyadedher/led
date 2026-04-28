@@ -51,11 +51,20 @@ export type ClockModeFrame = {
   now: { hour: number; minute: number; second: number };
 };
 
-/** Stored in panels.mode_config for clock-mode panels. */
+/**
+ * Stored in panels.mode_config for clock-mode panels. Mirrors the
+ * Rust `display_core::clock::ClockConfig` shape.
+ */
 export type ClockModeConfig = {
   format: "H12" | "H24";
   show_seconds: boolean;
   show_meridiem: boolean;
+  /**
+   * IANA timezone name (e.g. "America/Los_Angeles"). When null/empty,
+   * the Pi renders in its system local time and the dash sim renders
+   * in the browser's local time.
+   */
+  timezone: string | null;
   color: { r: number; g: number; b: number };
 };
 
@@ -63,6 +72,7 @@ export const DEFAULT_CLOCK_CONFIG: ClockModeConfig = {
   format: "H24",
   show_seconds: false,
   show_meridiem: false,
+  timezone: null,
   color: { r: 0xff, g: 0x8a, b: 0x2c },
 };
 
@@ -81,13 +91,23 @@ export type LifeModeFrame = {
   cells: number[];
 };
 
-/** Stored in panels.mode_config for life-mode panels. */
+/**
+ * Stored in panels.mode_config for life-mode panels. Mirrors the
+ * Rust `display_core::life::LifeConfig` shape.
+ */
 export type LifeModeConfig = {
   color: { r: number; g: number; b: number };
+  /**
+   * Render frames between lattice ticks. Higher → slower
+   * generations. Driver runs ~60 FPS so 8 ≈ 7.5 generations/sec
+   * (the original hardcoded value).
+   */
+  step_interval_frames: number;
 };
 
 export const DEFAULT_LIFE_CONFIG: LifeModeConfig = {
   color: { r: 0x5d, g: 0xff, b: 0xa9 },
+  step_interval_frames: 8,
 };
 
 /**

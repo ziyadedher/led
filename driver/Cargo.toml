@@ -15,6 +15,7 @@ rpi = ["dep:rpi-led-panel"]
 display-core = { path = "../display-core" }
 anyhow = "1.0.86"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+chrono-tz = { version = "0.10", default-features = false }
 fastrand = "2"
 clap = { version = "4.5.16", features = ["derive"] }
 embedded-graphics = "0.8.1"
