@@ -24,6 +24,7 @@
     "sharp": "^0.34",
     "swr": "^2",
     "tailwindcss": "^4.2.4",
+    "wasm-sim": "file:./wasm-sim/pkg",
     "zod": "^4"
   },
   "devDependencies": {

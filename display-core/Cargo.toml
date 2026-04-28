@@ -1,0 +1,8 @@
+[package]
+name = "display-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+embedded-graphics = "0.8.1"
+serde = { version = "1.0.208", features = ["derive"] }

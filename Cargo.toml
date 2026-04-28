@@ -1,3 +1,4 @@
 [workspace]
 resolver = "2"
-members = ["driver", "wifi-setup"]
+members = ["display-core", "driver", "wifi-setup"]
+exclude = ["dash/wasm-sim"]

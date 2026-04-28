@@ -345,6 +345,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "display-core"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics",
+ "serde",
+]
+
+[[package]]
 name = "either"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -811,6 +819,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
+ "display-core",
  "embedded-graphics",
  "hostname",
  "human-panic",

@@ -4,6 +4,7 @@ version = "0.3.0"
 edition = "2021"
 
 [dependencies]
+display-core = { path = "../display-core" }
 anyhow = "1.0.86"
 clap = { version = "4.5.16", features = ["derive"] }
 embedded-graphics = "0.8.1"
