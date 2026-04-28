@@ -37,6 +37,22 @@ printf '%s\n' "$AUTHORIZED_KEYS" > "$FIRSTUSERHOME/.ssh/authorized_keys"
 chown "$FIRSTUSER:$FIRSTUSER" "$FIRSTUSERHOME/.ssh/authorized_keys"
 chmod 600 "$FIRSTUSERHOME/.ssh/authorized_keys"
 
+echo "[firstrun] enabling persistent journal with aggressive sync"
+mkdir -p /var/log/journal
+chmod 2755 /var/log/journal
+# Force persistent storage and sync every second so we capture logs even
+# when the Pi is power-cycled without a clean shutdown (which is most of
+# our debug loop). Default `SyncIntervalSec=5min` means a quick yank after
+# boot loses everything — that just bit us once.
+mkdir -p /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/persistent.conf <<'JOURNALD'
+[Journal]
+Storage=persistent
+SyncIntervalSec=1s
+ForwardToConsole=yes
+TTYPath=/dev/tty1
+JOURNALD
+
 echo "[firstrun] runtime env -> /etc/led/init.env"
 mkdir -p /etc/led
 {
