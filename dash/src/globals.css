@@ -1,14 +1,95 @@
 @import "tailwindcss";
 
-/* @tailwindcss/forms plugin (was registered in the deleted JS config). */
 @plugin "@tailwindcss/forms";
 
-/* Class-based dark mode (Tailwind v3 was `darkMode: "selector"`). The
- * default variant in v4 is media-query-based; this restores opt-in via a
- * `.dark` class on any ancestor. */
 @variant dark (&:where(.dark, .dark *));
 
-/* Custom font stack (replaces the v3 `theme.extend.fontFamily.sans`). */
+/* Design tokens for the dark, LED-tinted aesthetic. Accent matches the
+ * warm amber a default RGB LED matrix actually emits. */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:
+    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --color-bg: #0a0a0c;
+  --color-surface: #14141a;
+  --color-surface-2: #1c1c24;
+  --color-border: #2a2a36;
+  --color-border-strong: #3a3a4a;
+  --color-text: #ececf1;
+  --color-text-muted: #9b9bab;
+  --color-text-dim: #6b6b7a;
+
+  --color-accent: #ff8a2c;
+  --color-accent-glow: oklch(78% 0.16 50);
+  --color-accent-fade: oklch(78% 0.16 50 / 0.15);
+  --color-success: #4ade80;
+  --color-danger: #ff4d6d;
+
+  --shadow-glow:
+    0 0 18px -2px var(--color-accent-fade),
+    0 0 60px -20px var(--color-accent-fade);
+
+  --animate-pulse-glow: pulse-glow 2.4s ease-in-out infinite;
+  --animate-slide-up: slide-up 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  @keyframes pulse-glow {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 var(--color-accent-fade);
+    }
+    50% {
+      box-shadow: 0 0 0 6px transparent;
+    }
+  }
+
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+/* Global resets / base. */
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Subtle radial vignette so the dark surface has some depth without
+ * becoming a flat black panel. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(
+      ellipse 80% 50% at 50% 0%,
+      var(--color-accent-fade),
+      transparent 60%
+    ),
+    radial-gradient(ellipse 60% 40% at 100% 100%, #2a1a3a44, transparent 70%);
+}
+
+/* Selection styled to the accent. */
+::selection {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+/* Scrollbars get out of the way on dark. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
 }

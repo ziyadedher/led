@@ -1,136 +1,125 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useSWRConfig } from "swr";
 
-import { PanelContext } from "@/app/context";
-import Message from "@/app/components/message";
-import Panels from "@/app/components/panels";
-import Colors, {
-  type ColorOptions,
-  generateRandomColorOptions,
-} from "@/app/components/colors";
-import Controls from "@/app/components/controls";
-import Effects, {
-  generateRandomEffectOptions,
+import { Composer } from "@/app/components/Composer";
+import { type ColorState } from "@/app/components/ColorPicker";
+import {
   FORCE_ENABLE_MARQUEE_LENGTH,
-} from "@/app/components/effects";
-import Entries from "@/app/components/entries";
+  type EffectsState,
+} from "@/app/components/EffectsPanel";
+import { EntriesList } from "@/app/components/EntriesList";
+import { LiveDot } from "@/app/components/LiveDot";
+import { MatrixPreview } from "@/app/components/MatrixPreview";
+import { PanelSwitcher } from "@/app/components/PanelSwitcher";
+import { PanelContext } from "@/app/context";
 import { entries, panels, useRealtimeRevalidation } from "@/utils/actions";
-import { Divider } from "@/components/divider";
-import { StackedLayout } from "@/components/stacked-layout";
 
-export default function RootPage() {
-  const { mutate } = useSWRConfig();
+export default function Page() {
   useRealtimeRevalidation();
+  const { mutate } = useSWRConfig();
   const { data: panelsData } = panels.get.useSWR();
 
-  const [panelId, setPanelId] = useState<string>("");
+  const [chosenPanelId, setChosenPanelId] = useState<string | null>(null);
+  const defaultPanelId = useMemo(() => {
+    if (!panelsData || panelsData.length === 0) return "";
+    return (
+      panelsData.find((p) => p.name === "office")?.id ?? panelsData[0].id
+    );
+  }, [panelsData]);
+  const panelId = chosenPanelId ?? defaultPanelId;
+
   const [message, setMessage] = useState("");
-  const isSubmitable = useMemo(() => message.length > 0, [message]);
-
-  const [colorOptions, setColorOptions] = useState<ColorOptions>({
-    mode: "color",
-    color: { r: 0, g: 0, b: 0 },
-    isRainbowPerLetter: false,
-    rainbowSpeed: 0,
+  const [color, setColor] = useState<ColorState>({
+    mode: "rgb",
+    rgb: { r: 255, g: 138, b: 44 },
   });
-  const [effectOptions, setEffectOptions] = useState({
-    marquee: {
-      isForced: false,
-      speed: 0,
-    },
-  });
+  const [effects, setEffects] = useState<EffectsState>({ marqueeSpeed: 0 });
 
-  useEffect(() => {
-    setColorOptions(generateRandomColorOptions());
-    setEffectOptions(generateRandomEffectOptions());
-  }, []);
-
-  useEffect(() => {
-    if (panelsData && panelsData.length > 0 && !panelId) {
-      const officePanel = panelsData.find((panel) => panel.name === "office");
-      setPanelId(officePanel ? officePanel.id : panelsData[0].id);
-    }
-  }, [panelsData, panelId]);
+  const isSubmittable = message.length > 0 && panelId.length > 0;
 
   const handleSubmit = useCallback(async () => {
     if (!panelId) return;
+    const wireColor =
+      color.mode === "rgb"
+        ? { Rgb: color.rgb }
+        : {
+            Rainbow: {
+              is_per_letter: color.perLetter,
+              speed: color.speed,
+            },
+          };
+    const marqueeSpeed =
+      effects.marqueeSpeed === 0 && message.length >= FORCE_ENABLE_MARQUEE_LENGTH
+        ? 16
+        : effects.marqueeSpeed;
     await entries.add.call(panelId, {
       text: message,
       options: {
-        color:
-          colorOptions.mode === "color"
-            ? { Rgb: colorOptions.color }
-            : {
-                Rainbow: {
-                  is_per_letter: colorOptions.isRainbowPerLetter,
-                  speed: colorOptions.rainbowSpeed,
-                },
-              },
-        marquee: effectOptions.marquee,
+        color: wireColor,
+        marquee: { speed: marqueeSpeed },
       },
     });
     setMessage("");
-
     await mutate(`/entries/${panelId}`);
     await mutate(`/entries/scroll/${panelId}`);
     await mutate(`/pause/${panelId}`);
-  }, [message, colorOptions, effectOptions, mutate, panelId]);
-
-  useEffect(() => {
-    setEffectOptions((effectOptions) => ({
-      ...effectOptions,
-      marquee: {
-        ...effectOptions.marquee,
-        isForced: message.length >= FORCE_ENABLE_MARQUEE_LENGTH,
-      },
-    }));
-  }, [message]);
+  }, [color, effects, message, mutate, panelId]);
 
   return (
-    <StackedLayout
-      navbar={
-        <div className="flex flex-row items-center justify-center p-4">
-          <Panels panelId={panelId} setPanelId={setPanelId} />
-        </div>
-      }
-      sidebar={null}
-    >
-      <PanelContext.Provider value={panelId}>
-        <div className="flex flex-col items-center gap-12">
-          <div className="flex w-full flex-col items-center justify-center gap-8">
-            <div className="flex flex-col items-center gap-4">
-              <div className="flex flex-col gap-1">
-                <p className="text-center text-2xl">
-                  c&apos;mon, write something
-                </p>
-                <p className="text-center text-xs text-zinc-400">
-                  and maybe sign your name too
-                </p>
-              </div>
-            </div>
-            <Message
+    <PanelContext.Provider value={panelId}>
+      <div className="mx-auto flex min-h-dvh max-w-6xl flex-col px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+        <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-xs uppercase tracking-[0.3em] text-[--color-text-dim]">
+              led
+            </span>
+            <span className="text-2xl font-bold tracking-tight">
+              <span className="bg-gradient-to-r from-[--color-accent] to-[--color-accent-glow] bg-clip-text text-transparent">
+                wall
+              </span>
+              <span className="text-[--color-text]">.</span>
+            </span>
+            <LiveDot />
+          </div>
+          <PanelSwitcher panelId={panelId} onChange={setChosenPanelId} />
+        </header>
+
+        <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_1.1fr]">
+          <div className="space-y-6">
+            <Composer
               message={message}
-              onChange={setMessage}
-              disabled={!isSubmitable}
+              onMessageChange={setMessage}
+              color={color}
+              onColorChange={setColor}
+              effects={effects}
+              onEffectsChange={setEffects}
               onSubmit={handleSubmit}
+              disabled={!isSubmittable}
             />
+            <div className="hidden lg:block">
+              <MatrixPreview />
+            </div>
           </div>
 
-          <Colors
-            colorOptions={colorOptions}
-            setColorOptions={setColorOptions}
-          />
-          <Effects
-            effectOptions={effectOptions}
-            setEffectOptions={setEffectOptions}
-          />
-          <Controls isSubmitable={isSubmitable} handleSubmit={handleSubmit} />
-          <Divider className="max-w-2xl" />
-          <Entries />
+          <section className="space-y-3">
+            <div className="flex items-baseline justify-between">
+              <h2 className="font-mono text-[10px] uppercase tracking-[0.2em] text-[--color-text-dim]">
+                entries
+              </h2>
+              <span className="font-mono text-[10px] text-[--color-text-dim]">
+                top 7 fit on the matrix
+              </span>
+            </div>
+            <EntriesList />
+          </section>
+
+          <div className="lg:hidden">
+            <MatrixPreview />
+          </div>
         </div>
-      </PanelContext.Provider>
-    </StackedLayout>
+      </div>
+    </PanelContext.Provider>
   );
 }
