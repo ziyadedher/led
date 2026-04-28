@@ -37,13 +37,13 @@ export class Renderer {
     /**
      * Replace the renderable state (entries + panel scroll/pause/flash).
      * Pass a JSON string; we parse here so the JS shape is whatever
-     * `serde` accepts on `Frame`.
+     * `serde` accepts on `Scene`.
      * @param {string} json
      */
-    setFrameJson(json) {
+    setSceneJson(json) {
         const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.renderer_setFrameJson(this.__wbg_ptr, ptr0, len0);
+        const ret = wasm.renderer_setSceneJson(this.__wbg_ptr, ptr0, len0);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
