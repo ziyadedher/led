@@ -24,7 +24,42 @@ struct TextEntryResponse {
     data: TextEntry,
 }
 
-async fn get_panel_id(panel_name: &str, client: &Postgrest) -> anyhow::Result<String> {
+// Wall-clock cap on a single Postgrest request during the initial
+// panel-id resolve. The postgrest crate uses async reqwest with no
+// timeout by default, so without this we'd hang forever on a
+// transient network blip. 15s is long enough to absorb DNS slow
+// starts on a freshly-up wlan0 + a slow first TLS handshake to
+// Supabase.
+const PANEL_ID_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+const PANEL_ID_RETRY_BACKOFF: Duration = Duration::from_secs(5);
+
+/// Resolve our panel id, retrying forever on failure. Driver renders
+/// the boot frame in the meantime; once this returns the realtime
+/// listener spawns + sync starts.
+async fn get_panel_id(panel_name: &str, client: &Postgrest) -> String {
+    loop {
+        match tokio::time::timeout(
+            PANEL_ID_REQUEST_TIMEOUT,
+            try_get_panel_id(panel_name, client),
+        )
+        .await
+        {
+            Ok(Ok(id)) => return id,
+            Ok(Err(err)) => {
+                tracing::warn!(error = %err, "panel id resolve failed, retrying");
+            }
+            Err(_) => {
+                tracing::warn!(
+                    timeout_s = PANEL_ID_REQUEST_TIMEOUT.as_secs(),
+                    "panel id resolve timed out, retrying"
+                );
+            }
+        }
+        tokio::time::sleep(PANEL_ID_RETRY_BACKOFF).await;
+    }
+}
+
+async fn try_get_panel_id(panel_name: &str, client: &Postgrest) -> anyhow::Result<String> {
     tracing::debug!("Getting panel ID for name {}...", panel_name);
     let panels: Vec<Panel> = serde_json::from_str(
         &client
@@ -164,7 +199,7 @@ pub async fn sync(
     let postgrest_url = format!("{}/rest/v1", supabase_url.trim_end_matches('/'));
     let client = Postgrest::new(&postgrest_url).insert_header("apikey", supabase_anon_key);
 
-    let panel_id = get_panel_id(&panel_name, &client).await?;
+    let panel_id = get_panel_id(&panel_name, &client).await;
     tracing::info!("Using panel ID: {}", panel_id);
 
     // Stamp our build version on the panel row so the dash can flag
