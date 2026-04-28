@@ -173,6 +173,7 @@ flash-sd id host device: build
     sudo install -D -m 0644 service/led-wifi-setup.service          "$root_mnt/etc/systemd/system/led-wifi-setup.service"
     sudo install -D -m 0644 service/led-tailscale-init.service      "$root_mnt/etc/systemd/system/led-tailscale-init.service"
     sudo install -D -m 0644 service/alsa-blacklist.conf             "$root_mnt/etc/modprobe.d/led-alsa-blacklist.conf"
+    sudo install -D -m 0644 service/captive-dnsmasq.conf            "$root_mnt/etc/NetworkManager/dnsmasq-shared.d/captive-portal.conf"
     rm -f "$cfg_tmp"
 
     sudo sync
@@ -210,9 +211,10 @@ init host id user="root": build
         -e "s|@@OTEL_ENDPOINT@@|${OTEL_ENDPOINT:-}|g" \
         -e "s|@@OTEL_AUTHORIZATION@@|${OTEL_AUTHORIZATION:-}|g" \
         service/config.toml.tmpl > "$rendered"
-    ssh "{{ user }}@{{ host }}" 'mkdir -p /usr/local/etc/led /var/log/led'
-    scp service/alsa-blacklist.conf "{{ user }}@{{ host }}:/etc/modprobe.d/led-alsa-blacklist.conf"
-    scp service/led-driver.service  "{{ user }}@{{ host }}:/etc/systemd/system/led-driver.service"
+    ssh "{{ user }}@{{ host }}" 'mkdir -p /usr/local/etc/led /var/log/led /etc/NetworkManager/dnsmasq-shared.d'
+    scp service/alsa-blacklist.conf  "{{ user }}@{{ host }}:/etc/modprobe.d/led-alsa-blacklist.conf"
+    scp service/captive-dnsmasq.conf "{{ user }}@{{ host }}:/etc/NetworkManager/dnsmasq-shared.d/captive-portal.conf"
+    scp service/led-driver.service   "{{ user }}@{{ host }}:/etc/systemd/system/led-driver.service"
     scp "$rendered"                  "{{ user }}@{{ host }}:/usr/local/etc/led/config.toml"
     scp {{ driver_bin }}             "{{ user }}@{{ host }}:/usr/local/bin/led-driver"
     ssh "{{ user }}@{{ host }}" 'chmod 0755 /usr/local/bin/led-driver \

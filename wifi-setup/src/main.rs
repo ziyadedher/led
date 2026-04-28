@@ -100,11 +100,19 @@ async fn main() -> Result<()> {
         .route("/", get(form))
         .route("/connect", post(connect_handler))
         // Captive-portal probe URLs from common OSes get a 302 to /.
+        // The dnsmasq drop-in (service/captive-dnsmasq.conf) hijacks
+        // DNS for every hostname to 10.42.0.1, so probes to e.g.
+        // captive.apple.com or connectivitycheck.gstatic.com hit us
+        // and the catch-all fallback redirects whatever path they
+        // came in on. Some OSes are picky about the exact response
+        // body (Android wants a non-204 status, macOS wants Safari
+        // to render the redirect target), so 302→/ is the safest.
         .route("/hotspot-detect.html", get(captive_redirect))
         .route("/generate_204", get(captive_redirect))
         .route("/connecttest.txt", get(captive_redirect))
         .route("/ncsi.txt", get(captive_redirect))
         .route("/library/test/success.html", get(captive_redirect))
+        .fallback(get(captive_redirect))
         .with_state(app_state);
 
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", 80))
