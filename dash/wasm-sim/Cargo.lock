@@ -44,7 +44,7 @@ dependencies = [
 
 [[package]]
 name = "display-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "embedded-graphics",
  "serde",
@@ -246,7 +246,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-sim"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "console_error_panic_hook",
  "display-core",
