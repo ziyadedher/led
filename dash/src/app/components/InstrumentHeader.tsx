@@ -41,10 +41,9 @@ export function InstrumentHeader({
         <div className="flex min-w-0 items-center gap-3">
           <span
             aria-hidden
-            className="select-none leading-none text-(--color-accent)"
+            className="select-none truncate text-[18px] leading-none text-(--color-accent) sm:text-[24px]"
             style={{
               fontFamily: "var(--font-pixel)",
-              fontSize: 24,
               textShadow:
                 "0 0 12px var(--color-accent-fade), 0 0 4px color-mix(in oklch, var(--color-accent) 40%, transparent)",
             }}

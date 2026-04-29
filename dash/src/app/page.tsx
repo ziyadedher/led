@@ -170,11 +170,13 @@ export default function Page() {
           <div className="relative">
             {/* Section heading plate — instrument-label feel */}
             <div className="mb-3 flex items-stretch border border-(--color-border) bg-gradient-to-b from-(--color-surface-2)/60 to-(--color-surface)/40">
-              <div className="flex items-center gap-2 border-r border-(--color-border) px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.3em]">
+              <div className="flex min-w-0 items-center gap-2 border-r border-(--color-border) px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.3em]">
                 <span className="text-(--color-accent)">::</span>
                 <span className="text-(--color-text)">simulator</span>
-                <span className="text-(--color-text-faint)">/</span>
-                <span className="text-(--color-text-muted)">
+                <span className="hidden text-(--color-text-faint) sm:inline">
+                  /
+                </span>
+                <span className="hidden text-(--color-text-muted) sm:inline">
                   wasm · driver-core
                 </span>
               </div>
@@ -269,8 +271,10 @@ export default function Page() {
                 </button>
               ) : null}
 
-              {/* Format chip — pixel font for the resolution */}
-              <div className="flex items-center gap-2 border-l border-(--color-border) px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint) tabular-nums">
+              {/* Format chip — pixel font for the resolution. Hidden
+                * on phones where the chrome row is too tight to show
+                * pause / off / format together. */}
+              <div className="hidden items-center gap-2 border-l border-(--color-border) px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint) tabular-nums sm:flex">
                 <span style={{ fontFamily: "var(--font-pixel)", fontSize: 14 }}>
                   64×64
                 </span>
@@ -334,7 +338,7 @@ export default function Page() {
                   <span className="text-(--color-text)">queue</span>
                 </div>
                 <span aria-hidden className="flex-1" />
-                <div className="flex items-center gap-2 border-l border-(--color-border) px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint)">
+                <div className="hidden items-center gap-2 border-l border-(--color-border) px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint) sm:flex">
                   <span>top 7 on-air · drag to reorder</span>
                 </div>
               </div>

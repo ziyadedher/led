@@ -50,16 +50,16 @@ export function ModeSwitcher({
               if (active) return;
               void panels.setMode.call(panelId, m.id, {});
             }}
-            // Even-rows wrap: each tile takes a slightly-less-than-25%
-            // basis so a row of 4 fits exactly even with the
-            // 1px gap between tiles, and a trailing row of N<4 grows
-            // each tile via flex-grow=1 to fill — 5 tiles → 4+1 (1
-            // grows full-width), 6 → 4+2 (each 50%), 7 → 4+3 (each
-            // 33%). `min-w-0` lets tiles actually shrink to their
-            // basis instead of pinning to intrinsic content width
-            // (default min-width:auto would prevent that).
+            // Even-rows wrap: each tile takes a slightly-less-than-50%
+            // (mobile) or 25% (sm+) basis so a row of 2/4 fits
+            // exactly even with the 1px gap between tiles, and a
+            // trailing row of N<row-size grows each tile via
+            // flex-grow=1 to fill. `min-w-0` lets tiles actually
+            // shrink to their basis instead of pinning to intrinsic
+            // content width (default min-width:auto would prevent
+            // that).
             className={[
-              "group relative isolate flex min-w-0 grow items-stretch gap-3 px-4 py-3 text-left transition-all basis-[calc(25%-1px)]",
+              "group relative isolate flex min-w-0 grow items-stretch gap-3 px-3 py-2.5 text-left transition-all basis-[calc(50%-1px)] sm:basis-[calc(25%-1px)] sm:px-4 sm:py-3",
               active
                 ? "bg-(--color-bg) text-(--color-accent) shadow-[inset_0_0_24px_-4px_var(--color-accent-fade)]"
                 : "bg-(--color-surface)/70 text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",

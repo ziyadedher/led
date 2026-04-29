@@ -80,13 +80,23 @@ export function MatrixPreview({
     return () => ro.disconnect();
   }, []);
 
-  // Load the WASM module once on mount.
+  // Load the WASM module once on mount. wasm-pack `--target=web`
+  // requires an explicit init() before any export touches the wasm
+  // namespace — without it `new Renderer()` throws because the
+  // module-level `wasm` binding is undefined. Mobile Safari surfaces
+  // the failure more visibly than desktop (no fallback unlit grid),
+  // hence the bug report.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const mod = await import("wasm-sim");
-      if (cancelled) return;
-      rendererRef.current = new mod.Renderer(COLS, ROWS);
+      try {
+        const mod = await import("wasm-sim");
+        await mod.default();
+        if (cancelled) return;
+        rendererRef.current = new mod.Renderer(COLS, ROWS);
+      } catch (err) {
+        console.error("wasm-sim init failed", err);
+      }
     })();
     return () => {
       cancelled = true;

@@ -185,8 +185,10 @@ export function Composer({
             </span>
           </span>
 
-          {/* Right: keybind hint */}
-          <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] opacity-70">
+          {/* Right: keybind hint. Hidden on touch — there's no
+            * physical enter key to ape, and a fake kbd chip just
+            * eats horizontal space. */}
+          <span className="hidden items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] opacity-70 sm:flex">
             <kbd className="border border-(--color-accent)/30 bg-(--color-bg)/50 px-1.5 py-0.5 group-disabled:border-(--color-border)">
               ↵ enter
             </kbd>
