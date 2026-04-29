@@ -1,5 +1,5 @@
 [Unit]
-Description=Install Tailscale (if needed) and join the tailnet on first boot
+Description=Ensure the Pi is joined to the tailnet (idempotent)
 # `time-sync.target` is what we *really* depend on: tailscale's apt
 # repo signatures (and Tailscale auth-key validation later) reject
 # requests when the system clock is too far off, and the Pi Zero W
@@ -10,7 +10,11 @@ Description=Install Tailscale (if needed) and join the tailnet on first boot
 After=led-wifi-setup.service network-online.target time-sync.target
 Wants=network-online.target time-sync.target
 Requires=led-wifi-setup.service
-ConditionPathExists=!/var/lib/led-wifi-setup/tailscale-joined
+# Note: no ConditionPathExists. Earlier versions of this unit gated
+# on /var/lib/led-wifi-setup/tailscale-joined and refused to run
+# again after first boot, leaving no recovery path when tailscaled
+# flipped to NeedsLogin (e.g. controlplane logged the device out).
+# The script is idempotent now — safe to run on every boot.
 
 [Service]
 Type=oneshot
