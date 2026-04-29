@@ -9,6 +9,7 @@ pub const DRIVER_VERSION: &str = env!("LED_DRIVER_VERSION");
 pub mod config;
 pub mod display;
 pub mod realtime;
+pub mod sched;
 pub mod sink;
 pub mod state;
 pub mod telemetry;

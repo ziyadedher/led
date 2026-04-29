@@ -59,7 +59,14 @@ pub struct Panel {
     pub mode_config: JsonValue,
 }
 
-pub async fn drive(
+/// Synchronous render loop. Designed to run on a dedicated OS thread
+/// (see `main.rs`) so the matrix bit-bang doesn't share scheduling
+/// budget with the tokio runtime workers. The body never `.await`s —
+/// state is read through a `parking_lot::RwLock` and the bonnet sink
+/// blocks on GPIO — so an `async fn` would just be ceremony that
+/// pulls this loop back into the runtime we explicitly want it out
+/// of.
+pub fn drive(
     mut sink: Box<dyn MatrixSink>,
     state: Arc<RwLock<State>>,
     metrics: Arc<Metrics>,
