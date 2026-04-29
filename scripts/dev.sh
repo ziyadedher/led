@@ -18,7 +18,7 @@ load_secrets
 load_tofu_outputs
 
 mkdir -p dev/log
-rendered="dev.toml"
+rendered="dev/config.toml"
 # OTel force-disabled in dev (override any inherited value).
 OTEL_ENDPOINT="" OTEL_AUTHORIZATION="" \
     render_config_toml "dev" "dev/log/" "$rendered"

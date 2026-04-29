@@ -13,12 +13,7 @@ secrets.env
 # up plaintext secrets.
 /secrets/*.json
 !/secrets/*.sops.json
-/dev.toml
-/dev.toml.local
 /dev/
-
-# Local notes / scratch.
-deployments.txt
 
 # Terraform: provider plugin cache and plan artefacts. State is committed
 # (matching the infra repo's convention).

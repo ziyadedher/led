@@ -50,16 +50,13 @@ pub struct Panel {
     #[serde(skip_serializing)]
     pub last_updated: String,
     /// Render mode: "text", "clock", … . Drives the dispatch in `drive`.
-    #[serde(default = "default_mode")]
+    /// `panels.mode` is `not null default 'text'` server-side, so the
+    /// field is always present on the wire — no serde default needed.
     pub mode: String,
     /// Mode-specific configuration (e.g. clock format/color). Free-form
     /// jsonb; per-mode helpers parse the relevant subset.
     #[serde(default)]
     pub mode_config: JsonValue,
-}
-
-fn default_mode() -> String {
-    "text".to_string()
 }
 
 pub async fn drive(
