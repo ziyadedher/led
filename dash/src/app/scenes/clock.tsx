@@ -17,7 +17,7 @@ import {
 
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
-import { panels } from "@/utils/actions";
+import { useDebouncedSetMode } from "@/utils/useDebouncedSetMode";
 
 /** Build a renderable clock frame from saved config + current time. */
 export function clockSceneFromConfig(config: ClockSceneConfig): ClockScene {
@@ -120,9 +120,13 @@ export function ClockComposer({
     setLocal(config);
   }
 
+  const [pushDebounced] = useDebouncedSetMode<ClockSceneConfig>(
+    panelId,
+    "clock",
+  );
   const persist = (next: ClockSceneConfig) => {
     setLocal(next);
-    void panels.setMode.call(panelId, "clock", next);
+    pushDebounced(next);
   };
 
   return (

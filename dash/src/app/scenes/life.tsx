@@ -10,7 +10,7 @@ import {
 
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
-import { panels } from "@/utils/actions";
+import { useDebouncedSetMode } from "@/utils/useDebouncedSetMode";
 
 const W = 64;
 const H = 64;
@@ -165,9 +165,13 @@ export function LifeComposer({
     setLocal(config);
   }
 
+  const [pushDebounced] = useDebouncedSetMode<LifeSceneConfig>(
+    panelId,
+    "life",
+  );
   const persist = (next: LifeSceneConfig) => {
     setLocal(next);
-    void panels.setMode.call(panelId, "life", next);
+    pushDebounced(next);
   };
 
   // Map current step interval to the closest preset; if it doesn't

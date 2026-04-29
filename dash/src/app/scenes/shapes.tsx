@@ -10,7 +10,7 @@ import {
 
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
-import { panels } from "@/utils/actions";
+import { useDebouncedSetMode } from "@/utils/useDebouncedSetMode";
 
 const SHAPES: { id: ShapeKind; label: string; glyph: string; blurb: string }[] = [
   { id: "Cube", label: "cube", glyph: "▣", blurb: "8v · 12e" },
@@ -86,9 +86,13 @@ export function ShapesComposer({
     setLocal(config);
   }
 
+  const [pushDebounced] = useDebouncedSetMode<ShapesSceneConfig>(
+    panelId,
+    "shapes",
+  );
   const persist = (next: ShapesSceneConfig) => {
     setLocal(next);
-    void panels.setMode.call(panelId, "shapes", next);
+    pushDebounced(next);
   };
 
   const speedPct =

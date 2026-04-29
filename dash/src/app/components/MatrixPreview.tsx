@@ -130,9 +130,19 @@ export function MatrixPreview({
     };
   }, [items, mode, scroll, isPaused]);
 
-  // Push state into the renderer whenever it changes.
+  // Push state into the renderer whenever it actually changes.
+  // The frame ref can rebuild for reasons that don't affect the
+  // serialized payload (SWR refresh handing back a fresh
+  // mode_config object reference, life ticks bumping a sub-tree
+  // we don't actually care about, etc.), and JSON.stringify of a
+  // fully-loaded gif scene is ~720KB on the main thread. Hash via
+  // stringify exactly once per change and dedupe.
+  const lastJsonRef = useRef<string | null>(null);
   useEffect(() => {
-    rendererRef.current?.setSceneJson(JSON.stringify(frame));
+    const json = JSON.stringify(frame);
+    if (json === lastJsonRef.current) return;
+    lastJsonRef.current = json;
+    rendererRef.current?.setSceneJson(json);
   }, [frame]);
 
   // rAF loop: tick the WASM renderer and paint to canvas. Cell size

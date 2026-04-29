@@ -128,8 +128,12 @@ export default function Page() {
   );
   const lifeScene = useLifeScene(lifeConfig);
 
-  // Build the Scene the simulator renders. `now` is in deps so
-  // clock mode advances each tick.
+  // Build the Scene the simulator renders. Clock mode samples
+  // `now` internally, so its memo needs to re-run each tick — but
+  // only for clock; otherwise we'd re-stringify the entire scene
+  // (up to ~720KB for a fully-loaded gif) every second on the main
+  // thread for nothing. Hide `now` behind a mode-gated dep.
+  const clockTick = activeMode === "clock" ? now : 0;
   const modeFrame = useMemo(
     () =>
       frame.buildFrame(activeConfig, {
@@ -138,8 +142,8 @@ export default function Page() {
         marqueeSpeed: effectiveMarqueeSpeed,
         lifeScene,
       }),
-    // `now` reruns the memo every tick — needed for clock mode to
-    // pick up the current time. eslint can't see through `frame.buildFrame`.
+    // eslint can't see through frame.buildFrame to know clock reads
+    // wall-clock time; clockTick keeps the dep array honest.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       frame,
@@ -148,7 +152,7 @@ export default function Page() {
       color,
       effectiveMarqueeSpeed,
       lifeScene,
-      now,
+      clockTick,
     ],
   );
 

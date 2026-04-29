@@ -11,6 +11,7 @@ import {
 
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { panels } from "@/utils/actions";
+import { useDebouncedSetMode } from "@/utils/useDebouncedSetMode";
 
 const PANEL_W = 64;
 const PANEL_H = 64;
@@ -184,10 +185,20 @@ export function GifComposer({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Speed slider goes through the debounced path so a drag doesn't
+  // ship the entire (~720KB) frame payload to Supabase per
+  // intermediate value. File upload + flush stays a direct call —
+  // upload is a single user gesture that shouldn't queue.
+  const [pushSpeedDebounced, flushSpeed] =
+    useDebouncedSetMode<GifSceneConfig>(panelId, "gif");
+
   const handleFile = async (file: File) => {
     setBusy(true);
     setErr(null);
     try {
+      // Cancel any pending speed write — the new file's
+      // decoded config supersedes it.
+      flushSpeed();
       const next = await decodeGif(file);
       await panels.setMode.call(panelId, "gif", next);
     } catch (e) {
@@ -199,7 +210,7 @@ export function GifComposer({
 
   const setSpeed = (next: number) => {
     if (config.frames.length === 0) return;
-    void panels.setMode.call(panelId, "gif", { ...config, speed: next });
+    pushSpeedDebounced({ ...config, speed: next });
   };
 
   const hasFrames = config.frames.length > 0;
