@@ -126,6 +126,14 @@ sudo install -d -m 2755 "$root_mnt/var/log/journal"
 # the raspi-config flow happened to clear it; nothing does now.
 sudo rm -f "$root_mnt"/var/lib/systemd/rfkill/*:wlan
 
+# Pi OS Lite *also* ships /var/lib/NetworkManager/NetworkManager.state
+# with `WirelessEnabled=false`, which NM reads independently of the
+# systemd-rfkill state. Without this, NM marks wlan0 "disabled by
+# state file" on first boot and the rfkill cleanup above is moot.
+# Removing the file lets NM regenerate it with wireless enabled by
+# default.
+sudo rm -f "$root_mnt/var/lib/NetworkManager/NetworkManager.state"
+
 # Render config.toml + bake binaries / units / NM + sysctl drop-ins.
 cfg_tmp=$(mktemp)
 render_config_toml "$PANEL_ID" "/var/log/led/" "$cfg_tmp"
