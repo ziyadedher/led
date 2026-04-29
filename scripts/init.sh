@@ -46,9 +46,9 @@ scp service/led-driver.service          "$USER@$HOST:/etc/systemd/system/led-dri
 scp service/led-wifi-setup.service      "$USER@$HOST:/etc/systemd/system/led-wifi-setup.service"
 scp service/led-tailscale-init.service  "$USER@$HOST:/etc/systemd/system/led-tailscale-init.service"
 # led-tailscale-init is a shell script, not a running ELF — scp
-# directly to canonical path; no atomic-rename dance needed.
+# directly to canonical path; no atomic-rename dance needed. Mode
+# fixup happens in the install ssh block below to save a round-trip.
 scp service/led-tailscale-init          "$USER@$HOST:/usr/local/bin/led-tailscale-init"
-ssh "$USER@$HOST" 'chmod 755 /usr/local/bin/led-tailscale-init'
 
 # Binaries. scp can't overwrite the running ELF, so we ship as `.new`
 # and atomic-rename. `install` preserves perms and hands the running
@@ -64,6 +64,7 @@ scp "$driver_bin"  "$USER@$HOST:/usr/local/bin/led-driver.new"
 scp "$wifi_bin"    "$USER@$HOST:/usr/local/bin/led-wifi-setup.new"
 ssh "$USER@$HOST" 'install -m 0755 /usr/local/bin/led-driver.new     /usr/local/bin/led-driver \
     && install -m 0755 /usr/local/bin/led-wifi-setup.new /usr/local/bin/led-wifi-setup \
+    && chmod 0755 /usr/local/bin/led-tailscale-init \
     && rm /usr/local/bin/led-driver.new /usr/local/bin/led-wifi-setup.new \
     && systemctl daemon-reload \
     && systemctl enable led-driver.service led-wifi-setup.service led-tailscale-init.service \
