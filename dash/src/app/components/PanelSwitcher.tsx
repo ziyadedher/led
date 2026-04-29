@@ -8,37 +8,47 @@ import { useNow } from "@/utils/useNow";
 
 type VersionState = "current" | "stale" | "dirty" | "unreported";
 
-/** Derive each panel's version state relative to the rest of the fleet. */
-function classifyVersions(versions: (string | null)[]): VersionState[] {
-  // Strip dirty markers so a single dirty deploy doesn't poison the
-  // canonical-version calculation across the fleet.
-  const cleanVersions = versions.filter(
-    (v): v is string => v != null && !v.endsWith("-dirty"),
-  );
+type SemverTriple = [number, number, number];
 
-  // Pick the most-frequently-reported clean version as canonical —
-  // but only if it actually has a plurality (≥ 2 reports). Without
-  // this gate, a fleet of two panels each running a different
-  // version would arbitrarily mark whichever sorted first as
-  // "canonical" and the other as "stale", which is mostly noise:
-  // we don't actually know which is newer without semver/commit-time
-  // data we don't have on a git-SHA driver_version.
-  const counts: Record<string, number> = {};
-  for (const v of cleanVersions) counts[v] = (counts[v] ?? 0) + 1;
-  let canonical: string | null = null;
-  let best = 1; // strict plurality — single reports don't count as canonical
-  for (const [v, c] of Object.entries(counts)) {
-    if (c > best) {
-      best = c;
-      canonical = v;
-    }
+/** Parse a leading `MAJOR.MINOR.PATCH` triple, ignoring any trailing
+ * label. Returns `null` for legacy git-SHA versions that don't match
+ * the shape — those aren't comparable, so we skip them in the max
+ * search and treat them as `current` at classify time. */
+function parseSemver(v: string): SemverTriple | null {
+  const cleaned = v.replace(/-dirty$/, "");
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(cleaned);
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+function cmpSemver(a: SemverTriple, b: SemverTriple): number {
+  return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+}
+
+/** Derive each panel's version state relative to the rest of the
+ * fleet. `driver_version` is now the package's semver (e.g. "0.3.0"),
+ * with an optional `-dirty` suffix when the binary was built from a
+ * dirty working tree. Stale = strictly behind the highest semver in
+ * the fleet; dirty trumps stale (a dirty binary's version is unknown
+ * regardless of the leading semver). */
+function classifyVersions(versions: (string | null)[]): VersionState[] {
+  // Find the highest non-dirty, parseable semver across the fleet.
+  let max: SemverTriple | null = null;
+  for (const v of versions) {
+    if (v == null || v.endsWith("-dirty")) continue;
+    const parsed = parseSemver(v);
+    if (parsed && (!max || cmpSemver(parsed, max) > 0)) max = parsed;
   }
 
   return versions.map((v) => {
     if (v == null) return "unreported";
     if (v.endsWith("-dirty")) return "dirty";
-    if (canonical && v !== canonical) return "stale";
-    return "current";
+    const parsed = parseSemver(v);
+    // Legacy git-SHA versions can't be ordered against semvers, so
+    // we don't claim they're stale — show them as-is and let the
+    // user reflash if they care.
+    if (!parsed || !max) return "current";
+    return cmpSemver(parsed, max) < 0 ? "stale" : "current";
   });
 }
 

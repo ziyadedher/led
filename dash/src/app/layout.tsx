@@ -12,7 +12,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "led.wall // control surface",
+  title: "ziyad's leds",
   description: "Telemetry-grade composer for a 64×64 RGB LED panel.",
 };
 
