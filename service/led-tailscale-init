@@ -1,23 +1,23 @@
 #!/bin/bash
-# Joins the tailnet on first boot. Tailscale itself is pre-installed
-# at flash time (see `just flash-sd`'s chroot+apt step), so this
-# script just runs `tailscale up` and scrubs the auth key.
-# Idempotent via the marker file in the systemd unit's
-# ConditionPathExists=.
+# Joins (or rejoins) the tailnet on every boot. Tailscale itself is
+# pre-installed at flash time (see `just flash-sd`'s chroot+apt
+# step); this script just runs `tailscale up`.
+#
+# Runs idempotently: a healthy panel that's already joined just
+# re-confirms the auth and exits in <2s. If the device's session
+# expired or the user removed it from the tailnet admin, tailscaled
+# flips to NeedsLogin and `tailscale up --auth-key=…` re-registers
+# without operator intervention. This is the recovery path the
+# previous "marker file + scrub the key after first join" design
+# didn't have — see the led-delta 2026-04-29 forensics.
+#
+# Requires the auth key in init.env to be REUSABLE (Tailscale admin
+# → Settings → Keys → Generate auth key with "Reusable" enabled).
 set -euo pipefail
 
 : "${HOSTNAME:?HOSTNAME unset in /etc/led/init.env}"
-: "${TAILSCALE_AUTHKEY:?TAILSCALE_AUTHKEY unset in /etc/led/init.env}"
+: "${TAILSCALE_AUTHKEY:?TAILSCALE_AUTHKEY unset in /etc/led/init.env — has the key been scrubbed by an old version of this script? re-bake via `just init` or by editing the SD}"
 
-echo "[led-tailscale-init] joining tailnet as $HOSTNAME"
+echo "[led-tailscale-init] ensuring tailnet membership as $HOSTNAME"
 tailscale up --auth-key="$TAILSCALE_AUTHKEY" --hostname="$HOSTNAME" --ssh
-
-mkdir -p /var/lib/led-wifi-setup
-date -u +%FT%TZ > /var/lib/led-wifi-setup/tailscale-joined
-
-# Auth key is sensitive; scrub from the env file once we've joined.
-if grep -q '^TAILSCALE_AUTHKEY=' /etc/led/init.env; then
-    sed -i '/^TAILSCALE_AUTHKEY=/d' /etc/led/init.env
-fi
-
 echo "[led-tailscale-init] done"

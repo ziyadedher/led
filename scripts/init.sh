@@ -21,14 +21,25 @@ cd "$REPO_ROOT"
 load_secrets
 load_tofu_outputs
 
+: "${TAILSCALE_AUTHKEY:?TAILSCALE_AUTHKEY missing — check secrets/fleet.sops.json}"
+
 driver_bin="target/$ARCH/release/led-driver"
 wifi_bin="target/$ARCH/release/led-wifi-setup"
 [ -x "$driver_bin" ] || { echo "ERROR: $driver_bin missing — run \`just build\` first" >&2; exit 1; }
 [ -x "$wifi_bin" ]   || { echo "ERROR: $wifi_bin missing — run \`just build\` first" >&2; exit 1; }
 
 rendered=$(mktemp)
-trap 'rm -f "$rendered"' EXIT
+authkey_tmp=$(mktemp)
+chmod 600 "$authkey_tmp"
+trap 'rm -f "$rendered" "$authkey_tmp"' EXIT
 render_config_toml "$PANEL_ID" "/var/log/led/" "$rendered"
+
+# Re-bake TAILSCALE_AUTHKEY into init.env. The new led-tailscale-init
+# script needs it on every boot (idempotent re-auth path); old
+# versions of the script scrubbed it from init.env after first join,
+# so already-deployed panels don't have it. We send the key over
+# stdin via scp-tempfile so it never appears in argv on either end.
+printf 'TAILSCALE_AUTHKEY=%q\n' "$TAILSCALE_AUTHKEY" > "$authkey_tmp"
 
 ssh "$USER@$HOST" 'mkdir -p /usr/local/etc/led /var/log/led /etc/NetworkManager/dnsmasq-shared.d /etc/sysctl.d'
 
@@ -39,6 +50,16 @@ scp service/alsa-blacklist.conf  "$USER@$HOST:/etc/modprobe.d/led-alsa-blacklist
 scp service/captive-dnsmasq.conf "$USER@$HOST:/etc/NetworkManager/dnsmasq-shared.d/captive-portal.conf"
 scp service/disable-ipv6.conf    "$USER@$HOST:/etc/sysctl.d/99-led-disable-ipv6.conf"
 scp "$rendered"                  "$USER@$HOST:/usr/local/etc/led/config.toml"
+scp "$authkey_tmp"               "$USER@$HOST:/etc/led/init.env.authkey"
+ssh "$USER@$HOST" '
+    set -e
+    # Replace any existing TAILSCALE_AUTHKEY= line, then append the
+    # fresh one. Idempotent regardless of starting state.
+    sed -i "/^TAILSCALE_AUTHKEY=/d" /etc/led/init.env
+    cat /etc/led/init.env.authkey >> /etc/led/init.env
+    chmod 0600 /etc/led/init.env
+    rm /etc/led/init.env.authkey
+'
 
 # Service units. Listed together so a unit-only fix (changed
 # directives, no binary churn) lands without re-shipping binaries.
