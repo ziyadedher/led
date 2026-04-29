@@ -16,13 +16,17 @@ function classifyVersions(versions: (string | null)[]): VersionState[] {
     (v): v is string => v != null && !v.endsWith("-dirty"),
   );
 
-  // Pick the most-frequently-reported clean version as canonical.
-  // Ties resolve on first-seen, which is fine — the goal is just to
-  // flag panels running something *different*.
+  // Pick the most-frequently-reported clean version as canonical —
+  // but only if it actually has a plurality (≥ 2 reports). Without
+  // this gate, a fleet of two panels each running a different
+  // version would arbitrarily mark whichever sorted first as
+  // "canonical" and the other as "stale", which is mostly noise:
+  // we don't actually know which is newer without semver/commit-time
+  // data we don't have on a git-SHA driver_version.
   const counts: Record<string, number> = {};
   for (const v of cleanVersions) counts[v] = (counts[v] ?? 0) + 1;
   let canonical: string | null = null;
-  let best = 0;
+  let best = 1; // strict plurality — single reports don't count as canonical
   for (const [v, c] of Object.entries(counts)) {
     if (c > best) {
       best = c;
