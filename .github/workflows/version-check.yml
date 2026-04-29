@@ -1,14 +1,12 @@
-# Fail the PR if source for a package changed without a version bump.
-# Convention here is to bump the affected packages on every functional
-# change so `panels.driver_version` (in the dash) and the dash's own
-# version reflect what's actually shipping. Catching it pre-merge
-# beats finding out later that two binaries with the same version
-# behave differently.
+# Lockstep version policy. Every crate in the workspace inherits its
+# version from `[workspace.package]` in the root Cargo.toml. wasm-sim
+# and dash live outside that workspace for unrelated reasons (wasm-sim
+# has its own release profile; dash is not a Rust crate) but their
+# version strings are kept in sync manually.
 #
-# Edit `packages` below to add/remove tracked packages. Each entry is
-# `<sources glob>:<manifest path>:<grep pattern>` — sources is what
-# triggers the check, manifest is the file whose version line must
-# change, pattern is the line shape to match.
+# Rule: if anything under the watched source globs changes, all three
+# version sources (workspace, wasm-sim, dash) must be equal AND the
+# workspace version must have been bumped from the base branch's value.
 
 name: version-check
 
@@ -23,29 +21,38 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: bump-or-fail
+      - name: lockstep-or-fail
         run: |
           set -euo pipefail
           base="origin/${{ github.base_ref }}"
           changed=$(git diff --name-only "$base" HEAD)
-          fail=0
-          check() {
-              local label="$1" sources="$2" manifest="$3" pattern="$4"
-              if echo "$changed" | grep -qE "$sources"; then
-                  if ! echo "$changed" | grep -qx "$manifest"; then
-                      echo "::error file=$manifest::source under '$label' changed but $manifest version was not bumped"
-                      fail=1
-                      return
-                  fi
-                  if ! git diff "$base" HEAD -- "$manifest" | grep -qE "^[+-]$pattern"; then
-                      echo "::error file=$manifest::$manifest changed but the version line ($pattern) didn't"
-                      fail=1
-                  fi
-              fi
-          }
-          check display-core 'crates/display-core/(src|tests)/'  crates/display-core/Cargo.toml '\s*version = '
-          check led-driver   'crates/driver/(src|build\.rs)'      crates/driver/Cargo.toml       '\s*version = '
-          check wifi-setup   'crates/wifi-setup/src/'             crates/wifi-setup/Cargo.toml   '\s*version = '
-          check wasm-sim     'dash/wasm-sim/src/'                 dash/wasm-sim/Cargo.toml       '\s*version = '
-          check dash         'dash/src/'                          dash/package.json              '\s*"version":'
-          exit $fail
+
+          # Did any tracked source change in this PR? Generated wasm-sim/pkg
+          # is regenerated on every wasm-pack build so it's not a useful
+          # trigger; key on the actual source dirs.
+          if ! echo "$changed" | grep -qE '^(crates/[^/]+/(src|tests|build\.rs)|dash/wasm-sim/src|dash/src)/'; then
+              echo "no source changes; skipping version check"
+              exit 0
+          fi
+
+          read_workspace() { awk -F\" '/^\[workspace\.package\]/{f=1} f && /^version =/{print $2; exit}' Cargo.toml; }
+          read_wasm()      { awk -F\" '/^version =/{print $2; exit}' dash/wasm-sim/Cargo.toml; }
+          read_dash()      { jq -r '.version' dash/package.json; }
+
+          ws=$(read_workspace)
+          wasm=$(read_wasm)
+          dash=$(read_dash)
+
+          if [ "$ws" != "$wasm" ] || [ "$ws" != "$dash" ]; then
+              echo "::error::version drift — Cargo.toml [workspace.package]=$ws  wasm-sim=$wasm  dash/package.json=$dash"
+              exit 1
+          fi
+
+          prev=$(git show "$base:Cargo.toml" | awk -F\" '/^\[workspace\.package\]/{f=1} f && /^version =/{print $2; exit}')
+          if [ "$ws" = "$prev" ]; then
+              echo "::error::source changed but workspace version $ws was not bumped from base ($prev)"
+              echo "::error::bump [workspace.package].version in Cargo.toml, plus dash/wasm-sim/Cargo.toml and dash/package.json to match"
+              exit 1
+          fi
+
+          echo "OK: workspace=$ws (was $prev), wasm-sim=$wasm, dash=$dash"

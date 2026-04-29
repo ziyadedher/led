@@ -1,7 +1,7 @@
 {
   "name": "wasm-sim",
   "type": "module",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "files": [
     "wasm_sim_bg.wasm",
     "wasm_sim.js",

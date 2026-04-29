@@ -1,7 +1,14 @@
 [package]
 name = "wasm-sim"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2021"
+
+# Standalone workspace. wasm-sim is `exclude`d from the parent
+# workspace at /Cargo.toml because of the conflicting release
+# profile, but with a `[workspace.package]` set up there cargo
+# otherwise tries to inherit. Empty table here = "I'm my own
+# single-package workspace, don't look upward."
+[workspace]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

@@ -1,6 +1,15 @@
 [workspace]
 resolver = "2"
 members = ["crates/display-core", "crates/driver", "crates/wifi-setup"]
+
+# Lockstep version across every workspace crate (and, by manual mirror,
+# wasm-sim + dash — both are excluded from the workspace for unrelated
+# reasons but bumped to match by the version-check workflow).
+# Single source of truth; bump here, every crate's `version.workspace
+# = true` picks it up. Internal-fleet system; we ship as a unit, so
+# per-crate semver doesn't carry information for us.
+[workspace.package]
+version = "1.1.1"
 # wasm-sim has its own [profile.release] (opt-level = "z", lto, single
 # codegen unit — wasm-pack defaults) that would conflict with the
 # workspace's release profile, so keep it out and build it via
