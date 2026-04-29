@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  DEFAULT_IMAGE_CONFIG,
   type ImageSceneConfig,
 } from "./types";
 
@@ -14,6 +13,7 @@ import { type Rgb } from "@/utils/color";
 
 const PANEL_W = 64;
 const PANEL_H = 64;
+const MAX_RECENT = 8;
 
 /**
  * Paint mode produces the same shape as image mode (RGB888 row-major
@@ -25,19 +25,6 @@ export { parseImageConfig as parsePaintConfig } from "./image";
 
 type Tool = "brush" | "fill" | "eraser" | "eyedrop";
 
-const RECENT_COLORS: Rgb[] = [];
-const MAX_RECENT = 8;
-
-function rememberColor(c: Rgb) {
-  // Drop any existing copy then prepend, keep last N.
-  const idx = RECENT_COLORS.findIndex(
-    (r) => r.r === c.r && r.g === c.g && r.b === c.b,
-  );
-  if (idx >= 0) RECENT_COLORS.splice(idx, 1);
-  RECENT_COLORS.unshift(c);
-  if (RECENT_COLORS.length > MAX_RECENT) RECENT_COLORS.length = MAX_RECENT;
-}
-
 export function PaintComposer({
   panelId,
   config,
@@ -45,46 +32,87 @@ export function PaintComposer({
   panelId: string;
   config: ImageSceneConfig;
 }) {
-  // Hydrate the canvas from the saved config the first time we see
-  // it; subsequent server-side updates only sync if the bitmap
-  // identity changed (deep compare via length + sentinel pixels).
-  const initialBitmap = useMemo(
+  const [bitmap, setBitmap] = useState<Uint8ClampedArray>(
     () => bitmapFrom(config) ?? new Uint8ClampedArray(PANEL_W * PANEL_H * 3),
-    [config],
   );
-  const [bitmap, setBitmap] = useState<Uint8ClampedArray>(initialBitmap);
 
-  // Per-stroke undo stack — snapshot the bitmap at pointerdown.
+  // Snapshot of what we last persisted, so the sync-from-config
+  // effect below can ignore "the server told us back what we just
+  // pushed". Without it, our own writes would round-trip through
+  // realtime and clobber any in-flight stroke.
+  const lastPushedRef = useRef<string | null>(null);
+  // Sticky flag during a pointer-down stroke so an incoming server
+  // update doesn't yank the canvas out from under the user.
+  const strokeInFlightRef = useRef(false);
+
+  // External-update sync: when `config` changes (server pushed a
+  // newer bitmap, e.g. another tab edited), refresh local state —
+  // unless we're mid-stroke or the new payload is exactly what we
+  // just sent.
+  useEffect(() => {
+    const next = bitmapFrom(config);
+    if (!next) return;
+    if (strokeInFlightRef.current) return;
+    const fingerprint = configFingerprint(config);
+    if (fingerprint === lastPushedRef.current) return;
+    setBitmap(next);
+  }, [config]);
+
+  // Undo/redo lengths in state so the buttons' disabled prop stays
+  // truthful — the stacks themselves live in refs because mutating
+  // them shouldn't normally rerender.
   const undoStack = useRef<Uint8ClampedArray[]>([]);
   const redoStack = useRef<Uint8ClampedArray[]>([]);
+  const [undoLen, setUndoLen] = useState(0);
+  const [redoLen, setRedoLen] = useState(0);
+  const syncStackLengths = () => {
+    setUndoLen(undoStack.current.length);
+    setRedoLen(redoStack.current.length);
+  };
 
   const [tool, setTool] = useState<Tool>("brush");
   const [color, setColor] = useState<Rgb>({ r: 255, g: 138, b: 44 });
   const [grid, setGrid] = useState(true);
 
+  // Per-instance recents; previously a module-level array which
+  // bled history across panel switches and mutated outside React's
+  // render cycle (so the swatch row only updated when something
+  // else happened to rerender).
+  const [recentColors, setRecentColors] = useState<Rgb[]>([]);
+  const rememberColor = useCallback((c: Rgb) => {
+    setRecentColors((prev) => {
+      const filtered = prev.filter(
+        (r) => !(r.r === c.r && r.g === c.g && r.b === c.b),
+      );
+      return [c, ...filtered].slice(0, MAX_RECENT);
+    });
+  }, []);
+
   const persist = useCallback(
     (next: Uint8ClampedArray) => {
-      // Convert to plain number[] for JSON; the bitmap field is
-      // declared as number[] in the types contract.
       const arr = Array.from(next);
-      void panels.setMode.call(panelId, "paint", {
+      const config: ImageSceneConfig = {
         width: PANEL_W,
         height: PANEL_H,
         bitmap: arr,
-      });
+      };
+      lastPushedRef.current = configFingerprint(config);
+      void panels.setMode.call(panelId, "paint", config);
     },
     [panelId],
   );
 
-  // Save a checkpoint, returning a *fresh* mutable copy to draw into.
   const beginStroke = () => {
+    strokeInFlightRef.current = true;
     undoStack.current.push(new Uint8ClampedArray(bitmap));
     if (undoStack.current.length > 50) undoStack.current.shift();
     redoStack.current.length = 0;
+    syncStackLengths();
     return new Uint8ClampedArray(bitmap);
   };
 
   const commit = (next: Uint8ClampedArray) => {
+    strokeInFlightRef.current = false;
     setBitmap(next);
     persist(next);
   };
@@ -110,6 +138,7 @@ export function PaintComposer({
     const prev = undoStack.current.pop();
     if (!prev) return;
     redoStack.current.push(new Uint8ClampedArray(bitmap));
+    syncStackLengths();
     commit(prev);
   };
 
@@ -117,6 +146,7 @@ export function PaintComposer({
     const next = redoStack.current.pop();
     if (!next) return;
     undoStack.current.push(new Uint8ClampedArray(bitmap));
+    syncStackLengths();
     commit(next);
   };
 
@@ -139,10 +169,10 @@ export function PaintComposer({
             }}
           />
           <span aria-hidden className="flex-1" />
-          <SmallButton onClick={undo} disabled={undoStack.current.length === 0}>
+          <SmallButton onClick={undo} disabled={undoLen === 0}>
             undo
           </SmallButton>
-          <SmallButton onClick={redo} disabled={redoStack.current.length === 0}>
+          <SmallButton onClick={redo} disabled={redoLen === 0}>
             redo
           </SmallButton>
           <SmallButton onClick={clear} variant="danger">
@@ -157,9 +187,10 @@ export function PaintComposer({
           onStrokeBegin={beginStroke}
           onStrokeStep={(working, x, y) => {
             handlePixel(working, x, y);
-            // Trigger a re-render mid-stroke for paint-trail feedback,
-            // but DON'T persist on every pointer move — only on
-            // stroke end. This keeps Supabase happy.
+            // Persisting only on stroke-end — Supabase write rate
+            // limit + driver ConfigCache invalidation make per-pixel
+            // writes a thrash trap. Mid-stroke we just bump local
+            // state for the paint-trail feedback.
             setBitmap(new Uint8ClampedArray(working));
           }}
           onStrokeEnd={(working) => commit(working)}
@@ -177,7 +208,7 @@ export function PaintComposer({
             grid
           </label>
           <div className="flex flex-wrap items-center gap-1">
-            {RECENT_COLORS.map((c, i) => (
+            {recentColors.map((c, i) => (
               <button
                 key={`${c.r}-${c.g}-${c.b}-${i}`}
                 type="button"
@@ -202,6 +233,13 @@ export function PaintComposer({
       </div>
     </ComposerShell>
   );
+}
+
+/** Stable fingerprint of an image config. Used by the sync effect to
+ * skip our own round-tripped writes — `JSON.stringify` is fine here
+ * because the bitmap was already a plain array at persist time. */
+function configFingerprint(config: ImageSceneConfig): string {
+  return `${config.width}x${config.height}:${config.bitmap.length}:${config.bitmap[0] ?? 0}:${config.bitmap[config.bitmap.length - 1] ?? 0}:${config.bitmap.reduce((a, b) => (a + b) | 0, 0)}`;
 }
 
 /* ─── canvas ──────────────────────────────────────────────────────── */
@@ -288,10 +326,14 @@ function PaintCanvas({
     [grid],
   );
 
-  // Run once + on every bitmap/grid change.
-  if (canvasRef.current) {
-    repaint(canvasRef.current, bitmap);
-  }
+  // Repaint via effect — running it during render would mutate
+  // canvas dimensions inside React's render phase, which strict
+  // mode and concurrent rendering both complain about.
+  useEffect(() => {
+    if (canvasRef.current) {
+      repaint(canvasRef.current, bitmap);
+    }
+  }, [bitmap, repaint]);
 
   const cellAt = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = e.currentTarget;
@@ -337,10 +379,7 @@ function PaintCanvas({
   return (
     <div className="mx-auto aspect-square w-full max-w-[384px] border border-(--color-border) bg-(--color-bg)">
       <canvas
-        ref={(c) => {
-          canvasRef.current = c;
-          if (c) repaint(c, bitmap);
-        }}
+        ref={canvasRef}
         onPointerDown={handleDown}
         onPointerMove={handleMove}
         onPointerUp={handleUp}

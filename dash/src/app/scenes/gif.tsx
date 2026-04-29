@@ -144,9 +144,15 @@ async function decodeGif(file: File): Promise<GifSceneConfig> {
 
     const bitmap = new Array<number>(drawW * drawH * 3);
     for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
-      bitmap[j] = data[i];
-      bitmap[j + 1] = data[i + 1];
-      bitmap[j + 2] = data[i + 2];
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      // (0,0,0) is the renderer's transparency sentinel — nudge any
+      // genuinely-black source pixels to (0,0,1) so they stay opaque
+      // (the disposal mask is what handles real transparency).
+      bitmap[j] = r;
+      bitmap[j + 1] = g;
+      bitmap[j + 2] = !r && !g && !b ? 1 : b;
     }
     // Per-frame delay: gifuct returns delay in 1/100s units.
     const delay_ms = Math.max(MIN_DELAY_MS, (frame.delay ?? 10) * 10);

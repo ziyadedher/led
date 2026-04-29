@@ -26,10 +26,6 @@ export function parseTestConfig(raw: unknown): TestSceneConfig {
   };
 }
 
-export function ClockComposerStub() {
-  return null;
-}
-
 export function TestComposer({
   panelId,
   config,

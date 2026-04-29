@@ -55,9 +55,16 @@ async function loadAndDownsample(
     const data = ctx.getImageData(0, 0, drawW, drawH).data;
     const bitmap: number[] = new Array(drawW * drawH * 3);
     for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
-      bitmap[j] = data[i];
-      bitmap[j + 1] = data[i + 1];
-      bitmap[j + 2] = data[i + 2];
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      // The driver treats pure (0,0,0) as transparent (so margins
+      // around centered images stay off). A genuinely-black input
+      // pixel would punch a hole in the rendered photo, so nudge it
+      // to (0,0,1) — visually indistinguishable, but counts as opaque.
+      bitmap[j] = r;
+      bitmap[j + 1] = g;
+      bitmap[j + 2] = !r && !g && !b ? 1 : b;
     }
     return {
       width: drawW,

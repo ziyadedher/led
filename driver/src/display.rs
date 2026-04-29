@@ -74,6 +74,10 @@ pub async fn drive(
     let mut step: usize = 0;
     let mut life_state: Option<LifeState> = None;
     let mut config_cache = ConfigCache::default();
+    // Most recent clock sample. Frozen while the panel is paused so
+    // the displayed time doesn't advance even though render() is
+    // still running.
+    let mut last_clock_now: Option<ClockTime> = None;
     loop {
         let frame_started = Instant::now();
 
@@ -90,7 +94,12 @@ pub async fn drive(
                 is_paused: snapshot.panel.is_paused,
                 flash: snapshot.panel.flash.clone(),
             };
-            let mode = build_mode(&snapshot, &mut life_state, &mut config_cache);
+            let mode = build_mode(
+                &snapshot,
+                &mut life_state,
+                &mut config_cache,
+                &mut last_clock_now,
+            );
             (mode, panel_state)
         };
         let frame = Scene { mode, panel: panel_state };
@@ -237,13 +246,18 @@ impl LifeState {
 }
 
 /// Memoizes the parsed config for the immutable-payload modes
-/// (image / paint / gif / test). The cache key is
+/// (image / paint / gif / shapes / test). The cache key is
 /// `(mode_string, last_updated)`; `last_updated` flips on every dash
-/// update so it doubles as a content version. On cache hit we clone
-/// the parsed struct (Vec<u8> memcpy ≈ 0.1ms for a 720KB gif) instead
-/// of re-parsing the 720KB JSON Value (~5–15ms on a Pi Zero W),
-/// which is what was burning the frame budget and producing the
-/// "panel scans rows but never lights the whole image" symptom.
+/// update so it doubles as a content version — but note that this is
+/// an enforced-by-convention invariant, not a typed one. If a future
+/// codepath ever updates `mode_config` without bumping `last_updated`
+/// the cache will return stale bytes silently.
+///
+/// On cache hit we clone the parsed struct (Vec<u8> memcpy ≈ 0.1ms
+/// for a 720KB gif) instead of re-parsing the 720KB JSON Value
+/// (~5–15ms on a Pi Zero W), which is what was burning the frame
+/// budget and producing the "panel scans rows but never lights the
+/// whole image" symptom.
 ///
 /// Stateful modes (clock / life / text) aren't cached here — they
 /// rebuild per-frame from cheap inputs (current time, life lattice,
@@ -310,6 +324,7 @@ fn build_mode(
     snapshot: &State,
     life_state: &mut Option<LifeState>,
     config_cache: &mut ConfigCache,
+    last_clock_now: &mut Option<ClockTime>,
 ) -> Mode {
     if let Some(setup_frame) = read_setup_marker() {
         *life_state = None;
@@ -327,7 +342,19 @@ fn build_mode(
             // rebuild Mode::Clock either way.
             let config: ClockSceneConfig =
                 serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
-            let now = sample_time(config.timezone.as_deref());
+            // Freeze the clock when the panel is paused — without
+            // this, sample_time runs every frame and the displayed
+            // time keeps advancing even though every other animated
+            // mode honours the freeze via the static `step`.
+            let now = if snapshot.panel.is_paused {
+                last_clock_now
+                    .clone()
+                    .unwrap_or_else(|| sample_time(config.timezone.as_deref()))
+            } else {
+                let sampled = sample_time(config.timezone.as_deref());
+                *last_clock_now = Some(sampled.clone());
+                sampled
+            };
             Mode::Clock(config.into_frame(now))
         }
         "life" => {

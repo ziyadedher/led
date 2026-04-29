@@ -32,8 +32,6 @@ pub struct TestScene {
     pub pattern: TestPattern,
 }
 
-pub type TestConfig = TestScene;
-
 #[allow(clippy::cast_possible_wrap)]
 pub fn render<D>(frame: &TestScene, canvas: &mut D) -> Result<(), D::Error>
 where
