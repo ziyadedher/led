@@ -1,5 +1,6 @@
 "use client";
 
+import { PowerIcon } from "@heroicons/react/24/outline";
 import { useMemo } from "react";
 
 import { panels } from "@/utils/actions";
@@ -105,20 +106,25 @@ export function PanelSwitcher({
           const tooltip = [
             p.description || p.name,
             heartbeatLabel,
+            p.is_off ? "off" : null,
             p.is_paused ? "paused" : null,
           ]
             .filter(Boolean)
             .join(" · ");
 
-          // Status indicator: phosphor lamp for live-active, amber for
-          // paused, danger for offline, dim for inactive-online.
-          const lamp = p.is_paused
-            ? { class: "bg-(--color-amber)", glow: "var(--color-amber)" }
-            : offline
-              ? { class: "bg-(--color-danger)", glow: "var(--color-danger)" }
-              : active
-                ? { class: "bg-(--color-accent)", glow: "var(--color-accent)" }
-                : { class: "bg-(--color-phosphor)/40", glow: "transparent" };
+          // Status indicator: phosphor lamp for live-active, dim for
+          // off, amber for paused, danger for offline, dim for
+          // inactive-online. Offline takes priority (truth check),
+          // then off (user explicitly killed it), then paused.
+          const lamp = offline
+            ? { class: "bg-(--color-danger)", glow: "var(--color-danger)" }
+            : p.is_off
+              ? { class: "bg-(--color-text-faint)", glow: "transparent" }
+              : p.is_paused
+                ? { class: "bg-(--color-amber)", glow: "var(--color-amber)" }
+                : active
+                  ? { class: "bg-(--color-accent)", glow: "var(--color-accent)" }
+                  : { class: "bg-(--color-phosphor)/40", glow: "transparent" };
 
           return (
             <button
@@ -156,7 +162,7 @@ export function PanelSwitcher({
                   className={[
                     "h-1.5 w-1.5 shrink-0 rounded-[1px]",
                     lamp.class,
-                    active && !offline && !p.is_paused
+                    active && !offline && !p.is_paused && !p.is_off
                       ? "animate-pulse"
                       : "",
                   ].join(" ")}
@@ -179,6 +185,13 @@ export function PanelSwitcher({
                 </span>
 
                 {/* Right-side state chips */}
+                {p.is_off ? (
+                  <PowerIcon
+                    aria-label="off"
+                    title={`off · ${heartbeatLabel}`}
+                    className="h-3 w-3 shrink-0 text-(--color-text-faint)"
+                  />
+                ) : null}
                 {p.is_paused ? (
                   <span
                     aria-label="paused"

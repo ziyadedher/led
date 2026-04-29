@@ -128,6 +128,30 @@ fn flash_overlay_lights_canvas_white_on_active_window() {
 }
 
 #[test]
+fn is_off_short_circuits_render() {
+    // Construct a scene that would normally render *something* — text
+    // mode with an entry — and verify is_off=true produces a fully
+    // black frame. Mode + flash should be ignored entirely; flipping
+    // is_off back gives the same scene.
+    use display_core::text::{TextEntry, TextEntryColor, TextEntryOptions, MarqueeOptions, RainbowOptions};
+    let entries = vec![TextEntry {
+        text: "hello".into(),
+        options: TextEntryOptions {
+            color: TextEntryColor::Rainbow(RainbowOptions { is_per_letter: false, speed: 1 }),
+            marquee: MarqueeOptions { speed: 0 },
+        },
+    }];
+    let mut canvas = MockCanvas::new(W, H);
+    let mut scene = scene_with(Mode::Text(display_core::text::TextScene { entries, scroll: 0 }));
+    scene.panel.is_off = true;
+    scene.panel.flash.is_active = true;
+    scene.panel.flash.on_steps = 4;
+    scene.panel.flash.total_steps = 8;
+    render(&scene, 0, &mut canvas).unwrap();
+    assert_eq!(canvas.lit_count(), 0, "is_off panel must render fully black");
+}
+
+#[test]
 fn pause_disables_flash_overlay() {
     let mut canvas = MockCanvas::new(W, H);
     let mut scene = scene_with(Mode::default());

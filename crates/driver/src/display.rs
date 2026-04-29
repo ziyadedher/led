@@ -43,6 +43,11 @@ pub struct Panel {
     pub scroll: i32,
     /// True if and only if the display has all effects paused.
     pub is_paused: bool,
+    /// True if and only if the panel is "off" — render is short-
+    /// circuited to a black canvas without disturbing the configured
+    /// mode/config. Composes with is_paused.
+    #[serde(default)]
+    pub is_off: bool,
     /// The current state of the flash effect.
     pub flash: FlashState,
     /// When the panel was last updated. Compared against the previous
@@ -84,6 +89,7 @@ pub async fn drive(
             let snapshot = state.read();
             let panel_state = PanelState {
                 is_paused: snapshot.panel.is_paused,
+                is_off: snapshot.panel.is_off,
                 flash: snapshot.panel.flash.clone(),
             };
             let mode = build_mode(
@@ -100,7 +106,7 @@ pub async fn drive(
         // can't fail here, so unwrap is fine.
         display_core::render(&frame, step, &mut buffer).expect("infallible draw target");
 
-        if !frame.panel.is_paused {
+        if !frame.panel.is_paused && !frame.panel.is_off {
             step += 1;
         }
 

@@ -10,6 +10,7 @@ import { useNow } from "@/utils/useNow";
 type PanelRow = {
   last_seen: string | null;
   is_paused: boolean | null;
+  is_off: boolean | null;
 };
 
 /**
@@ -66,6 +67,11 @@ export function InstrumentHeader({
             value={pad(stats.paused)}
             tone={stats.paused > 0 ? "warn" : "dim"}
           />
+          <Telemetry
+            label="off"
+            value={pad(stats.off)}
+            tone={stats.off > 0 ? "dim" : "dim"}
+          />
         </div>
 
         <div className="flex items-center gap-2 border-l border-(--color-border) pl-4 font-mono text-[9px] leading-none uppercase tracking-[0.3em] text-(--color-text-faint)">
@@ -118,9 +124,11 @@ function pad(n: number) {
 function fleetStats(rows: PanelRow[], now: number) {
   let online = 0;
   let paused = 0;
+  let off = 0;
   for (const r of rows) {
     if (!isOffline(r.last_seen, now)) online += 1;
     if (r.is_paused) paused += 1;
+    if (r.is_off) off += 1;
   }
-  return { online, paused, total: rows.length };
+  return { online, paused, off, total: rows.length };
 }

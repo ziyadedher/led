@@ -178,6 +178,19 @@ export const panels = {
         .throwOnError();
     },
   },
+
+  setOff: {
+    call: async (panelId: string, isOff: boolean) => {
+      await supabase
+        .from("panels")
+        .update({
+          is_off: isOff,
+          last_updated: new Date().toISOString(),
+        })
+        .eq("id", panelId)
+        .throwOnError();
+    },
+  },
 };
 
 export const entries = {
