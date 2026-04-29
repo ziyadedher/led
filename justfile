@@ -30,15 +30,17 @@ refresh-image-cache:
 # Flash an SD card with a fully-baked Pi OS Lite image. Hostname,
 # init.env, journald conf, service enables, regdomain, and tailscale
 # package are all set at flash time. Pi boots once → multi-user.target.
-# See scripts/flash-sd.sh for details.
-flash-sd id host device: build
-    scripts/flash-sd.sh "{{ id }}" "{{ host }}" "{{ device }}"
+# Pass `color-order=BGR` (or RBG/GRB/GBR/BRG) for panels whose hardware
+# wires the channels differently. See scripts/flash-sd.sh.
+flash-sd id host device color-order="RGB": build
+    COLOR_ORDER="{{ color-order }}" scripts/flash-sd.sh "{{ id }}" "{{ host }}" "{{ device }}"
 
 # Re-init an already-deployed Pi over SSH (Tailscale or LAN). Pushes
 # config + service unit + driver binary and restarts the service.
-# Use `flash-sd` for fresh hardware. See scripts/init.sh.
-init host id user="root": build
-    scripts/init.sh "{{ host }}" "{{ id }}" "{{ user }}"
+# Pass `color-order=BGR` to fix a swapped-channel panel without a full
+# re-flash. Use `flash-sd` for fresh hardware. See scripts/init.sh.
+init host id color-order="RGB" user="root": build
+    COLOR_ORDER="{{ color-order }}" scripts/init.sh "{{ host }}" "{{ id }}" "{{ user }}"
 
 # Push a fresh binary to a host and restart the service.
 deploy host user="root": build
