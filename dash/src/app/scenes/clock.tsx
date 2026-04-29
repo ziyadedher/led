@@ -18,6 +18,7 @@ import {
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
 import { useDebouncedSetMode } from "@/utils/useDebouncedSetMode";
+import { useSyncedFromProp } from "@/utils/useSyncedFromProp";
 
 /** Build a renderable clock frame from saved config + current time. */
 export function clockSceneFromConfig(config: ClockSceneConfig): ClockScene {
@@ -108,17 +109,10 @@ export function ClockComposer({
   panelId: string;
   config: ClockSceneConfig;
 }) {
-  // Hold an optimistic local copy so the form doesn't snap when an
-  // unrelated panel field updates (last_seen ticks every 30s). When
-  // the server-side config bytes change, sync down. Computed during
-  // render avoids the setState-in-effect anti-pattern.
-  const configKey = JSON.stringify(config);
-  const [snapshotKey, setSnapshotKey] = useState(configKey);
-  const [local, setLocal] = useState<ClockSceneConfig>(config);
-  if (snapshotKey !== configKey) {
-    setSnapshotKey(configKey);
-    setLocal(config);
-  }
+  // Local copy keeps the form responsive against the 30s last_seen
+  // heartbeat refreshes; resyncs only when the server's config bytes
+  // actually change.
+  const [local, setLocal] = useSyncedFromProp(JSON.stringify(config), config);
 
   const [pushDebounced] = useDebouncedSetMode<ClockSceneConfig>(
     panelId,

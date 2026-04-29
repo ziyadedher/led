@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 import {
   DEFAULT_TEST_CONFIG,
   type TestSceneConfig,
@@ -10,6 +8,7 @@ import {
 
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { panels } from "@/utils/actions";
+import { useSyncedFromProp } from "@/utils/useSyncedFromProp";
 
 const PATTERNS: { id: TestPatternId; label: string; blurb: string }[] = [
   { id: "ColorBars",    label: "color bars",    blurb: "RGB primaries + corner pixels for geometry" },
@@ -33,13 +32,7 @@ export function TestComposer({
   panelId: string;
   config: TestSceneConfig;
 }) {
-  const configKey = JSON.stringify(config);
-  const [snapshotKey, setSnapshotKey] = useState(configKey);
-  const [local, setLocal] = useState<TestSceneConfig>(config);
-  if (snapshotKey !== configKey) {
-    setSnapshotKey(configKey);
-    setLocal(config);
-  }
+  const [local, setLocal] = useSyncedFromProp(JSON.stringify(config), config);
 
   const persist = (next: TestSceneConfig) => {
     setLocal(next);

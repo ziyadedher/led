@@ -178,10 +178,13 @@ fn sample_time(timezone: Option<&str>) -> ClockTime {
         let now = Local::now();
         (now.hour(), now.minute(), now.second())
     };
+    // chrono returns u32 for HMS but they fit in u8 (max 59). `try_from`
+    // here documents the invariant and avoids a silent wrap if chrono
+    // ever returns something pathological.
     ClockTime {
-        hour: h as u8,
-        minute: m as u8,
-        second: s as u8,
+        hour: u8::try_from(h).unwrap_or(0),
+        minute: u8::try_from(m).unwrap_or(0),
+        second: u8::try_from(s).unwrap_or(0),
     }
 }
 
@@ -252,8 +255,8 @@ struct ConfigCache {
 }
 
 enum CachedConfig {
-    Image(ImageScene),
-    Gif(GifScene),
+    Image(Arc<ImageScene>),
+    Gif(Arc<GifScene>),
     Shapes(ShapesScene),
     Test(TestScene),
 }
@@ -271,12 +274,12 @@ impl ConfigCache {
         let want = (mode.to_owned(), last_updated.to_owned());
         if self.key.as_ref() != Some(&want) || self.parsed.is_none() {
             let parsed = match mode {
-                "gif" => CachedConfig::Gif(
+                "gif" => CachedConfig::Gif(Arc::new(
                     serde_json::from_value(mode_config.clone()).unwrap_or_default(),
-                ),
-                "image" | "paint" => CachedConfig::Image(
+                )),
+                "image" | "paint" => CachedConfig::Image(Arc::new(
                     serde_json::from_value(mode_config.clone()).unwrap_or_default(),
-                ),
+                )),
                 "shapes" => CachedConfig::Shapes(
                     serde_json::from_value(mode_config.clone()).unwrap_or_default(),
                 ),
@@ -356,7 +359,7 @@ fn build_mode(
                 snapshot.panel.last_updated.as_str(),
                 &snapshot.panel.mode_config,
             ) {
-                CachedConfig::Image(frame) => Mode::Image(frame.clone()),
+                CachedConfig::Image(arc) => Mode::Image(Arc::clone(arc)),
                 _ => unreachable!("cache returns the variant we asked for"),
             }
         }
@@ -367,7 +370,7 @@ fn build_mode(
                 snapshot.panel.last_updated.as_str(),
                 &snapshot.panel.mode_config,
             ) {
-                CachedConfig::Gif(frame) => Mode::Gif(frame.clone()),
+                CachedConfig::Gif(arc) => Mode::Gif(Arc::clone(arc)),
                 _ => unreachable!("cache returns the variant we asked for"),
             }
         }

@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.86"
+anyhow.workspace = true
 axum = { version = "0.7", default-features = false, features = ["http1", "tokio", "form", "tower-log"] }
 clap = { version = "4.5", features = ["derive", "env"] }
-serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1.39", features = ["macros", "rt-multi-thread", "signal", "sync", "process", "fs", "time"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

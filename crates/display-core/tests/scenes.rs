@@ -4,6 +4,8 @@
 //! under most regressions. Not exhaustive; the goal is to catch the
 //! "did anyone change the render contract by accident" class of bug.
 
+use std::sync::Arc;
+
 use display_core::{
     clock::{ClockFormat, ClockScene, ClockTime},
     gif::{GifFrame, GifScene},
@@ -190,11 +192,11 @@ fn image_skips_pure_black_pixels() {
     let mut bitmap = vec![0_u8; 4 * 4 * 3];
     let red_idx = (1 * 4 + 1) * 3;
     bitmap[red_idx] = 255;
-    let scene = scene_with(Mode::Image(ImageScene {
+    let scene = scene_with(Mode::Image(Arc::new(ImageScene {
         width: 4,
         height: 4,
         bitmap,
-    }));
+    })));
     let mut canvas = MockCanvas::new(W, H);
     canvas.clear_to(Rgb888::CSS_GRAY);
     // Top-level render clears to BLACK first, so we won't actually
@@ -295,7 +297,7 @@ fn shapes_speed_clamp_doesnt_panic() {
 
 #[test]
 fn empty_gif_renders_blank() {
-    let scene = scene_with(Mode::Gif(GifScene::default()));
+    let scene = scene_with(Mode::Gif(Arc::new(GifScene::default())));
     let mut canvas = MockCanvas::new(W, H);
     render(&scene, 0, &mut canvas).unwrap();
     assert_eq!(canvas.lit_count(), 0);
@@ -308,7 +310,7 @@ fn gif_advances_through_frames() {
     // covers steps 0..6 and frame 1 covers steps 6..12.
     let red: Vec<u8> = std::iter::repeat([255_u8, 0, 0]).take(16).flatten().collect();
     let blue: Vec<u8> = std::iter::repeat([0_u8, 0, 255]).take(16).flatten().collect();
-    let scene = scene_with(Mode::Gif(GifScene {
+    let scene = scene_with(Mode::Gif(Arc::new(GifScene {
         width: 4,
         height: 4,
         frames: vec![
@@ -316,7 +318,7 @@ fn gif_advances_through_frames() {
             GifFrame { bitmap: blue, delay_ms: 100 },
         ],
         speed: 1.0,
-    }));
+    })));
 
     let mut canvas0 = MockCanvas::new(W, H);
     render(&scene, 0, &mut canvas0).unwrap();

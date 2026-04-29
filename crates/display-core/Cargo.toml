@@ -4,5 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-embedded-graphics = "0.8.1"
-serde = { version = "1.0.208", features = ["derive"] }
+embedded-graphics.workspace = true
+# `rc` (on top of the workspace's `derive`) enables (de)serialization
+# of Arc-wrapped Mode payloads, the trick that lets the driver's
+# cache hand out cheap Arc clones instead of 720KB Vec memcpys.
+serde = { workspace = true, features = ["rc"] }

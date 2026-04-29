@@ -9,6 +9,8 @@
 //! top-level [`Scene`] tags which mode to dispatch to and carries
 //! mode-independent panel state (flash, pause).
 
+use std::sync::Arc;
+
 use embedded_graphics::{
     pixelcolor::Rgb888,
     prelude::*,
@@ -42,13 +44,18 @@ pub struct PanelState {
 /// Tagged union over render modes. Externally-tagged so JSON looks
 /// like `{ "Text": {...} }` — easy for the dash to construct
 /// directly.
+///
+/// Image/Gif payloads are `Arc`-wrapped so the driver's per-frame
+/// scene rebuild is an atomic-increment instead of a 720KB Vec
+/// memcpy on cache hits. The wire format is unchanged — serde
+/// transparently (de)serializes `Arc<T>` as `T`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Mode {
     Text(text::TextScene),
     Clock(clock::ClockScene),
     Life(life::LifeScene),
-    Image(image::ImageScene),
-    Gif(gif::GifScene),
+    Image(Arc<image::ImageScene>),
+    Gif(Arc<gif::GifScene>),
     Shapes(shapes::ShapesScene),
     Test(test::TestScene),
     Boot(boot::BootScene),
@@ -83,8 +90,8 @@ where
         Mode::Text(t) => text::render(t, step, canvas)?,
         Mode::Clock(c) => clock::render(c, canvas)?,
         Mode::Life(l) => life::render(l, canvas)?,
-        Mode::Image(i) => image::render(i, canvas)?,
-        Mode::Gif(g) => gif::render(g, step, canvas)?,
+        Mode::Image(i) => image::render(i.as_ref(), canvas)?,
+        Mode::Gif(g) => gif::render(g.as_ref(), step, canvas)?,
         Mode::Shapes(s) => shapes::render(s, step, canvas)?,
         Mode::Test(t) => test::render(t, canvas)?,
         Mode::Boot(b) => boot::render(b, step, canvas)?,

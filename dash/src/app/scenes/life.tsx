@@ -11,6 +11,7 @@ import {
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
 import { useDebouncedSetMode } from "@/utils/useDebouncedSetMode";
+import { useSyncedFromProp } from "@/utils/useSyncedFromProp";
 
 const W = 64;
 const H = 64;
@@ -157,18 +158,8 @@ export function LifeComposer({
   panelId: string;
   config: LifeSceneConfig;
 }) {
-  const configKey = JSON.stringify(config);
-  const [snapshotKey, setSnapshotKey] = useState(configKey);
-  const [local, setLocal] = useState<LifeSceneConfig>(config);
-  if (snapshotKey !== configKey) {
-    setSnapshotKey(configKey);
-    setLocal(config);
-  }
-
-  const [pushDebounced] = useDebouncedSetMode<LifeSceneConfig>(
-    panelId,
-    "life",
-  );
+  const [local, setLocal] = useSyncedFromProp(JSON.stringify(config), config);
+  const [pushDebounced] = useDebouncedSetMode<LifeSceneConfig>(panelId, "life");
   const persist = (next: LifeSceneConfig) => {
     setLocal(next);
     pushDebounced(next);

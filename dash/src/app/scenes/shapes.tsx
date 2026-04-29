@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 import {
   DEFAULT_SHAPES_CONFIG,
   type ShapeKind,
@@ -11,6 +9,7 @@ import {
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
 import { useDebouncedSetMode } from "@/utils/useDebouncedSetMode";
+import { useSyncedFromProp } from "@/utils/useSyncedFromProp";
 
 const SHAPES: { id: ShapeKind; label: string; glyph: string; blurb: string }[] = [
   { id: "Cube", label: "cube", glyph: "▣", blurb: "8v · 12e" },
@@ -78,14 +77,7 @@ export function ShapesComposer({
   panelId: string;
   config: ShapesSceneConfig;
 }) {
-  const configKey = JSON.stringify(config);
-  const [snapshotKey, setSnapshotKey] = useState(configKey);
-  const [local, setLocal] = useState<ShapesSceneConfig>(config);
-  if (snapshotKey !== configKey) {
-    setSnapshotKey(configKey);
-    setLocal(config);
-  }
-
+  const [local, setLocal] = useSyncedFromProp(JSON.stringify(config), config);
   const [pushDebounced] = useDebouncedSetMode<ShapesSceneConfig>(
     panelId,
     "shapes",

@@ -10,3 +10,14 @@ members = ["crates/display-core", "crates/driver", "crates/wifi-setup"]
 # hard-link the package straight into node_modules without breaking
 # `next dev`.
 exclude = ["dash/wasm-sim"]
+
+# Shared dep versions — bumped here flow through every workspace
+# member that opts in via `<dep>.workspace = true`.
+[workspace.dependencies]
+embedded-graphics = "0.8.1"
+serde = { version = "1.0.208", features = ["derive"] }
+serde_json = "1.0.125"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1.39", features = ["full"] }

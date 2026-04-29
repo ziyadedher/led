@@ -13,12 +13,12 @@ rpi = ["dep:rpi-led-panel"]
 
 [dependencies]
 display-core = { path = "../display-core" }
-anyhow = "1.0.86"
+anyhow.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 chrono-tz = { version = "0.10", default-features = false }
 fastrand = "2"
 clap = { version = "4.5.16", features = ["derive"] }
-embedded-graphics = "0.8.1"
+embedded-graphics.workspace = true
 hostname = "0.4"
 human-panic = "2.0"
 opentelemetry = { version = "0.30", features = ["metrics", "logs"] }
@@ -50,11 +50,11 @@ tokio-tungstenite = { version = "0.24", default-features = false, features = [
     "connect",
 ] }
 rpi-led-panel = { version = "0.5.1", optional = true }
-serde = { version = "1.0.208", features = ["derive"] }
-serde_json = "1.0.125"
+serde.workspace = true
+serde_json.workspace = true
 thiserror = "1.0.63"
-tokio = { version = "1.39.2", features = ["full"] }
+tokio.workspace = true
 toml = "0.8.19"
-tracing = "0.1.40"
+tracing.workspace = true
 tracing-appender = "0.2.3"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-subscriber.workspace = true
