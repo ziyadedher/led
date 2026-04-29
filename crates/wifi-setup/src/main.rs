@@ -95,7 +95,6 @@ async fn main() -> Result<()> {
     let app_state = Arc::new(AppState {
         networks,
         shutdown: shutdown.clone(),
-        country: args.country.clone(),
         id: args.id.clone(),
     });
 
@@ -138,7 +137,6 @@ async fn main() -> Result<()> {
 struct AppState {
     networks: Vec<Network>,
     shutdown: Arc<Notify>,
-    country: String,
     id: String,
 }
 
@@ -241,7 +239,7 @@ async fn connect_handler(
     let psk = form.psk;
     tracing::info!(%ssid, "applying network");
 
-    let result = apply_network(&ssid, &psk, &state.country).await;
+    let result = apply_network(&ssid, &psk).await;
     match result {
         Ok(()) => {
             // Defer the actual shutdown briefly so the success page renders.
@@ -295,7 +293,7 @@ fn error_page(msg: &str) -> String {
     )
 }
 
-async fn apply_network(ssid: &str, psk: &str, _country: &str) -> Result<()> {
+async fn apply_network(ssid: &str, psk: &str) -> Result<()> {
     tear_down_ap().await.ok();
 
     // Remove any prior connection of the same name to keep state idempotent.

@@ -168,17 +168,6 @@ impl Default for LifeScene {
     }
 }
 
-impl From<&Lattice> for LifeScene {
-    fn from(l: &Lattice) -> Self {
-        Self {
-            color: default_life_color(),
-            lattice_width: l.width,
-            lattice_height: l.height,
-            cells: l.cells.clone(),
-        }
-    }
-}
-
 #[allow(clippy::cast_possible_wrap)]
 pub fn render<D>(frame: &LifeScene, canvas: &mut D) -> Result<(), D::Error>
 where

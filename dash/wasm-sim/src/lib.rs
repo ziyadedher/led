@@ -1,6 +1,6 @@
 //! WASM glue around `display-core`. Browser side calls
-//! [`Renderer::tick`] each rAF; the JS side reads RGBA bytes out of
-//! [`Renderer::buffer`] and paints them to a 64×64 ImageData.
+//! [`Renderer::tick`] each rAF; tick returns RGBA bytes the JS side
+//! paints onto a 64×64 ImageData.
 
 use display_core::{Scene, render};
 use embedded_graphics::{
@@ -66,18 +66,6 @@ impl Renderer {
         Ok(self.pixels.clone())
     }
 
-    /// Reset the step counter so animations restart deterministically.
-    pub fn reset(&mut self) {
-        self.step = 0;
-    }
-
-    pub fn width(&self) -> u32 {
-        self.width
-    }
-
-    pub fn height(&self) -> u32 {
-        self.height
-    }
 }
 
 struct PixelBuffer<'a> {

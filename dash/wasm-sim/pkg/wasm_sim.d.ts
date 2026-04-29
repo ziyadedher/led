@@ -4,16 +4,11 @@
 export class Renderer {
     free(): void;
     [Symbol.dispose](): void;
-    height(): number;
     /**
      * Create a renderer for a `width × height` matrix. Sized to match
      * the panel (default 64×64).
      */
     constructor(width: number, height: number);
-    /**
-     * Reset the step counter so animations restart deterministically.
-     */
-    reset(): void;
     /**
      * Replace the renderable state (entries + panel scroll/pause/flash).
      * Pass a JSON string; we parse here so the JS shape is whatever
@@ -28,7 +23,6 @@ export class Renderer {
      * 64×64×4 = 16KiB at rAF that's negligible.
      */
     tick(): Uint8Array;
-    width(): number;
 }
 
 export function init(): void;

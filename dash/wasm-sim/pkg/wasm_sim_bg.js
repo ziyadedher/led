@@ -10,13 +10,6 @@ export class Renderer {
         wasm.__wbg_renderer_free(ptr, 0);
     }
     /**
-     * @returns {number}
-     */
-    height() {
-        const ret = wasm.renderer_height(this.__wbg_ptr);
-        return ret >>> 0;
-    }
-    /**
      * Create a renderer for a `width × height` matrix. Sized to match
      * the panel (default 64×64).
      * @param {number} width
@@ -27,12 +20,6 @@ export class Renderer {
         this.__wbg_ptr = ret >>> 0;
         RendererFinalization.register(this, this.__wbg_ptr, this);
         return this;
-    }
-    /**
-     * Reset the step counter so animations restart deterministically.
-     */
-    reset() {
-        wasm.renderer_reset(this.__wbg_ptr);
     }
     /**
      * Replace the renderable state (entries + panel scroll/pause/flash).
@@ -64,13 +51,6 @@ export class Renderer {
         var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         return v1;
-    }
-    /**
-     * @returns {number}
-     */
-    width() {
-        const ret = wasm.renderer_width(this.__wbg_ptr);
-        return ret >>> 0;
     }
 }
 if (Symbol.dispose) Renderer.prototype[Symbol.dispose] = Renderer.prototype.free;
