@@ -1,21 +1,31 @@
-//! `led-wifi-setup` — first-boot WiFi onboarding for an LED matrix Pi.
+//! `led-wifi-setup` — WiFi onboarding for an LED matrix Pi.
 //!
-//! On boot, this binary checks whether NetworkManager already has a usable
-//! WiFi connection. If yes, it exits 0 and the rest of the boot proceeds.
-//! Otherwise it drops the Pi into "setup mode": brings up an open AP named
-//! `led-setup-<id>`, serves a tiny captive-portal-style web app on
-//! `http://10.42.0.1`, and waits for an HTTP submission. On submit it tears
-//! down the AP, applies the chosen SSID + PSK via `nmcli`, and exits 0 only
-//! when the client connection actually comes up.
+//! Runs on every boot. Flow:
 //!
-//! Modern phones (iOS 14+, Android 11+) detect captive portals when joining
-//! a network without internet and auto-open the relevant page; for the rare
-//! laptop case the user can browse to `http://10.42.0.1` manually.
+//! 1. If NetworkManager has a stored `led-wifi` connection, wait up to
+//!    [`AUTOCONNECT_BUDGET`] for it to come up. Quick-path: returns
+//!    in one [`CHECK_INTERVAL`] (~2s) when wifi is reachable; budget
+//!    only burns when the network is gone.
+//! 2. Otherwise (true first boot, or stored network unreachable):
+//!    bring up an open AP named `led-setup-<id>`, serve a captive
+//!    portal at `http://10.42.0.1`, and wait for the user to submit
+//!    new credentials. On submit, tear down the AP, apply the
+//!    SSID+PSK via `nmcli`, exit 0 once the client connection comes up.
 //!
-//! All NetworkManager interaction happens via the `nmcli` shell tool to keep
-//! this binary's surface area small (no D-Bus binding).
+//! No persistent marker file is used: the per-boot
+//! `has_stored_wifi_config()` + `wait_for_wifi()` handshake is the
+//! single source of truth, so moving a configured panel to a new
+//! location auto-recovers into setup mode without manual intervention.
+//!
+//! Modern phones (iOS 14+, Android 11+) detect captive portals when
+//! joining a network without internet and auto-open the relevant
+//! page; for the rare laptop case the user can browse to
+//! `http://10.42.0.1` manually.
+//!
+//! All NetworkManager interaction happens via the `nmcli` shell tool
+//! to keep this binary's surface area small (no D-Bus binding).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -31,14 +41,19 @@ use tokio::process::Command;
 use tokio::sync::Notify;
 
 const AP_CONNECTION: &str = "led-setup-ap";
-const CONNECTED_MARK: &str = "/var/lib/led-wifi-setup/configured";
+const STORED_CONNECTION: &str = "led-wifi";
 const ACTIVE_MARK: &str = "/run/led-wifi-setup.active";
 const PORTAL_URL: &str = "10.42.0.1";
 const CHECK_INTERVAL: Duration = Duration::from_secs(2);
 const APPLY_TIMEOUT: Duration = Duration::from_secs(45);
+/// How long to wait for NM to autoconnect to a stored network before
+/// giving up and arming the captive portal. Tuned so a healthy boot
+/// barely notices it (NM autoconnects within ~5–10s) while a moved
+/// or de-credentialed panel re-enters setup within ~half a minute.
+const AUTOCONNECT_BUDGET: Duration = Duration::from_secs(30);
 
 #[derive(Parser)]
-#[clap(about = "First-boot WiFi onboarding for an LED matrix Pi.")]
+#[clap(about = "WiFi onboarding for an LED matrix Pi.")]
 struct Args {
     /// Identifier rendered into the AP SSID, e.g. `led-setup-<id>`.
     #[clap(long, env = "LED_WIFI_SETUP_ID", default_value = "matrix")]
@@ -47,10 +62,6 @@ struct Args {
     /// 2-letter ISO country code applied via `iw reg` and to the WiFi connection.
     #[clap(long, env = "WIFI_COUNTRY", default_value = "CA")]
     country: String,
-
-    /// Marker file path; if it exists, the binary exits 0 immediately.
-    #[clap(long, default_value = CONNECTED_MARK)]
-    marker: PathBuf,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -65,25 +76,31 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    if args.marker.exists() {
-        tracing::info!("marker {:?} exists, exiting", args.marker);
-        return Ok(());
-    }
-
-    if let Some(parent) = args.marker.parent() {
-        tokio::fs::create_dir_all(parent).await.ok();
-    }
-
     set_country(&args.country).await.ok();
 
-    if has_active_wifi().await? {
-        tracing::info!("already connected to WiFi, marking configured");
-        mark_configured(&args.marker).await?;
-        return Ok(());
+    // If we have a stored connection, give NM a window to bring it up
+    // before assuming we need a fresh onboarding. has_stored_wifi_config
+    // is the difference between "first boot" (skip the wait) and
+    // "moved to a new location" (wait, then enter AP mode).
+    if has_stored_wifi_config().await {
+        tracing::info!(
+            budget_secs = AUTOCONNECT_BUDGET.as_secs(),
+            "stored '{STORED_CONNECTION}' present; waiting for autoconnect"
+        );
+        if wait_for_wifi(AUTOCONNECT_BUDGET).await {
+            tracing::info!("connected via stored config; nothing to do");
+            return Ok(());
+        }
+        tracing::warn!(
+            "stored '{STORED_CONNECTION}' did not connect within budget — \
+             entering setup mode (new location? credentials changed?)",
+        );
+    } else {
+        tracing::info!("no stored '{STORED_CONNECTION}' connection; entering setup mode");
     }
 
     let ssid = format!("led-setup-{}", args.id);
-    tracing::info!(%ssid, "no WiFi configured, bringing up onboarding AP");
+    tracing::info!(%ssid, "bringing up onboarding AP");
 
     let networks = scan_networks().await.unwrap_or_default();
     tracing::info!(networks = networks.len(), "scanned");
@@ -128,7 +145,6 @@ async fn main() -> Result<()> {
 
     tear_down_ap().await.ok();
     clear_active_marker().await.ok();
-    mark_configured(&args.marker).await?;
     tracing::info!("exiting after successful WiFi configuration");
     Ok(())
 }
@@ -454,6 +470,49 @@ fn split_nmcli_terse(line: &str) -> Vec<String> {
     out
 }
 
+/// Whether NetworkManager already has an `led-wifi` connection on
+/// disk. Distinguishes "first boot, never onboarded" from "previously
+/// onboarded, network might just be unreachable right now". On a
+/// failed `nmcli` invocation we conservatively assume yes — better
+/// to wait the budget out than to immediately tear into setup mode
+/// while NM is still booting.
+async fn has_stored_wifi_config() -> bool {
+    let out = match Command::new("nmcli")
+        .args(["-t", "-f", "NAME", "connection"])
+        .output()
+        .await
+    {
+        Ok(o) => o,
+        Err(err) => {
+            tracing::warn!(%err, "nmcli connection list failed; assuming stored config exists");
+            return true;
+        }
+    };
+    if !out.status.success() {
+        return true;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .any(|name| name == STORED_CONNECTION)
+}
+
+/// Poll [`has_active_wifi`] every [`CHECK_INTERVAL`] until either it
+/// returns true or `budget` elapses. Returns `true` on success,
+/// `false` on timeout. Quick-path: returns within one poll cycle when
+/// wifi is already up.
+async fn wait_for_wifi(budget: Duration) -> bool {
+    let deadline = tokio::time::Instant::now() + budget;
+    loop {
+        if has_active_wifi().await.unwrap_or(false) {
+            return true;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(CHECK_INTERVAL).await;
+    }
+}
+
 async fn has_active_wifi() -> Result<bool> {
     let out = Command::new("nmcli")
         .args(["-t", "-f", "TYPE,STATE", "device"])
@@ -515,14 +574,6 @@ where
         bail!("nmcli failed: {}", String::from_utf8_lossy(&out.stderr));
     }
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
-}
-
-async fn mark_configured(path: &Path) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent).await.ok();
-    }
-    tokio::fs::write(path, b"").await?;
-    Ok(())
 }
 
 /// Drop a marker file the led-driver reads to swap in the setup
