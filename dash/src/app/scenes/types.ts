@@ -199,6 +199,12 @@ export type ShapesScene = {
    * panels, so off by default.
    */
   depth_shade: boolean;
+  /**
+   * Render filled, flat-shaded faces with painter's algorithm
+   * instead of just the wireframe edges. Faces are colored by their
+   * normal angle to the camera.
+   */
+  solid: boolean;
 };
 
 export type ShapesSceneConfig = ShapesScene;
@@ -208,6 +214,7 @@ export const DEFAULT_SHAPES_CONFIG: ShapesSceneConfig = {
   color: { r: 0xff, g: 0x8a, b: 0x2c },
   speed: 1,
   depth_shade: false,
+  solid: false,
 };
 
 /**

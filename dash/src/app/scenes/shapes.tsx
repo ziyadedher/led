@@ -43,7 +43,8 @@ export function parseShapesConfig(raw: unknown): ShapesSceneConfig {
       ? Math.max(0.05, Math.min(16, obj.speed))
       : 1;
   const depth_shade = Boolean(obj.depth_shade);
-  return { kind, color, speed, depth_shade };
+  const solid = Boolean(obj.solid);
+  return { kind, color, speed, depth_shade, solid };
 }
 
 function isShapeKind(v: unknown): v is ShapeKind {
@@ -220,25 +221,46 @@ export function ShapesComposer({
 
         <div className="border-t border-dashed border-(--color-hairline)" />
 
-        {/* Depth shade */}
+        {/* Solid (filled faces) */}
         <label className="flex cursor-pointer items-center justify-between gap-3">
           <span className="flex flex-col gap-0.5">
             <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-              :: depth shade
+              :: solid
             </span>
             <span className="font-mono text-[9px] tracking-wide text-(--color-text-faint)">
-              dim back-of-shape edges
+              fill faces · flat-shaded by angle to camera
             </span>
           </span>
           <input
             type="checkbox"
-            checked={local.depth_shade}
-            onChange={(e) =>
-              persist({ ...local, depth_shade: e.target.checked })
-            }
+            checked={local.solid}
+            onChange={(e) => persist({ ...local, solid: e.target.checked })}
             className="h-3.5 w-3.5 rounded-[1px] border-(--color-border-strong) bg-(--color-bg) text-(--color-accent) focus:ring-0 focus:ring-offset-0"
           />
         </label>
+
+        {/* Depth shade — only meaningful for wireframe; suppress when
+         * solid mode owns the face shading. */}
+        {!local.solid ? (
+          <label className="flex cursor-pointer items-center justify-between gap-3">
+            <span className="flex flex-col gap-0.5">
+              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
+                :: depth shade
+              </span>
+              <span className="font-mono text-[9px] tracking-wide text-(--color-text-faint)">
+                dim back-of-shape edges
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={local.depth_shade}
+              onChange={(e) =>
+                persist({ ...local, depth_shade: e.target.checked })
+              }
+              className="h-3.5 w-3.5 rounded-[1px] border-(--color-border-strong) bg-(--color-bg) text-(--color-accent) focus:ring-0 focus:ring-offset-0"
+            />
+          </label>
+        ) : null}
 
         <div className="border-t border-dashed border-(--color-hairline)" />
 
