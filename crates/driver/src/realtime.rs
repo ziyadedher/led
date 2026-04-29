@@ -67,8 +67,7 @@ async fn connect_and_listen(
     tracing::info!("Connecting to Supabase Realtime...");
     let (mut ws, _resp) = connect_async(ws_url).await.context("realtime connect")?;
 
-    // Topic must be unique per channel and start with `realtime:`.
-    // The actual filter lives in the `config.postgres_changes` array.
+    // Filter lives in the `config.postgres_changes` array below.
     let topic = format!("realtime:driver:{panel_id}");
     let join = json!({
         "topic": topic,

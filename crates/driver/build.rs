@@ -1,13 +1,5 @@
-//! Embed the package version into the driver binary at compile time.
-//! Reported to the dash via `panels.driver_version` so we can flag
-//! Pis that are running an older release than the rest of the fleet.
-//!
-//! `CARGO_PKG_VERSION` (the value in `Cargo.toml`) is the source of
-//! truth — bump it on releases and the dash's classifyVersions can do
-//! a proper semver compare. A `-dirty` suffix is appended when the
-//! working tree had uncommitted changes at build time, so a Pi
-//! running a hand-rolled binary is visually distinct even if its
-//! Cargo.toml version is current.
+//! Embed `CARGO_PKG_VERSION` (with `-dirty` suffix on a dirty tree)
+//! into the binary so the dash can flag stale deployments.
 
 use std::process::Command;
 

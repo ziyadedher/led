@@ -3,12 +3,8 @@
 /**
  * Visual chrome for every per-mode composer: corner-bracketed
  * frame + heading bar with a `:: title` left tag and a tiny
- * uppercase status string on the right. The body slot owns its
- * own padding (the bracket border is the only thing the shell
- * imposes).
- *
- * Replaces hand-rolled <section> + 4 corner spans + <header>
- * blocks that were duplicated across Composer, Clock, Image, Life.
+ * uppercase status string on the right. Body slot owns its own
+ * padding.
  */
 export function ComposerShell({
   title,

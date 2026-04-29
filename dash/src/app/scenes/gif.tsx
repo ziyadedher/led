@@ -15,13 +15,9 @@ import { useDebouncedSetMode } from "@/utils/useDebouncedSetMode";
 
 const PANEL_W = 64;
 const PANEL_H = 64;
-// Hard cap on frames. A 60-frame GIF stored as RGB888 number[] is
-// ~720KB of JSON which Supabase and our jsonb column can still
-// handle, but anything larger than ~120 starts running into update
-// latency. If the source has more, we drop the tail.
+// Cap at 60; Supabase update latency degrades past ~120.
 const MAX_FRAMES = 60;
-// Floor on per-frame delay — gifs sometimes ship 0ms which would
-// pin the decoder/renderer to a single frame.
+// Defensive floor — some gifs ship 0ms delays.
 const MIN_DELAY_MS = 20;
 
 export function parseGifConfig(raw: unknown): GifSceneConfig {

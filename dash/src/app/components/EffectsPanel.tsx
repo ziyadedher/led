@@ -18,9 +18,7 @@ export function EffectsPanel({
 }) {
   const isForced = messageLength >= FORCE_MARQUEE_THRESHOLD;
   const min = isForced ? 1 : 0;
-  // Clamp for display: when forced, treat 0 as 1 — the upstream snap
-  // should already have moved it, but if anything sets 0 directly
-  // (legacy entry, manual setEffects) we still render in-range.
+  // Defensive: never render below `min`.
   const displayValue = isForced ? Math.max(value.marqueeSpeed, min) : value.marqueeSpeed;
   const pct = ((displayValue - min) / (MAX_SPEED - min)) * 100;
 

@@ -74,10 +74,7 @@ export function PaintComposer({
   const [color, setColor] = useState<Rgb>({ r: 255, g: 138, b: 44 });
   const [grid, setGrid] = useState(true);
 
-  // Per-instance recents; previously a module-level array which
-  // bled history across panel switches and mutated outside React's
-  // render cycle (so the swatch row only updated when something
-  // else happened to rerender).
+  // Per-instance recent-color list; cleared on panel switch.
   const [recentColors, setRecentColors] = useState<Rgb[]>([]);
   const rememberColor = useCallback((c: Rgb) => {
     setRecentColors((prev) => {
@@ -235,9 +232,7 @@ export function PaintComposer({
   );
 }
 
-/** Stable fingerprint of an image config. Used by the sync effect to
- * skip our own round-tripped writes — `JSON.stringify` is fine here
- * because the bitmap was already a plain array at persist time. */
+/** Cheap content hash for skipping our own round-tripped writes. */
 function configFingerprint(config: ImageSceneConfig): string {
   return `${config.width}x${config.height}:${config.bitmap.length}:${config.bitmap[0] ?? 0}:${config.bitmap[config.bitmap.length - 1] ?? 0}:${config.bitmap.reduce((a, b) => (a + b) | 0, 0)}`;
 }

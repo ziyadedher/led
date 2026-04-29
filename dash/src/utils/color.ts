@@ -1,7 +1,4 @@
-/**
- * Tiny rgb↔hex helpers shared across mode composers + ColorPicker.
- * Three independent copies were drifting; this is the canonical one.
- */
+/** Tiny rgb↔hex helpers shared across mode composers + ColorPicker. */
 
 export type Rgb = { r: number; g: number; b: number };
 

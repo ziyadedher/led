@@ -1,9 +1,5 @@
 //! Clock mode. Renders the current time, centered on the panel.
-//!
-//! Time is supplied by the caller every frame so the renderer stays
-//! pure (no system-clock access from inside display-core). The Pi
-//! driver passes `chrono::Local::now()`; the WASM simulator passes
-//! `new Date()`.
+//! Caller supplies `now` per frame; renderer is pure.
 
 use embedded_graphics::{
     mono_font::{ascii::FONT_5X8, MonoTextStyleBuilder},
@@ -40,10 +36,8 @@ pub struct ClockSceneConfig {
     pub show_seconds: bool,
     #[serde(default)]
     pub show_meridiem: bool,
-    /// IANA timezone (e.g. "America/Los_Angeles"). Empty/None means
-    /// use the Pi's system local time (which we never explicitly
-    /// configure, so it's UTC unless raspbian's tzdata default
-    /// applies).
+    /// IANA timezone (e.g. "America/Los_Angeles"); `None` falls back
+    /// to the Pi's system local time.
     #[serde(default)]
     pub timezone: Option<String>,
     #[serde(default = "default_clock_color")]

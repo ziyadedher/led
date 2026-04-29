@@ -118,20 +118,12 @@ sudo install -D -m 0644 service/journald-persistent.conf \
     "$root_mnt/etc/systemd/journald.conf.d/persistent.conf"
 sudo install -d -m 2755 "$root_mnt/var/log/journal"
 
-# Pi OS Lite ships persisted rfkill state files marking wlan
-# soft-blocked (whichever build host produced the image left them
-# that way). systemd-rfkill restores that on first boot, which makes
-# NetworkManager refuse to bring wlan0 up and `led-wifi-setup` exit
-# 1 — the Pi never makes it onto the network. Pre-firstrun-removal
-# the raspi-config flow happened to clear it; nothing does now.
+# Clear soft-blocked rfkill state shipped in the Pi OS Lite image
+# (systemd-rfkill would otherwise restore wlan0 as soft-blocked).
 sudo rm -f "$root_mnt"/var/lib/systemd/rfkill/*:wlan
 
-# Pi OS Lite *also* ships /var/lib/NetworkManager/NetworkManager.state
-# with `WirelessEnabled=false`, which NM reads independently of the
-# systemd-rfkill state. Without this, NM marks wlan0 "disabled by
-# state file" on first boot and the rfkill cleanup above is moot.
-# Removing the file lets NM regenerate it with wireless enabled by
-# default.
+# Drop NM state with WirelessEnabled=false (NM reads this independently
+# of rfkill). Regenerated on first boot with wireless enabled.
 sudo rm -f "$root_mnt/var/lib/NetworkManager/NetworkManager.state"
 
 # Render config.toml + bake binaries / units / NM + sysctl drop-ins.

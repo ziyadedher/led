@@ -48,8 +48,6 @@ export function Composer({
       ? "awaiting payload"
       : "ready / press ↵";
 
-  // Character-counter tone shifts as you approach the limit, like a
-  // tape level meter pegging.
   const countTone =
     message.length === 0
       ? "text-(--color-text-faint)"

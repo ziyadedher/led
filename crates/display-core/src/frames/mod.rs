@@ -1,5 +1,4 @@
-//! Per-frame renderers. Each frame type lives in its own module; the
-//! top-level [`crate::Mode`] enum tags which one to dispatch to.
+//! Scene renderers, one module per [`crate::Mode`] variant.
 
 pub mod boot;
 pub mod clock;

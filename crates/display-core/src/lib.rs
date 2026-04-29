@@ -18,12 +18,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod frames;
 
-// Re-export each frame module under its old top-level path so
-// existing callers (driver, wasm-sim) keep compiling without churn.
 pub use frames::{boot, clock, gif, image, life, setup, shapes, test, text};
-
-// Re-export the most-used text types so existing callers can grab
-// them from the crate root without reaching into the module.
 pub use frames::text::{
     MarqueeOptions, RainbowOptions, Rgb, TextEntry, TextEntryColor, TextEntryOptions,
 };

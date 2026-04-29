@@ -1,14 +1,7 @@
-//! Animated GIF mode. The dash decodes the gif into a sequence of
-//! RGB888 frames + per-frame delays at upload time and stores the
-//! whole sequence in `mode_config`; the renderer just steps through
-//! the sequence based on accumulated step time.
-//!
-//! No GIF decoder ships in the driver — that's deliberate. Decoding
-//! happens once on the dash and produces an already-resized,
-//! disposal-resolved frame stream, which keeps the Pi's runtime
-//! cheap and avoids pulling a heavyweight image crate into a
-//! release build that already runs at SCHED_FIFO with a tight
-//! frame budget.
+//! Animated GIF mode. Frames arrive pre-decoded and pre-resized in
+//! `mode_config`; the renderer steps through them by accumulated
+//! `step` time. Decoding lives on the dash to keep the Pi's render
+//! loop allocation-free.
 
 use embedded_graphics::{
     pixelcolor::Rgb888,
@@ -33,10 +26,7 @@ pub struct GifScene {
     pub width: u32,
     pub height: u32,
     pub frames: Vec<GifFrame>,
-    /// Playback rate. 1.0 = native gif speed, 2.0 = twice as fast,
-    /// 0.5 = half. Stored alongside the frames so the dash can change
-    /// playback without re-decoding. Old configs missing this field
-    /// default to 1.0 via [`default_speed`].
+    /// Playback rate. 1.0 = native gif speed.
     #[serde(default = "default_speed")]
     pub speed: f32,
 }

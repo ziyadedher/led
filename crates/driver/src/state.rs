@@ -96,9 +96,7 @@ async fn try_get_panel_id(panel_name: &str, client: &Postgrest) -> anyhow::Resul
                 let text = response.text().await.unwrap_or_default();
                 anyhow::bail!("panel insert returned {status}: {text}");
             }
-            // Discard the insert response body — its shape depends on the
-            // PostgREST `Prefer` header which the postgrest crate manages
-            // opaquely. Re-select by name for an authoritative read instead.
+            // Re-select by name; the insert response shape is `Prefer`-dependent.
             let _ = response.text().await;
             let panels: Vec<Panel> = serde_json::from_str(
                 &client

@@ -81,13 +81,8 @@ pub async fn drive(
     loop {
         let frame_started = Instant::now();
 
-        // Hold the read lock just long enough to build the frame
-        // input. Cloning the whole `State` here was costing a
-        // JsonValue clone of `mode_config` every frame — ~1–2ms on a
-        // Pi Zero W for a fully-loaded gif. With the config cache
-        // doing the heavy lifting, build_mode only touches the
-        // mode_config jsonb on actual cache misses, so holding the
-        // read briefly is now strictly cheaper than cloning out.
+        // Hold the read lock only long enough to build the frame input;
+        // cache covers the heavy parse path.
         let (mode, panel_state) = {
             let snapshot = state.read();
             let panel_state = PanelState {
@@ -160,12 +155,8 @@ struct LifeState {
     recent_populations: [u32; 4],
 }
 
-/// Reseed when the lattice has been ticking for this many generations.
-/// Independent of step interval so faster-stepping panels reseed at
-/// the same wall-clock rate as slow ones — wait, no: this is in
-/// generations not frames, so a slower interval = longer wall-clock
-/// before reseed. Acceptable; the reseed is a "stuck" detector and
-/// the period-2/period-1 checks catch shorter stalls.
+/// Reseed after this many generations; period-1/2 checks below catch
+/// shorter stalls (oscillators, still-lifes).
 const LIFE_RESEED_GENERATIONS: u32 = 1500;
 
 /// Look up an IANA timezone (e.g. "America/Los_Angeles") and return
@@ -245,23 +236,14 @@ impl LifeState {
     }
 }
 
-/// Memoizes the parsed config for the immutable-payload modes
-/// (image / paint / gif / shapes / test). The cache key is
-/// `(mode_string, last_updated)`; `last_updated` flips on every dash
-/// update so it doubles as a content version — but note that this is
-/// an enforced-by-convention invariant, not a typed one. If a future
-/// codepath ever updates `mode_config` without bumping `last_updated`
-/// the cache will return stale bytes silently.
+/// Caches the parsed config for immutable-payload modes (image /
+/// paint / gif / shapes / test) keyed on `(mode, last_updated)`.
+/// Re-parsing 720KB jsonb per frame burns the Pi Zero W's frame
+/// budget; cache hits are a Vec<u8> memcpy.
 ///
-/// On cache hit we clone the parsed struct (Vec<u8> memcpy ≈ 0.1ms
-/// for a 720KB gif) instead of re-parsing the 720KB JSON Value
-/// (~5–15ms on a Pi Zero W), which is what was burning the frame
-/// budget and producing the "panel scans rows but never lights the
-/// whole image" symptom.
-///
-/// Stateful modes (clock / life / text) aren't cached here — they
-/// rebuild per-frame from cheap inputs (current time, life lattice,
-/// entry list).
+/// Cache invariant — `last_updated` must bump on every `mode_config`
+/// write; this is enforced by convention in `dash/utils/actions.ts`,
+/// not by the type system.
 #[derive(Default)]
 struct ConfigCache {
     /// `(mode, last_updated)` of the value held in `parsed`.

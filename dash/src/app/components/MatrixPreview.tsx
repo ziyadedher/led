@@ -13,13 +13,9 @@ import { PanelContext } from "@/app/context";
 import type { Mode, WireColor } from "@/app/scenes/types";
 import { entries as entriesActions } from "@/utils/actions";
 
-// 64×64 to match the rpi-led-panel default; the WASM core runs the same
-// embedded_graphics::FONT_5X8 + marquee/rainbow logic the driver does.
 const ROWS = 64;
 const COLS = 64;
-// Adafruit P3 (#4732) uses small SMD packages on a 3mm pitch — visually
-// the LED is ~60-70% of the cell, the rest dark mask. Picking gap=2,
-// cell-cap=3 gives the right "small bright dot in a black grid" feel.
+// GAP/CELL_CAP tuned for the "small bright dot in a black grid" look.
 const GAP = 2;
 const CELL_CAP = 3;
 
