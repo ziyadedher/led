@@ -32,8 +32,8 @@ fn main() {
     // Re-run when HEAD or any tracked file changes so the dirty flag
     // tracks the actual binary content. (The version comes from
     // Cargo.toml so its mtime suffices for that side.)
-    println!("cargo:rerun-if-changed=../.git/HEAD");
-    println!("cargo:rerun-if-changed=../.git/refs/heads");
+    println!("cargo:rerun-if-changed=../../.git/HEAD");
+    println!("cargo:rerun-if-changed=../../.git/refs/heads");
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=Cargo.toml");
 }
