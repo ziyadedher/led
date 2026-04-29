@@ -33,7 +33,7 @@ export function PaintComposer({
   config: ImageSceneConfig;
 }) {
   const [bitmap, setBitmap] = useState<Uint8ClampedArray>(
-    () => bitmapFrom(config) ?? new Uint8ClampedArray(PANEL_W * PANEL_H * 3),
+    () => bitmapFrom(config) ?? new Uint8ClampedArray(PANEL_W * PANEL_H * 4),
   );
 
   // Snapshot of what we last persisted, so the sync-from-config
@@ -117,17 +117,22 @@ export function PaintComposer({
   const handlePixel = (next: Uint8ClampedArray, x: number, y: number) => {
     if (x < 0 || y < 0 || x >= PANEL_W || y >= PANEL_H) return;
     if (tool === "brush") {
-      writePx(next, x, y, color);
+      writePx(next, x, y, { ...color, a: 255 });
     } else if (tool === "eraser") {
-      writePx(next, x, y, { r: 0, g: 0, b: 0 });
+      writePx(next, x, y, { r: 0, g: 0, b: 0, a: 0 });
     } else if (tool === "fill") {
       const target = readPx(next, x, y);
-      if (sameColor(target, color)) return;
-      floodFill(next, x, y, target, color);
+      const replace = { ...color, a: 255 };
+      if (samePixel(target, replace)) return;
+      floodFill(next, x, y, target, replace);
     } else if (tool === "eyedrop") {
       const picked = readPx(next, x, y);
-      setColor(picked);
-      rememberColor(picked);
+      // Eyedrop on a transparent pixel is a no-op — the color picker
+      // doesn't model alpha, so we'd just be making up a colour.
+      if (picked.a === 0) return;
+      const rgb: Rgb = { r: picked.r, g: picked.g, b: picked.b };
+      setColor(rgb);
+      rememberColor(rgb);
     }
   };
 
@@ -278,14 +283,13 @@ function PaintCanvas({
       // Pixels.
       for (let y = 0; y < PANEL_H; y++) {
         for (let x = 0; x < PANEL_W; x++) {
-          const idx = (y * PANEL_W + x) * 3;
+          const idx = (y * PANEL_W + x) * 4;
+          if (source[idx + 3] === 0) continue;
           const r = source[idx];
           const g = source[idx + 1];
           const b = source[idx + 2];
-          if (r || g || b) {
-            ctx.fillStyle = `rgb(${r},${g},${b})`;
-            ctx.fillRect(x * cell, y * cell, cell + 0.5, cell + 0.5);
-          }
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+          ctx.fillRect(x * cell, y * cell, cell + 0.5, cell + 0.5);
         }
       }
 
@@ -461,47 +465,51 @@ function SmallButton({
 
 /* ─── bitmap helpers ──────────────────────────────────────────────── */
 
+type Pixel = { r: number; g: number; b: number; a: number };
+
 function bitmapFrom(config: ImageSceneConfig): Uint8ClampedArray | null {
+  // Only reuse upload-shaped configs that match the paint canvas
+  // exactly (64×64 RGBA). Smaller uploads can't be reconstructed
+  // into the paint grid; treat as blank.
   if (
     config.width !== PANEL_W ||
     config.height !== PANEL_H ||
-    config.bitmap.length !== PANEL_W * PANEL_H * 3
+    config.bitmap.length !== PANEL_W * PANEL_H * 4
   ) {
-    // If the saved config is from upload-mode (smaller image), we
-    // can't reliably reconstruct a paint bitmap from it. Start blank.
     return null;
   }
   return new Uint8ClampedArray(config.bitmap);
 }
 
-function readPx(buf: Uint8ClampedArray, x: number, y: number): Rgb {
-  const idx = (y * PANEL_W + x) * 3;
-  return { r: buf[idx], g: buf[idx + 1], b: buf[idx + 2] };
+function readPx(buf: Uint8ClampedArray, x: number, y: number): Pixel {
+  const idx = (y * PANEL_W + x) * 4;
+  return { r: buf[idx], g: buf[idx + 1], b: buf[idx + 2], a: buf[idx + 3] };
 }
 
-function writePx(buf: Uint8ClampedArray, x: number, y: number, c: Rgb) {
-  const idx = (y * PANEL_W + x) * 3;
+function writePx(buf: Uint8ClampedArray, x: number, y: number, c: Pixel) {
+  const idx = (y * PANEL_W + x) * 4;
   buf[idx] = c.r;
   buf[idx + 1] = c.g;
   buf[idx + 2] = c.b;
+  buf[idx + 3] = c.a;
 }
 
-function sameColor(a: Rgb, b: Rgb) {
-  return a.r === b.r && a.g === b.g && a.b === b.b;
+function samePixel(a: Pixel, b: Pixel) {
+  return a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
 }
 
 function floodFill(
   buf: Uint8ClampedArray,
   x: number,
   y: number,
-  target: Rgb,
-  replace: Rgb,
+  target: Pixel,
+  replace: Pixel,
 ) {
   const stack: [number, number][] = [[x, y]];
   while (stack.length) {
     const [px, py] = stack.pop()!;
     if (px < 0 || py < 0 || px >= PANEL_W || py >= PANEL_H) continue;
-    if (!sameColor(readPx(buf, px, py), target)) continue;
+    if (!samePixel(readPx(buf, px, py), target)) continue;
     writePx(buf, px, py, replace);
     stack.push([px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]);
   }

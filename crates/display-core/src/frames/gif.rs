@@ -12,9 +12,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct GifFrame {
-    /// RGB888 row-major. Length must be exactly 3 * scene.width * scene.height.
-    /// Pure black (0, 0, 0) renders as transparent — matches the convention
-    /// used by `image` mode and gives a clean way to encode disposal regions.
+    /// RGBA bytes, row-major. Length must be exactly
+    /// `4 * scene.width * scene.height`. Alpha is binary at render
+    /// time — `0` = transparent (e.g. disposal mask), anything else
+    /// = full intensity.
     pub bitmap: Vec<u8>,
     /// Frame display duration in milliseconds. Clamped to a 20ms floor at
     /// render time so a malformed gif with delay=0 still advances.
@@ -82,7 +83,7 @@ where
     }
 
     let frame = &scene.frames[frame_idx];
-    let expected = (scene.width as usize) * (scene.height as usize) * 3;
+    let expected = (scene.width as usize) * (scene.height as usize) * 4;
     if frame.bitmap.len() < expected {
         return Ok(());
     }
@@ -94,16 +95,13 @@ where
     let ih = scene.height as i32;
     let ox = (cw - iw) / 2;
     let oy = (ch - ih) / 2;
-    let stride = (scene.width as usize) * 3;
+    let stride = (scene.width as usize) * 4;
 
     canvas.draw_iter((0..ih).flat_map(|y| {
         let bitmap = &frame.bitmap;
         (0..iw).filter_map(move |x| {
-            let idx = (y as usize) * stride + (x as usize) * 3;
-            let r = bitmap[idx];
-            let g = bitmap[idx + 1];
-            let b = bitmap[idx + 2];
-            if r == 0 && g == 0 && b == 0 {
+            let idx = (y as usize) * stride + (x as usize) * 4;
+            if bitmap[idx + 3] == 0 {
                 return None;
             }
             let cx = ox + x;
@@ -111,7 +109,10 @@ where
             if cx < 0 || cy < 0 || cx >= cw || cy >= ch {
                 return None;
             }
-            Some(Pixel(Point::new(cx, cy), Rgb888::new(r, g, b)))
+            Some(Pixel(
+                Point::new(cx, cy),
+                Rgb888::new(bitmap[idx], bitmap[idx + 1], bitmap[idx + 2]),
+            ))
         })
     }))
 }

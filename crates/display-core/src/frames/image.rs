@@ -1,8 +1,7 @@
 //! Static image mode. The dash uploads/pastes an image, downsamples
-//! it to fit the panel, and stores raw RGB bytes in mode_config.
-//! Renderer just blits the bitmap into the canvas, centered.
-//!
-//! No animation — for moving images, use the `gif` mode.
+//! it to fit the panel, and stores RGBA bytes in mode_config.
+//! Renderer blits the opaque (alpha != 0) pixels into the canvas,
+//! centered. Animated input → gif mode.
 
 use embedded_graphics::{
     pixelcolor::Rgb888,
@@ -11,25 +10,15 @@ use embedded_graphics::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ImageScene {
     pub width: u32,
     pub height: u32,
-    /// RGB bytes, row-major. Length must be exactly 3 * width * height.
-    /// Pure black (0, 0, 0) is rendered as "leave canvas pixel unset"
-    /// — this is what we want for transparent margins around centered
-    /// images and is the convention the gif decoder also uses.
+    /// RGBA bytes, row-major. Length must be exactly `4 * width * height`.
+    /// Alpha is treated as binary on the LED panel: `0` = leave the
+    /// canvas pixel unset, anything else = render at full intensity
+    /// (the matrix has no notion of partial transparency).
     pub bitmap: Vec<u8>,
-}
-
-impl Default for ImageScene {
-    fn default() -> Self {
-        Self {
-            width: 0,
-            height: 0,
-            bitmap: Vec::new(),
-        }
-    }
 }
 
 #[allow(clippy::cast_possible_wrap)]
@@ -41,7 +30,7 @@ where
     if frame.width == 0 || frame.height == 0 {
         return Ok(());
     }
-    let expected = (frame.width as usize) * (frame.height as usize) * 3;
+    let expected = (frame.width as usize) * (frame.height as usize) * 4;
     if frame.bitmap.len() < expected {
         return Ok(());
     }
@@ -53,16 +42,14 @@ where
     let ih = frame.height as i32;
     let ox = (cw - iw) / 2;
     let oy = (ch - ih) / 2;
-    let stride = (frame.width as usize) * 3;
+    let stride = (frame.width as usize) * 4;
 
     canvas.draw_iter((0..ih).flat_map(|y| {
         let bitmap = &frame.bitmap;
         (0..iw).filter_map(move |x| {
-            let idx = (y as usize) * stride + (x as usize) * 3;
-            let r = bitmap[idx];
-            let g = bitmap[idx + 1];
-            let b = bitmap[idx + 2];
-            if r == 0 && g == 0 && b == 0 {
+            let idx = (y as usize) * stride + (x as usize) * 4;
+            let a = bitmap[idx + 3];
+            if a == 0 {
                 return None;
             }
             let cx = ox + x;
@@ -70,7 +57,10 @@ where
             if cx < 0 || cy < 0 || cx >= cw || cy >= ch {
                 return None;
             }
-            Some(Pixel(Point::new(cx, cy), Rgb888::new(r, g, b)))
+            Some(Pixel(
+                Point::new(cx, cy),
+                Rgb888::new(bitmap[idx], bitmap[idx + 1], bitmap[idx + 2]),
+            ))
         })
     }))
 }

@@ -20,11 +20,7 @@ export function parseImageConfig(raw: unknown): ImageSceneConfig {
   const height = typeof obj.height === "number" ? obj.height : 0;
   const bitmap = Array.isArray(obj.bitmap) ? (obj.bitmap as number[]) : [];
   const source = typeof obj.source === "string" ? obj.source : undefined;
-  if (
-    width <= 0 ||
-    height <= 0 ||
-    bitmap.length !== width * height * 3
-  ) {
+  if (bitmap.length === 0 || bitmap.length !== width * height * 4) {
     return DEFAULT_IMAGE_CONFIG;
   }
   return { width, height, bitmap, source };
@@ -32,7 +28,7 @@ export function parseImageConfig(raw: unknown): ImageSceneConfig {
 
 /**
  * Read an image from a URL or File, downsample (fit + center) to
- * panel dims, and return RGB888 row-major bytes.
+ * panel dims, and return RGBA row-major bytes.
  */
 async function loadAndDownsample(
   src: string | File,
@@ -52,19 +48,13 @@ async function loadAndDownsample(
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(img, 0, 0, drawW, drawH);
+    // ImageData is already RGBA. Treat the source's alpha as binary
+    // (panels have no PWM blending against the background): any
+    // non-zero alpha → fully opaque on the panel.
     const data = ctx.getImageData(0, 0, drawW, drawH).data;
-    const bitmap: number[] = new Array(drawW * drawH * 3);
-    for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      // The driver treats pure (0,0,0) as transparent (so margins
-      // around centered images stay off). A genuinely-black input
-      // pixel would punch a hole in the rendered photo, so nudge it
-      // to (0,0,1) — visually indistinguishable, but counts as opaque.
-      bitmap[j] = r;
-      bitmap[j + 1] = g;
-      bitmap[j + 2] = !r && !g && !b ? 1 : b;
+    const bitmap: number[] = new Array(drawW * drawH * 4);
+    for (let i = 0; i < data.length; i++) {
+      bitmap[i] = data[i];
     }
     return {
       width: drawW,

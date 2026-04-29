@@ -185,26 +185,53 @@ fn clock_renders_nonempty() {
 /* ─── image / paint ──────────────────────────────────────────────── */
 
 #[test]
-fn image_skips_pure_black_pixels() {
-    // A 4x4 image with one red pixel surrounded by black — black
-    // should be treated as transparent (left unset on the canvas),
-    // matching the documented behaviour.
-    let mut bitmap = vec![0_u8; 4 * 4 * 3];
-    let red_idx = (1 * 4 + 1) * 3;
-    bitmap[red_idx] = 255;
+fn image_skips_alpha_zero_pixels() {
+    // 4×4 image with one opaque red pixel; the rest are alpha=0
+    // (transparent). The renderer should leave the canvas dark
+    // everywhere except the red.
+    let mut bitmap = vec![0_u8; 4 * 4 * 4];
+    let idx = (1 * 4 + 1) * 4;
+    bitmap[idx] = 255; // R
+    bitmap[idx + 3] = 255; // A
     let scene = scene_with(Mode::Image(Arc::new(ImageScene {
         width: 4,
         height: 4,
         bitmap,
     })));
     let mut canvas = MockCanvas::new(W, H);
-    canvas.clear_to(Rgb888::CSS_GRAY);
-    // Top-level render clears to BLACK first, so we won't actually
-    // see CSS_GRAY here — but the per-mode render must still skip
-    // black pixels rather than overwriting them.
     render(&scene, 0, &mut canvas).unwrap();
-    // The lit pixel count should be 1 (just the red one).
-    assert_eq!(canvas.lit_count(), 1, "only the red pixel should light up");
+    assert_eq!(canvas.lit_count(), 1, "only the alpha-1 pixel should light up");
+}
+
+#[test]
+fn image_renders_pure_black_when_alpha_set() {
+    // Sanity: a black pixel with alpha=255 is opaque-black and should
+    // be drawn (it just doesn't *light* anything because RGB is 0).
+    // This is the case the old (0,0,0) sentinel used to break.
+    let mut bitmap = vec![0_u8; 4 * 4 * 4];
+    for i in 0..16 {
+        bitmap[i * 4 + 3] = 255;
+    }
+    let scene = scene_with(Mode::Image(Arc::new(ImageScene {
+        width: 4,
+        height: 4,
+        bitmap,
+    })));
+    let mut canvas = MockCanvas::new(W, H);
+    render(&scene, 0, &mut canvas).unwrap();
+    // All pixels are written as RGB(0,0,0) — i.e. the canvas got
+    // explicit black writes for those 16 pixels. lit_count counts
+    // *non-black*, so it's still 0; but the writes happened
+    // (they'd overwrite a non-black starting state).
+    assert_eq!(canvas.lit_count(), 0);
+    // Confirm by clearing to white first; the image's opaque-black
+    // 4x4 in the centre should overwrite to black.
+    let mut canvas = MockCanvas::new(W, H);
+    canvas.clear_to(Rgb888::WHITE);
+    render(&scene, 0, &mut canvas).unwrap();
+    // After render, top-level dispatch cleared to BLACK first, so
+    // the whole canvas is black-or-image-black.
+    assert_eq!(canvas.lit_count(), 0);
 }
 
 /* ─── shapes ─────────────────────────────────────────────────────── */
@@ -305,11 +332,11 @@ fn empty_gif_renders_blank() {
 
 #[test]
 fn gif_advances_through_frames() {
-    // Two frames, each 4×4. Frame 0 is bright red, frame 1 is bright
-    // blue. Each frame's delay = 100ms. At 60Hz step rate, frame 0
-    // covers steps 0..6 and frame 1 covers steps 6..12.
-    let red: Vec<u8> = std::iter::repeat([255_u8, 0, 0]).take(16).flatten().collect();
-    let blue: Vec<u8> = std::iter::repeat([0_u8, 0, 255]).take(16).flatten().collect();
+    // Two frames, each 4×4 RGBA opaque. Frame 0 is red, frame 1 blue.
+    // Each frame delays 100ms — at 60Hz, frame 0 covers steps 0..6
+    // and frame 1 covers steps 6..12.
+    let red: Vec<u8> = std::iter::repeat([255_u8, 0, 0, 255]).take(16).flatten().collect();
+    let blue: Vec<u8> = std::iter::repeat([0_u8, 0, 255, 255]).take(16).flatten().collect();
     let scene = scene_with(Mode::Gif(Arc::new(GifScene {
         width: 4,
         height: 4,

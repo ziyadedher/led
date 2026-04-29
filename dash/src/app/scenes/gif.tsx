@@ -26,7 +26,7 @@ export function parseGifConfig(raw: unknown): GifSceneConfig {
   const width = typeof obj.width === "number" ? obj.width : 0;
   const height = typeof obj.height === "number" ? obj.height : 0;
   const framesRaw = Array.isArray(obj.frames) ? obj.frames : [];
-  const expectedLen = width * height * 3;
+  const expectedLen = width * height * 4;
   const frames: GifFrame[] = [];
   for (const f of framesRaw) {
     if (!f || typeof f !== "object") continue;
@@ -134,22 +134,17 @@ async function decodeGif(file: File): Promise<GifSceneConfig> {
     pctx.putImageData(patch, 0, 0);
     wctx.drawImage(patchCanvas, frame.dims.left, frame.dims.top);
 
-    // Downsample to panel size.
+    // Downsample to panel size. ImageData is RGBA already; the
+    // working canvas's transparent areas (gif disposal-to-background
+    // regions) come through as alpha=0, which the renderer treats
+    // as transparent on the LED matrix.
     octx.clearRect(0, 0, drawW, drawH);
     octx.drawImage(work, 0, 0, drawW, drawH);
     const data = octx.getImageData(0, 0, drawW, drawH).data;
 
-    const bitmap = new Array<number>(drawW * drawH * 3);
-    for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      // (0,0,0) is the renderer's transparency sentinel — nudge any
-      // genuinely-black source pixels to (0,0,1) so they stay opaque
-      // (the disposal mask is what handles real transparency).
-      bitmap[j] = r;
-      bitmap[j + 1] = g;
-      bitmap[j + 2] = !r && !g && !b ? 1 : b;
+    const bitmap = new Array<number>(drawW * drawH * 4);
+    for (let i = 0; i < data.length; i++) {
+      bitmap[i] = data[i];
     }
     // Per-frame delay: gifuct returns delay in 1/100s units.
     const delay_ms = Math.max(MIN_DELAY_MS, (frame.delay ?? 10) * 10);
