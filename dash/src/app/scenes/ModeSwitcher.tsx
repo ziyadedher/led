@@ -4,6 +4,7 @@ import {
   Bars3BottomLeftIcon,
   BeakerIcon,
   ClockIcon,
+  CubeTransparentIcon,
   FilmIcon,
   PaintBrushIcon,
   PhotoIcon,
@@ -126,6 +127,7 @@ const MODE_ICONS: Record<
   image: PhotoIcon,
   gif: FilmIcon,
   paint: PaintBrushIcon,
+  shapes: CubeTransparentIcon,
   life: SparklesIcon,
   test: BeakerIcon,
 };

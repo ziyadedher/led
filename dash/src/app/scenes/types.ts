@@ -17,6 +17,7 @@ export type Mode =
   | { Life: LifeScene }
   | { Image: ImageScene }
   | { Gif: GifScene }
+  | { Shapes: ShapesScene }
   | { Test: TestScene }
   // Driver-only frames the dash never constructs but the type
   // includes for completeness with display_core::Mode. The simulator
@@ -172,6 +173,44 @@ export const DEFAULT_GIF_CONFIG: GifSceneConfig = {
 };
 
 /**
+ * Rotating 3-D wireframe. Picks a shape from a small catalogue
+ * (cube / tetrahedron / octahedron / icosahedron / torus / hypercube)
+ * and animates it on a per-frame yaw + pitch. Mirrors
+ * `display_core::shapes::ShapesScene`.
+ */
+export type ShapeKind =
+  | "Cube"
+  | "Tetrahedron"
+  | "Octahedron"
+  | "Icosahedron"
+  | "Torus"
+  | "Hypercube";
+
+export type ShapesScene = {
+  kind: ShapeKind;
+  color: { r: number; g: number; b: number };
+  /**
+   * Rotation rate. 1.0 ≈ 6 RPM around each axis. Driver clamps to
+   * [0.05, 16] at render time.
+   */
+  speed: number;
+  /**
+   * Fade lines further from the camera. Reads as flicker on small
+   * panels, so off by default.
+   */
+  depth_shade: boolean;
+};
+
+export type ShapesSceneConfig = ShapesScene;
+
+export const DEFAULT_SHAPES_CONFIG: ShapesSceneConfig = {
+  kind: "Cube",
+  color: { r: 0xff, g: 0x8a, b: 0x2c },
+  speed: 1,
+  depth_shade: false,
+};
+
+/**
  * Test/diagnostic patterns. Render-only — no animation, no per-frame
  * state. Mirrors `display_core::test::TestPattern` + `TestScene`.
  */
@@ -199,6 +238,7 @@ export const MODES: ModeMeta[] = [
   { id: "image", label: "image", blurb: "static 64×64 bitmap" },
   { id: "gif", label: "gif", blurb: "animated frame loop" },
   { id: "paint", label: "paint", blurb: "pixel-grid editor" },
+  { id: "shapes", label: "shapes", blurb: "rotating 3d wireframes" },
   { id: "life", label: "life", blurb: "ambient cellular automaton" },
   { id: "test", label: "test", blurb: "diagnostic patterns" },
 ];

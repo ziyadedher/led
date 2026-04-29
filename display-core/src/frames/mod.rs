@@ -7,5 +7,6 @@ pub mod gif;
 pub mod image;
 pub mod life;
 pub mod setup;
+pub mod shapes;
 pub mod test;
 pub mod text;

@@ -131,6 +131,7 @@ export type PanelMode =
   | "image"
   | "paint"
   | "gif"
+  | "shapes"
   | "test";
 
 export const panels = {

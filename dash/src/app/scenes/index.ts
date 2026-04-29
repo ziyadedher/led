@@ -20,6 +20,7 @@ import { GifComposer, parseGifConfig } from "./gif";
 import { ImageComposer, parseImageConfig } from "./image";
 import { LifeComposer, parseLifeConfig } from "./life";
 import { PaintComposer, parsePaintConfig } from "./paint";
+import { parseShapesConfig, ShapesComposer } from "./shapes";
 import { parseTestConfig, TestComposer } from "./test";
 import type {
   ClockSceneConfig,
@@ -28,6 +29,7 @@ import type {
   LifeSceneConfig,
   LifeScene,
   Mode,
+  ShapesSceneConfig,
   TestSceneConfig,
   TextEntry,
 } from "./types";
@@ -165,6 +167,12 @@ export const SCENES: Record<PanelMode, SceneRegistration> = {
       },
     }),
     GifComposer,
+  ),
+
+  shapes: scene<ShapesSceneConfig>(
+    parseShapesConfig,
+    (config) => ({ Shapes: config }),
+    ShapesComposer,
   ),
 
   test: scene<TestSceneConfig>(

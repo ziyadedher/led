@@ -10,6 +10,7 @@ use display_core::{
     image::ImageScene,
     life::{Lattice, LifeSceneConfig},
     setup::SetupScene,
+    shapes::ShapesScene,
     test::TestScene,
     text::TextScene,
     Scene, Mode, PanelState,
@@ -76,14 +77,23 @@ pub async fn drive(
     loop {
         let frame_started = Instant::now();
 
-        let snapshot = state.read().clone();
-        let frame = Scene {
-            mode: build_mode(&snapshot, &mut life_state, &mut config_cache),
-            panel: PanelState {
+        // Hold the read lock just long enough to build the frame
+        // input. Cloning the whole `State` here was costing a
+        // JsonValue clone of `mode_config` every frame — ~1–2ms on a
+        // Pi Zero W for a fully-loaded gif. With the config cache
+        // doing the heavy lifting, build_mode only touches the
+        // mode_config jsonb on actual cache misses, so holding the
+        // read briefly is now strictly cheaper than cloning out.
+        let (mode, panel_state) = {
+            let snapshot = state.read();
+            let panel_state = PanelState {
                 is_paused: snapshot.panel.is_paused,
                 flash: snapshot.panel.flash.clone(),
-            },
+            };
+            let mode = build_mode(&snapshot, &mut life_state, &mut config_cache);
+            (mode, panel_state)
         };
+        let frame = Scene { mode, panel: panel_state };
 
         // PixelBuffer's DrawTarget impl is Infallible — `render`
         // can't fail here, so unwrap is fine.
@@ -248,6 +258,7 @@ struct ConfigCache {
 enum CachedConfig {
     Image(ImageScene),
     Gif(GifScene),
+    Shapes(ShapesScene),
     Test(TestScene),
 }
 
@@ -268,6 +279,9 @@ impl ConfigCache {
                     serde_json::from_value(mode_config.clone()).unwrap_or_default(),
                 ),
                 "image" | "paint" => CachedConfig::Image(
+                    serde_json::from_value(mode_config.clone()).unwrap_or_default(),
+                ),
+                "shapes" => CachedConfig::Shapes(
                     serde_json::from_value(mode_config.clone()).unwrap_or_default(),
                 ),
                 "test" => CachedConfig::Test(
@@ -347,6 +361,17 @@ fn build_mode(
                 &snapshot.panel.mode_config,
             ) {
                 CachedConfig::Gif(frame) => Mode::Gif(frame.clone()),
+                _ => unreachable!("cache returns the variant we asked for"),
+            }
+        }
+        "shapes" => {
+            *life_state = None;
+            match config_cache.fetch(
+                "shapes",
+                snapshot.panel.last_updated.as_str(),
+                &snapshot.panel.mode_config,
+            ) {
+                CachedConfig::Shapes(frame) => Mode::Shapes(frame.clone()),
                 _ => unreachable!("cache returns the variant we asked for"),
             }
         }

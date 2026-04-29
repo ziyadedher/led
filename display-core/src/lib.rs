@@ -20,7 +20,7 @@ pub mod frames;
 
 // Re-export each frame module under its old top-level path so
 // existing callers (driver, wasm-sim) keep compiling without churn.
-pub use frames::{boot, clock, gif, image, life, setup, test, text};
+pub use frames::{boot, clock, gif, image, life, setup, shapes, test, text};
 
 // Re-export the most-used text types so existing callers can grab
 // them from the crate root without reaching into the module.
@@ -54,6 +54,7 @@ pub enum Mode {
     Life(life::LifeScene),
     Image(image::ImageScene),
     Gif(gif::GifScene),
+    Shapes(shapes::ShapesScene),
     Test(test::TestScene),
     Boot(boot::BootScene),
     Setup(setup::SetupScene),
@@ -89,6 +90,7 @@ where
         Mode::Life(l) => life::render(l, canvas)?,
         Mode::Image(i) => image::render(i, canvas)?,
         Mode::Gif(g) => gif::render(g, step, canvas)?,
+        Mode::Shapes(s) => shapes::render(s, step, canvas)?,
         Mode::Test(t) => test::render(t, canvas)?,
         Mode::Boot(b) => boot::render(b, step, canvas)?,
         Mode::Setup(s) => setup::render(s, step, canvas)?,
