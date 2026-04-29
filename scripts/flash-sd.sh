@@ -15,6 +15,9 @@
 #   WIFI_COUNTRY        — cfg80211 regdomain (default US)
 #   OTEL_ENDPOINT       — OTel collector
 #   OTEL_AUTHORIZATION  — OTel auth header (from secrets/fleet.sops.json)
+#   COLOR_ORDER         — LED channel order on this Pi's panel hardware:
+#                         RGB (default) / RBG / GRB / GBR / BRG / BGR.
+#                         Use BGR if the panel renders red as blue.
 set -euo pipefail
 
 PANEL_ID="${1:?need panel id}"

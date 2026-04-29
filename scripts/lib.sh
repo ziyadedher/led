@@ -44,9 +44,10 @@ load_tofu_outputs() {
 #   $1 — panel id (PANEL_ID for the driver)
 #   $2 — log dir (e.g. /var/log/led/ for Pi, dev/log/ for dev recipe)
 #   $3 — output path
-# Reads SUPABASE_URL, SUPABASE_ANON_KEY, OTEL_ENDPOINT, OTEL_AUTHORIZATION
-# from the env. Empty OTel envs render to empty strings (driver treats
-# empty endpoint as "OTel disabled").
+# Reads SUPABASE_URL, SUPABASE_ANON_KEY, OTEL_ENDPOINT, OTEL_AUTHORIZATION,
+# COLOR_ORDER from the env. Empty OTel envs render to empty strings
+# (driver treats empty endpoint as "OTel disabled"); COLOR_ORDER
+# defaults to RGB.
 render_config_toml() {
     local panel_id="$1"
     local log_dir="$2"
@@ -58,6 +59,7 @@ render_config_toml() {
         -e "s|@@SUPABASE_ANON_KEY@@|${SUPABASE_ANON_KEY}|g" \
         -e "s|@@OTEL_ENDPOINT@@|${OTEL_ENDPOINT:-}|g" \
         -e "s|@@OTEL_AUTHORIZATION@@|${OTEL_AUTHORIZATION:-}|g" \
+        -e "s|@@COLOR_ORDER@@|${COLOR_ORDER:-RGB}|g" \
         "$REPO_ROOT/service/config.toml.tmpl" > "$out"
 }
 

@@ -41,6 +41,17 @@ pub struct Config {
     /// Required by the HyperDX OTel collector at otel.ziyadedher.com.
     #[serde(default)]
     pub otel_authorization: Option<String>,
+
+    /// LED channel order on the panel hardware. Passed through to
+    /// `rpi-led-panel` as the `LedSequence`. Different SMD packages /
+    /// bonnet revisions wire R/G/B in different orders; this is the
+    /// per-Pi knob that fixes "everything renders with red and blue
+    /// swapped".
+    ///
+    /// Accepted: `RGB` (default) | `RBG` | `GRB` | `GBR` | `BRG` | `BGR`.
+    /// Case-insensitive. Unset = `RGB`.
+    #[serde(default)]
+    pub color_order: Option<String>,
 }
 
 /// Load configuration from a TOML file.

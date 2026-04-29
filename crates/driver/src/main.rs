@@ -80,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     tracing::info!("Setting up configuration...");
-    let sink = build_sink(args.terminal)?;
+    let sink = build_sink(args.terminal, config.color_order.as_deref())?;
 
     tracing::info!("Initializing state...");
     let state = Arc::new(RwLock::new(State::default()));
@@ -108,14 +108,33 @@ async fn main() -> anyhow::Result<()> {
 }
 
 #[cfg(feature = "rpi")]
-fn build_sink(terminal: bool) -> anyhow::Result<Box<dyn MatrixSink>> {
+fn build_sink(
+    terminal: bool,
+    color_order: Option<&str>,
+) -> anyhow::Result<Box<dyn MatrixSink>> {
     if terminal {
         return Ok(Box::new(TerminalMatrixSink::new(64, 64, 30.0)));
     }
     use led_driver::sink::RpiMatrixSink;
     use rpi_led_panel::{LedSequence, RGBMatrixConfig};
+    let led_sequence = match color_order
+        .map(|s| s.trim().to_ascii_uppercase())
+        .as_deref()
+    {
+        None | Some("") | Some("RGB") => LedSequence::Rgb,
+        Some("RBG") => LedSequence::Rbg,
+        Some("GRB") => LedSequence::Grb,
+        Some("GBR") => LedSequence::Gbr,
+        Some("BRG") => LedSequence::Brg,
+        Some("BGR") => LedSequence::Bgr,
+        Some(other) => {
+            anyhow::bail!(
+                "config color_order = {other:?}; expected one of RGB / RBG / GRB / GBR / BRG / BGR"
+            );
+        }
+    };
     let matrix_config = RGBMatrixConfig {
-        led_sequence: LedSequence::Rgb,
+        led_sequence,
         ..Default::default()
     };
     Ok(Box::new(RpiMatrixSink::new(matrix_config)?))
@@ -123,7 +142,10 @@ fn build_sink(terminal: bool) -> anyhow::Result<Box<dyn MatrixSink>> {
 
 #[cfg(not(feature = "rpi"))]
 #[allow(clippy::unnecessary_wraps)] // mirror the `rpi` branch's signature
-fn build_sink(_terminal: bool) -> anyhow::Result<Box<dyn MatrixSink>> {
+fn build_sink(
+    _terminal: bool,
+    _color_order: Option<&str>,
+) -> anyhow::Result<Box<dyn MatrixSink>> {
     // Built without the `rpi` feature — terminal sink is the only
     // option. `--terminal` is implied; the flag is accepted but a
     // no-op so call sites stay uniform.
