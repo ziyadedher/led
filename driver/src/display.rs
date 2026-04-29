@@ -72,12 +72,13 @@ pub async fn drive(
 
     let mut step: usize = 0;
     let mut life_state: Option<LifeState> = None;
+    let mut config_cache = ConfigCache::default();
     loop {
         let frame_started = Instant::now();
 
         let snapshot = state.read().clone();
         let frame = Scene {
-            mode: build_mode(&snapshot, &mut life_state),
+            mode: build_mode(&snapshot, &mut life_state, &mut config_cache),
             panel: PanelState {
                 is_paused: snapshot.panel.is_paused,
                 flash: snapshot.panel.flash.clone(),
@@ -225,6 +226,64 @@ impl LifeState {
     }
 }
 
+/// Memoizes the parsed config for the immutable-payload modes
+/// (image / paint / gif / test). The cache key is
+/// `(mode_string, last_updated)`; `last_updated` flips on every dash
+/// update so it doubles as a content version. On cache hit we clone
+/// the parsed struct (Vec<u8> memcpy ≈ 0.1ms for a 720KB gif) instead
+/// of re-parsing the 720KB JSON Value (~5–15ms on a Pi Zero W),
+/// which is what was burning the frame budget and producing the
+/// "panel scans rows but never lights the whole image" symptom.
+///
+/// Stateful modes (clock / life / text) aren't cached here — they
+/// rebuild per-frame from cheap inputs (current time, life lattice,
+/// entry list).
+#[derive(Default)]
+struct ConfigCache {
+    /// `(mode, last_updated)` of the value held in `parsed`.
+    key: Option<(String, String)>,
+    parsed: Option<CachedConfig>,
+}
+
+enum CachedConfig {
+    Image(ImageScene),
+    Gif(GifScene),
+    Test(TestScene),
+}
+
+impl ConfigCache {
+    /// Return the cached parsed config if `(mode, last_updated)`
+    /// matches the snapshot; otherwise reparse from `mode_config` and
+    /// stash the result.
+    fn fetch<'a>(
+        &'a mut self,
+        mode: &str,
+        last_updated: &str,
+        mode_config: &JsonValue,
+    ) -> &'a CachedConfig {
+        let want = (mode.to_owned(), last_updated.to_owned());
+        if self.key.as_ref() != Some(&want) || self.parsed.is_none() {
+            let parsed = match mode {
+                "gif" => CachedConfig::Gif(
+                    serde_json::from_value(mode_config.clone()).unwrap_or_default(),
+                ),
+                "image" | "paint" => CachedConfig::Image(
+                    serde_json::from_value(mode_config.clone()).unwrap_or_default(),
+                ),
+                "test" => CachedConfig::Test(
+                    serde_json::from_value(mode_config.clone()).unwrap_or_default(),
+                ),
+                _ => unreachable!("ConfigCache::fetch only handles cached modes"),
+            };
+            self.key = Some(want);
+            self.parsed = Some(parsed);
+        }
+        self.parsed
+            .as_ref()
+            .expect("just populated by the branch above")
+    }
+}
+
 /// Pick the per-mode render input based on the panel's `mode`. Two
 /// pre-conditions short-circuit the configured mode:
 ///   1. wifi-setup is running its onboarding AP — show the setup
@@ -233,7 +292,11 @@ impl LifeState {
 ///      frame as a "we're alive, just waking up" indicator.
 /// Falls back to text mode on unknown modes so a misconfigured
 /// panel doesn't black out.
-fn build_mode(snapshot: &State, life_state: &mut Option<LifeState>) -> Mode {
+fn build_mode(
+    snapshot: &State,
+    life_state: &mut Option<LifeState>,
+    config_cache: &mut ConfigCache,
+) -> Mode {
     if let Some(setup_frame) = read_setup_marker() {
         *life_state = None;
         return Mode::Setup(setup_frame);
@@ -245,6 +308,9 @@ fn build_mode(snapshot: &State, life_state: &mut Option<LifeState>) -> Mode {
     match snapshot.panel.mode.as_str() {
         "clock" => {
             *life_state = None;
+            // Tiny payload — cheaper to parse than to manage in the
+            // cache, and `now` shifts every frame anyway so we'd
+            // rebuild Mode::Clock either way.
             let config: ClockSceneConfig =
                 serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
             let now = sample_time(config.timezone.as_deref());
@@ -263,25 +329,37 @@ fn build_mode(snapshot: &State, life_state: &mut Option<LifeState>) -> Mode {
             Mode::Life(config.into_frame(&s.lattice))
         }
         "image" | "paint" => {
-            // Paint mode is the dash's pixel-grid editor; it produces
-            // an image-shaped mode_config and the driver renders it
-            // through the same Image path.
             *life_state = None;
-            let frame: ImageScene =
-                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
-            Mode::Image(frame)
+            match config_cache.fetch(
+                snapshot.panel.mode.as_str(),
+                snapshot.panel.last_updated.as_str(),
+                &snapshot.panel.mode_config,
+            ) {
+                CachedConfig::Image(frame) => Mode::Image(frame.clone()),
+                _ => unreachable!("cache returns the variant we asked for"),
+            }
         }
         "gif" => {
             *life_state = None;
-            let frame: GifScene =
-                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
-            Mode::Gif(frame)
+            match config_cache.fetch(
+                "gif",
+                snapshot.panel.last_updated.as_str(),
+                &snapshot.panel.mode_config,
+            ) {
+                CachedConfig::Gif(frame) => Mode::Gif(frame.clone()),
+                _ => unreachable!("cache returns the variant we asked for"),
+            }
         }
         "test" => {
             *life_state = None;
-            let frame: TestScene =
-                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
-            Mode::Test(frame)
+            match config_cache.fetch(
+                "test",
+                snapshot.panel.last_updated.as_str(),
+                &snapshot.panel.mode_config,
+            ) {
+                CachedConfig::Test(frame) => Mode::Test(frame.clone()),
+                _ => unreachable!("cache returns the variant we asked for"),
+            }
         }
         _ => {
             *life_state = None;
