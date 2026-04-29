@@ -81,6 +81,49 @@ const summarisePanel = (
   driver_version: p.driver_version,
 });
 
+/**
+ * mode_config for image/gif/paint contains a bitmap (~16 KB for a
+ * 64×64 RGBA image; multi-MB for gifs). Returning that verbatim from
+ * get_panel pollutes the agent's context for no benefit — the agent
+ * can render the panel via the dash. Strip the bitmap and report
+ * dimensions only.
+ */
+const redactBitmaps = (
+  mode: string,
+  modeConfig: Database["public"]["Tables"]["panels"]["Row"]["mode_config"],
+) => {
+  if (!modeConfig || typeof modeConfig !== "object") return modeConfig;
+  if (mode === "image" || mode === "paint") {
+    const cfg = modeConfig as { width?: number; height?: number; bitmap?: number[]; source?: string };
+    return {
+      width: cfg.width,
+      height: cfg.height,
+      pixel_count: Array.isArray(cfg.bitmap) ? cfg.bitmap.length / 4 : 0,
+      source: cfg.source,
+      _redacted: "bitmap stripped — fetch via the dashboard if you need pixel data",
+    };
+  }
+  if (mode === "gif") {
+    const cfg = modeConfig as {
+      width?: number;
+      height?: number;
+      frames?: { delay_ms: number }[];
+      speed?: number;
+      source?: string;
+    };
+    return {
+      width: cfg.width,
+      height: cfg.height,
+      frame_count: cfg.frames?.length ?? 0,
+      total_duration_ms: (cfg.frames ?? []).reduce((a, f) => a + (f.delay_ms ?? 0), 0),
+      speed: cfg.speed,
+      source: cfg.source,
+      _redacted: "frame bitmaps stripped — fetch via the dashboard if you need pixel data",
+    };
+  }
+  return modeConfig;
+};
+
 /* ─── shared zod fragments ────────────────────────────────────────── */
 
 const Rgb = z.object({
@@ -94,7 +137,12 @@ const TextColor = z.union([
   z.object({
     Rainbow: z.object({
       is_per_letter: z.boolean(),
-      speed: z.number().min(0.05).max(16),
+      speed: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .describe("Hue cycle rate. Integer 1-50 (driver wants u32)."),
     }),
   }),
 ]);
@@ -198,7 +246,7 @@ const handler = createMcpHandler(
         if (error) throw error;
         return ok({
           ...summarisePanel(panel),
-          mode_config: panel.mode_config,
+          mode_config: redactBitmaps(panel.mode, panel.mode_config),
           entries: entries ?? [],
         });
       },
@@ -297,8 +345,8 @@ const handler = createMcpHandler(
           },
           paint: {
             description:
-              "Pixel-grid editor (stored as image). Switch from the dashboard.",
-            switchable_via_mcp: false,
+              "Pixel-grid bitmap (same shape as image). Switch via the paint_pixels tool — pass a sparse list of (x, y, r, g, b) coordinates and a 64×64 canvas is rendered.",
+            switchable_via_mcp: "via paint_pixels",
           },
         };
         return ok({
@@ -322,17 +370,18 @@ const handler = createMcpHandler(
           "Append a text message to a panel's queue. The panel must already be in 'text' mode — if it isn't, this errors and you should call set_mode with mode='text' first. New messages appear at the top of the queue. Color can be solid RGB or a Rainbow effect.",
         inputSchema: {
           name: z.string().min(1).describe("Panel name."),
-          text: z.string().min(1).max(280).describe("Message body."),
+          text: z.string().min(1).max(64).describe("Message body. Hard cap matches the dash composer."),
           color: TextColor.optional().describe(
             "Optional. Defaults to LED-orange RGB(255,138,44). Use { Rgb: { r, g, b } } or { Rainbow: { is_per_letter, speed } }.",
           ),
           marquee_speed: z
             .number()
+            .int()
             .min(0)
-            .max(16)
+            .max(50)
             .optional()
             .describe(
-              "Scroll speed multiplier. 0 = static (no scroll), 1 = default, higher = faster. Defaults to 1.",
+              "Scroll speed in pixels per render step. Integer 0-50 (driver wants u32). 0 = static — the driver auto-forces marquee for messages ≥ 12 chars regardless. Default 0; the dash typically uses ~6 for forced scrolls.",
             ),
         },
         annotations: {
@@ -355,7 +404,7 @@ const handler = createMcpHandler(
           text,
           options: {
             color: color ?? { Rgb: { r: 255, g: 138, b: 44 } },
-            marquee: { speed: marquee_speed ?? 1 },
+            marquee: { speed: marquee_speed ?? 0 },
           },
         };
 
@@ -431,6 +480,104 @@ const handler = createMcpHandler(
           .eq("id", panel.id)
           .throwOnError();
         return ok({ name, mode, mode_config: modeConfig });
+      },
+    );
+
+    server.registerTool(
+      "paint_pixels",
+      {
+        title: "Paint pixel art",
+        description:
+          "Render pixel art on a panel. Switches the panel to 'paint' mode (which the driver renders identically to image mode but signals 'an agent did this' in the dash) and writes a 64×64 bitmap with the given pixels lit; unspecified pixels stay transparent/black. Coordinates: x ∈ [0, 63] left-to-right, y ∈ [0, 63] top-to-bottom — (0,0) is top-left. By default starts from a blank canvas; pass clear=false to paint on top of the panel's existing 64×64 image.",
+        inputSchema: {
+          name: z.string().min(1).describe("Panel name."),
+          pixels: z
+            .array(
+              z.object({
+                x: z.number().int().min(0).max(63),
+                y: z.number().int().min(0).max(63),
+                r: z.number().int().min(0).max(255),
+                g: z.number().int().min(0).max(255),
+                b: z.number().int().min(0).max(255),
+              }),
+            )
+            .max(64 * 64)
+            .describe(
+              "Pixels to light. Coordinates 0-indexed; (0,0) is top-left. Up to 4096 entries (full panel). Order doesn't matter; later entries overwrite earlier ones at the same coordinate.",
+            ),
+          clear: z
+            .boolean()
+            .optional()
+            .describe(
+              "Start from a blank canvas (default true). Set false to keep the panel's existing 64×64 image as the base — only valid when the panel is already in 'paint' or 'image' mode with a 64×64 bitmap.",
+            ),
+        },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      async ({ name, pixels, clear }) => {
+        const panel = await panelByName(name);
+        if (!panel) return err(`No panel named '${name}'. Try list_panels.`);
+
+        const W = 64;
+        const H = 64;
+        const startBlank = clear ?? true;
+        const bitmap = new Uint8ClampedArray(W * H * 4);
+
+        if (!startBlank) {
+          const cfg = panel.mode_config as {
+            width?: number;
+            height?: number;
+            bitmap?: number[];
+          } | null;
+          const sameSize = cfg?.width === W && cfg?.height === H;
+          const validBitmap =
+            Array.isArray(cfg?.bitmap) && cfg!.bitmap.length === W * H * 4;
+          const bitmapMode = panel.mode === "paint" || panel.mode === "image";
+          if (!bitmapMode || !sameSize || !validBitmap) {
+            return err(
+              `clear=false needs the panel already in 'paint' or 'image' mode with a 64×64 bitmap. '${name}' is in '${panel.mode}' mode${cfg ? ` (${cfg.width}×${cfg.height})` : ""}. Pass clear=true to start from a blank canvas.`,
+            );
+          }
+          bitmap.set(cfg!.bitmap as number[]);
+        }
+
+        for (const p of pixels) {
+          const idx = (p.y * W + p.x) * 4;
+          bitmap[idx] = p.r;
+          bitmap[idx + 1] = p.g;
+          bitmap[idx + 2] = p.b;
+          bitmap[idx + 3] = 255;
+        }
+
+        const config = {
+          width: W,
+          height: H,
+          bitmap: Array.from(bitmap),
+        };
+
+        await supabase
+          .from("panels")
+          .update({
+            mode: "paint",
+            mode_config: config as Database["public"]["Tables"]["panels"]["Update"]["mode_config"],
+            last_updated: new Date().toISOString(),
+          })
+          .eq("id", panel.id)
+          .throwOnError();
+
+        return ok({
+          name,
+          mode: "paint",
+          width: W,
+          height: H,
+          pixels_written: pixels.length,
+          base: startBlank ? "blank" : "existing",
+        });
       },
     );
 
@@ -641,6 +788,7 @@ export async function GET(): Promise<Response> {
     <li><code>list_modes</code> — modes + config schemas</li>
     <li><code>send_message</code> — append text (panel must be in text mode)</li>
     <li><code>set_mode</code> — text/clock/life/shapes/test</li>
+    <li><code>paint_pixels</code> — set 64×64 pixel art via sparse (x,y,r,g,b) list</li>
     <li><code>set_paused</code> — freeze/resume render loop</li>
     <li><code>clear_messages</code> — wipe text queue</li>
     <li><code>delete_message</code> — remove one entry</li>
