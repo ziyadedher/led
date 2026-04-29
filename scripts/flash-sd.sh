@@ -82,9 +82,10 @@ fi
 
 boot_mnt=$(mktemp -d)
 root_mnt=$(mktemp -d)
+safe_umount() { sudo umount "$1" 2>/dev/null || true; }
 cleanup() {
-    sudo umount "$boot_mnt" 2>/dev/null || true
-    sudo umount "$root_mnt" 2>/dev/null || true
+    safe_umount "$boot_mnt"
+    safe_umount "$root_mnt"
     rmdir "$boot_mnt" "$root_mnt" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -166,11 +167,11 @@ sudo rm -f "$root_mnt/etc/resolv.conf"
 sudo install -m 0644 /etc/resolv.conf "$root_mnt/etc/resolv.conf"
 
 chroot_cleanup() {
-    sudo umount "$root_mnt/dev"  2>/dev/null || true
-    sudo umount "$root_mnt/sys"  2>/dev/null || true
-    sudo umount "$root_mnt/proc" 2>/dev/null || true
-    sudo rm -f  "$root_mnt$QEMU_USER"
-    sudo rm -f  "$root_mnt/etc/resolv.conf"
+    safe_umount "$root_mnt/dev"
+    safe_umount "$root_mnt/sys"
+    safe_umount "$root_mnt/proc"
+    sudo rm -f "$root_mnt$QEMU_USER"
+    sudo rm -f "$root_mnt/etc/resolv.conf"
     if [ -n "$resolv_link" ]; then
         sudo ln -sf "$resolv_link" "$root_mnt/etc/resolv.conf"
     fi
