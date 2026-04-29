@@ -50,9 +50,6 @@ export function InstrumentHeader({
           >
             ziyad&apos;s leds
           </span>
-          <span className="hidden whitespace-nowrap font-mono text-[9px] leading-none uppercase tracking-[0.4em] text-(--color-text-faint) sm:inline">
-            // control surface · v0.1
-          </span>
         </div>
 
         <span aria-hidden className="flex-1" />

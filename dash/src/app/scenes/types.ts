@@ -195,16 +195,17 @@ export type ShapesScene = {
    */
   speed: number;
   /**
-   * Fade lines further from the camera. Reads as flicker on small
-   * panels, so off by default.
+   * Fade edges further from the camera. Reads as flicker on small
+   * panels, so off by default. Independent of `opacity` — only
+   * modulates the always-drawn edge silhouette.
    */
   depth_shade: boolean;
   /**
-   * Render filled, flat-shaded faces with painter's algorithm
-   * instead of just the wireframe edges. Faces are colored by their
-   * normal angle to the camera.
+   * Face fill opacity in [0, 1]. 0 = wireframe (no fill); 1 = fully
+   * opaque flat-shaded faces with back-face culling. Edges are
+   * always drawn at full base color regardless.
    */
-  solid: boolean;
+  opacity: number;
 };
 
 export type ShapesSceneConfig = ShapesScene;
@@ -214,7 +215,7 @@ export const DEFAULT_SHAPES_CONFIG: ShapesSceneConfig = {
   color: { r: 0xff, g: 0x8a, b: 0x2c },
   speed: 1,
   depth_shade: false,
-  solid: false,
+  opacity: 0,
 };
 
 /**

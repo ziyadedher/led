@@ -43,8 +43,11 @@ export function parseShapesConfig(raw: unknown): ShapesSceneConfig {
       ? Math.max(0.05, Math.min(16, obj.speed))
       : 1;
   const depth_shade = Boolean(obj.depth_shade);
-  const solid = Boolean(obj.solid);
-  return { kind, color, speed, depth_shade, solid };
+  const opacity =
+    typeof obj.opacity === "number"
+      ? Math.max(0, Math.min(1, obj.opacity))
+      : 0;
+  return { kind, color, speed, depth_shade, opacity };
 }
 
 function isShapeKind(v: unknown): v is ShapeKind {
@@ -221,46 +224,63 @@ export function ShapesComposer({
 
         <div className="border-t border-dashed border-(--color-hairline)" />
 
-        {/* Solid (filled faces) */}
+        {/* Face opacity — 0 = wireframe-only, 1 = fully filled. Edges
+         * are always drawn on top at full brightness regardless. */}
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
+              {"// face opacity"}
+            </span>
+            <span
+              className="tabular-nums text-(--color-text)"
+              style={{ fontFamily: "var(--font-pixel)", fontSize: 14 }}
+            >
+              {Math.round(local.opacity * 100)}%
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
+              wire
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.02}
+              value={local.opacity}
+              onChange={(e) =>
+                persist({ ...local, opacity: Number(e.target.value) })
+              }
+              className="fader flex-1"
+              style={
+                { ["--fader-pos" as string]: `${local.opacity * 100}%` } as React.CSSProperties
+              }
+              aria-label="Face opacity"
+            />
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
+              solid
+            </span>
+          </div>
+        </div>
+
         <label className="flex cursor-pointer items-center justify-between gap-3">
           <span className="flex flex-col gap-0.5">
             <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-              :: solid
+              :: depth shade
             </span>
             <span className="font-mono text-[9px] tracking-wide text-(--color-text-faint)">
-              fill faces · flat-shaded by angle to camera
+              dim back-of-shape edges
             </span>
           </span>
           <input
             type="checkbox"
-            checked={local.solid}
-            onChange={(e) => persist({ ...local, solid: e.target.checked })}
+            checked={local.depth_shade}
+            onChange={(e) =>
+              persist({ ...local, depth_shade: e.target.checked })
+            }
             className="h-3.5 w-3.5 rounded-[1px] border-(--color-border-strong) bg-(--color-bg) text-(--color-accent) focus:ring-0 focus:ring-offset-0"
           />
         </label>
-
-        {/* Depth shade — only meaningful for wireframe; suppress when
-         * solid mode owns the face shading. */}
-        {!local.solid ? (
-          <label className="flex cursor-pointer items-center justify-between gap-3">
-            <span className="flex flex-col gap-0.5">
-              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-                :: depth shade
-              </span>
-              <span className="font-mono text-[9px] tracking-wide text-(--color-text-faint)">
-                dim back-of-shape edges
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              checked={local.depth_shade}
-              onChange={(e) =>
-                persist({ ...local, depth_shade: e.target.checked })
-              }
-              className="h-3.5 w-3.5 rounded-[1px] border-(--color-border-strong) bg-(--color-bg) text-(--color-accent) focus:ring-0 focus:ring-offset-0"
-            />
-          </label>
-        ) : null}
 
         <div className="border-t border-dashed border-(--color-hairline)" />
 

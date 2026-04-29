@@ -48,14 +48,23 @@ pub struct ShapesScene {
     pub speed: f32,
     /// `true` if depth should fade lines — far edges drawn dimmer
     /// than near ones. Off by default; on small panels it can read
-    /// as flicker.
+    /// as flicker. Independent of `opacity` — edges are the
+    /// silhouette we always draw at full brightness, with this flag
+    /// modulating just their depth tint.
     #[serde(default)]
     pub depth_shade: bool,
-    /// `true` to render filled, flat-shaded faces instead of just
-    /// the wireframe edges. Faces sorted back-to-front via painter's
-    /// algorithm, brightness from face-normal · view direction.
-    #[serde(default)]
-    pub solid: bool,
+    /// Face fill opacity in [0, 1]. 0 = wireframe (no fill), 1 =
+    /// fully opaque flat-shaded faces. Treated as additive intensity
+    /// against the panel's natural black: a half-opaque face is half
+    /// as bright as fully opaque, giving the LED matrix a "ghost"
+    /// shape look. Edges are always drawn at full base color on top
+    /// — the silhouette stays crisp regardless of opacity.
+    #[serde(default = "default_opacity")]
+    pub opacity: f32,
+}
+
+fn default_opacity() -> f32 {
+    0.0
 }
 
 impl Default for ShapesScene {
@@ -69,7 +78,7 @@ impl Default for ShapesScene {
             },
             speed: 1.0,
             depth_shade: false,
-            solid: false,
+            opacity: 0.0,
         }
     }
 }
@@ -116,16 +125,17 @@ where
 
     let base = Rgb888::new(scene.color.r, scene.color.g, scene.color.b);
 
-    if scene.solid {
-        render_solid(scene, &cam, &screen, base, canvas)?;
-    } else {
-        render_wireframe(scene, &cam, &screen, base, canvas)?;
+    // Faces first (when opacity > 0), then edges on top.
+    let opacity = scene.opacity.clamp(0.0, 1.0);
+    if opacity > 0.001 {
+        render_faces(scene, &cam, &screen, base, opacity, canvas)?;
     }
+    render_edges(scene, &cam, &screen, base, canvas)?;
 
     Ok(())
 }
 
-fn render_wireframe<D>(
+fn render_edges<D>(
     scene: &ShapesScene,
     cam: &[(f32, f32, f32); MAX_VERTICES],
     screen: &[(i32, i32); MAX_VERTICES],
@@ -157,11 +167,12 @@ where
 
 #[allow(clippy::cast_possible_truncation)]
 #[allow(clippy::cast_precision_loss)]
-fn render_solid<D>(
+fn render_faces<D>(
     scene: &ShapesScene,
     cam: &[(f32, f32, f32); MAX_VERTICES],
     screen: &[(i32, i32); MAX_VERTICES],
     base: Rgb888,
+    opacity: f32,
     canvas: &mut D,
 ) -> Result<(), D::Error>
 where
@@ -169,43 +180,61 @@ where
 {
     let faces = faces_of(scene.kind);
     if faces.is_empty() {
-        // Fallback for shapes without face data — render wireframe.
-        return render_wireframe(scene, cam, screen, base, canvas);
+        return Ok(());
     }
 
-    // Sort triangles back-to-front (painter's). Centroid z is fine
-    // for the shapes in our catalogue — they're convex so triangles
-    // don't overlap in tricky ways.
-    let mut order: [(f32, usize); MAX_FACES] = [(0.0, 0); MAX_FACES];
+    // Back-face cull + collect visible-face indices into a scratch
+    // buffer. For the convex shapes in our catalogue this leaves
+    // only triangles whose normals point toward the camera, which
+    // means they don't overlap in screen space — the painter sort
+    // can't ping-pong adjacent faces anymore. (The earlier
+    // centroid-z sort would occasionally swap two front-facing
+    // adjacent triangles whose centroids were almost coplanar,
+    // producing the "behind face flashes in front" artifact at
+    // certain rotations. Culling sidesteps the failure mode.)
+    let mut visible: [(f32, usize); MAX_FACES] = [(0.0, 0); MAX_FACES];
+    let mut visible_count = 0;
     for (i, &[a, b, c]) in faces.iter().enumerate() {
-        order[i] = ((cam[a].2 + cam[b].2 + cam[c].2) / 3.0, i);
+        let normal_z = face_normal_z(cam[a], cam[b], cam[c]);
+        // normal_z < 0 means the face normal points toward the
+        // camera (camera at -z direction). Skip the rest.
+        if normal_z >= 0.0 {
+            continue;
+        }
+        visible[visible_count] = (
+            (cam[a].2 + cam[b].2 + cam[c].2) / 3.0,
+            i,
+        );
+        visible_count += 1;
     }
-    let face_count = faces.len();
-    let order = &mut order[..face_count];
-    // Insertion sort — face_count is small (≤ 96). Bigger-first =
-    // back-to-front (positive z = farther in our coord system).
-    for i in 1..face_count {
-        let key = order[i];
+    if visible_count == 0 {
+        return Ok(());
+    }
+
+    // Sort visible tris back-to-front. Bigger z = farther.
+    let visible = &mut visible[..visible_count];
+    for i in 1..visible_count {
+        let key = visible[i];
         let mut j = i;
-        while j > 0 && order[j - 1].0 < key.0 {
-            order[j] = order[j - 1];
+        while j > 0 && visible[j - 1].0 < key.0 {
+            visible[j] = visible[j - 1];
             j -= 1;
         }
-        order[j] = key;
+        visible[j] = key;
     }
 
-    // Light from camera direction so faces angled toward us read
-    // brightest. Outline edges in the base color so the silhouette
-    // still feels crisp at 64 px.
-    for &(_, idx) in order.iter() {
+    // For each visible (front-facing) face: shade by normal angle,
+    // scale by opacity (additive against black background), and
+    // fill. No stroke — edges get layered separately at full
+    // brightness.
+    for &(_, idx) in visible.iter() {
         let [a, b, c] = faces[idx];
         let normal_z = face_normal_z(cam[a], cam[b], cam[c]);
-        // normal_z range ≈ [-1, 1]. Flat-shading: front-facing
-        // (-z, toward camera) gets full color, back-facing fades to
-        // 25%. Avoids the cull edge case where a back face still
-        // shows when the topology is one-sided.
-        let lit = (0.25 + 0.75 * (-normal_z * 0.5 + 0.5)).clamp(0.0, 1.0);
-        let fill = scale_color(base, lit);
+        // After culling, normal_z is always < 0. Map to brightness
+        // via -normal_z (range (0, 1]). Floor at 25% so glancing
+        // angles still look like real fills, not blank gaps.
+        let lit = (0.25 + 0.75 * (-normal_z)).clamp(0.0, 1.0);
+        let fill = scale_color(base, lit * opacity);
         let style = PrimitiveStyleBuilder::new()
             .fill_color(fill)
             .stroke_color(fill)

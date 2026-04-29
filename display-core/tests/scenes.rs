@@ -222,7 +222,7 @@ fn shapes_wireframe_lights_some_pixels_for_each_kind() {
             color: Rgb { r: 255, g: 138, b: 44 },
             speed: 1.0,
             depth_shade: false,
-            solid: false,
+            opacity: 0.0,
         }));
         let mut canvas = MockCanvas::new(W, H);
         render(&scene, 0, &mut canvas).unwrap();
@@ -244,7 +244,7 @@ fn shapes_solid_lights_more_than_wireframe() {
             color: Rgb { r: 255, g: 138, b: 44 },
             speed: 1.0,
             depth_shade: false,
-            solid: false,
+            opacity: 0.0,
         })),
         0,
         &mut wire_canvas,
@@ -258,7 +258,7 @@ fn shapes_solid_lights_more_than_wireframe() {
             color: Rgb { r: 255, g: 138, b: 44 },
             speed: 1.0,
             depth_shade: false,
-            solid: true,
+            opacity: 1.0,
         })),
         0,
         &mut solid_canvas,
@@ -284,7 +284,7 @@ fn shapes_speed_clamp_doesnt_panic() {
             color: Rgb { r: 255, g: 138, b: 44 },
             speed,
             depth_shade: false,
-            solid: false,
+            opacity: 0.0,
         }));
         let mut canvas = MockCanvas::new(W, H);
         let _ = render(&scene, 100, &mut canvas);
