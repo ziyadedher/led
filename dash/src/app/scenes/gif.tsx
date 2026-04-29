@@ -212,11 +212,11 @@ export function GifComposer({
       status={`max ${MAX_FRAMES} frames · 64×64`}
       ariaLabel="GIF configuration"
     >
-      <div className="space-y-5 px-4 pb-4 pt-6">
-        <div className="space-y-3">
-          <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
+      <div className="space-y-5 px-4 pb-5 pt-5">
+        <div>
+          <div className="mb-7 font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
             :: upload
-          </span>
+          </div>
           <div className="flex items-center gap-3">
             <button
               type="button"

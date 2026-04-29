@@ -34,7 +34,7 @@ export function ModeSwitcher({
     <div
       role="tablist"
       aria-label="Mode"
-      className="bezel-recessed relative grid grid-cols-2 gap-px overflow-hidden border border-(--color-border) bg-(--color-border) sm:grid-cols-3 lg:grid-cols-7"
+      className="bezel-recessed relative flex flex-wrap gap-px overflow-hidden border border-(--color-border) bg-(--color-border)"
     >
       {MODES.map((m) => {
         const active = m.id === current;
@@ -49,8 +49,16 @@ export function ModeSwitcher({
               if (active) return;
               void panels.setMode.call(panelId, m.id, {});
             }}
+            // Even-rows wrap: each tile takes a slightly-less-than-25%
+            // basis so a row of 4 fits exactly even with the
+            // 1px gap between tiles, and a trailing row of N<4 grows
+            // each tile via flex-grow=1 to fill — 5 tiles → 4+1 (1
+            // grows full-width), 6 → 4+2 (each 50%), 7 → 4+3 (each
+            // 33%). `min-w-0` lets tiles actually shrink to their
+            // basis instead of pinning to intrinsic content width
+            // (default min-width:auto would prevent that).
             className={[
-              "group relative isolate flex items-stretch gap-3 px-4 py-3 text-left transition-all",
+              "group relative isolate flex min-w-0 grow items-stretch gap-3 px-4 py-3 text-left transition-all basis-[calc(25%-1px)]",
               active
                 ? "bg-(--color-bg) text-(--color-accent) shadow-[inset_0_0_24px_-4px_var(--color-accent-fade)]"
                 : "bg-(--color-surface)/70 text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
