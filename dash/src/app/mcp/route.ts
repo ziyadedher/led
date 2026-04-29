@@ -75,6 +75,7 @@ const summarisePanel = (
   description: p.description,
   mode: p.mode,
   is_paused: p.is_paused,
+  is_off: p.is_off,
   online: isOnline(p.last_seen),
   last_seen: p.last_seen,
   last_updated: p.last_updated,
@@ -611,6 +612,35 @@ const handler = createMcpHandler(
     );
 
     server.registerTool(
+      "set_off",
+      {
+        title: "Turn a panel off (or back on)",
+        description:
+          "Power-toggle a panel: when off=true the driver short-circuits the render to a fully black frame, without changing the configured mode or losing the queue. Composes with set_paused. Flipping back to off=false resumes the same scene the panel was on before.",
+        inputSchema: {
+          name: z.string().min(1).describe("Panel name."),
+          off: z.boolean().describe("true = render fully black, false = resume normal rendering."),
+        },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      async ({ name, off }) => {
+        const panel = await panelByName(name);
+        if (!panel) return err(`No panel named '${name}'. Try list_panels.`);
+        await supabase
+          .from("panels")
+          .update({ is_off: off, last_updated: new Date().toISOString() })
+          .eq("id", panel.id)
+          .throwOnError();
+        return ok({ name, is_off: off });
+      },
+    );
+
+    server.registerTool(
       "clear_messages",
       {
         title: "Clear the text queue",
@@ -790,6 +820,7 @@ export async function GET(): Promise<Response> {
     <li><code>set_mode</code> — text/clock/life/shapes/test</li>
     <li><code>paint_pixels</code> — set 64×64 pixel art via sparse (x,y,r,g,b) list</li>
     <li><code>set_paused</code> — freeze/resume render loop</li>
+    <li><code>set_off</code> — power-toggle: render fully black, mode + queue preserved</li>
     <li><code>clear_messages</code> — wipe text queue</li>
     <li><code>delete_message</code> — remove one entry</li>
     <li><code>reorder_messages</code> — reshuffle the queue</li>

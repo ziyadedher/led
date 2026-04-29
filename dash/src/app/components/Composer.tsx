@@ -115,7 +115,7 @@ export function Composer({
               onChange={(e) =>
                 onMessageChange(e.target.value.slice(0, MAX_LEN))
               }
-              placeholder="say something to the wall"
+              placeholder="post something to the wall"
               disabled={submitting}
               autoComplete="off"
               spellCheck={false}

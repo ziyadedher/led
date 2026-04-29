@@ -27,6 +27,7 @@ type Scene = {
   mode: Mode;
   panel: {
     is_paused: boolean;
+    is_off: boolean;
     flash: { is_active: boolean; on_steps: number; total_steps: number };
   };
 };
@@ -50,12 +51,16 @@ export function MatrixPreview({
   mode,
   offline,
   isPaused = false,
+  isOff = false,
 }: {
   mode: Mode;
   offline?: boolean;
   /** Whether the panel is paused. Frozen step counter; current
    * frame stays rendered. Mirrors the Pi driver's behaviour. */
   isPaused?: boolean;
+  /** Whether the panel is "off". Render short-circuits to black —
+   * mirrors the Pi driver. Composes with isPaused. */
+  isOff?: boolean;
 }) {
   const panelId = useContext(PanelContext);
   const entriesData = entriesActions.get.useSWR(panelId);
@@ -122,9 +127,9 @@ export function MatrixPreview({
       : mode;
     return {
       mode: expanded,
-      panel: { is_paused: isPaused, flash: FLASH_OFF },
+      panel: { is_paused: isPaused, is_off: isOff, flash: FLASH_OFF },
     };
-  }, [items, mode, scroll, isPaused]);
+  }, [items, mode, scroll, isPaused, isOff]);
 
   // Push state into the renderer whenever it actually changes.
   // The frame ref can rebuild for reasons that don't affect the

@@ -48,6 +48,7 @@ export type Database = {
           driver_version: string | null;
           flash: Json;
           id: string;
+          is_off: boolean;
           is_paused: boolean;
           last_seen: string;
           last_updated: string;
@@ -62,6 +63,7 @@ export type Database = {
           driver_version?: string | null;
           flash: Json;
           id?: string;
+          is_off?: boolean;
           is_paused?: boolean;
           last_seen?: string;
           last_updated?: string;
@@ -76,6 +78,7 @@ export type Database = {
           driver_version?: string | null;
           flash?: Json;
           id?: string;
+          is_off?: boolean;
           is_paused?: boolean;
           last_seen?: string;
           last_updated?: string;

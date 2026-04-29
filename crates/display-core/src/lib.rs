@@ -34,10 +34,13 @@ pub struct FlashState {
 
 /// Mode-independent panel state. Flash + pause behave the same no
 /// matter which mode is active — overlay applied after the per-mode
-/// renderer runs.
+/// renderer runs. `is_off` short-circuits the dispatch entirely
+/// (panel renders fully black) without disturbing the configured
+/// mode — flipping back gives you the same scene you left.
 #[derive(PartialEq, Eq, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct PanelState {
     pub is_paused: bool,
+    pub is_off: bool,
     pub flash: FlashState,
 }
 
@@ -85,6 +88,12 @@ where
     D: DrawTarget<Color = Rgb888> + OriginDimensions,
 {
     canvas.clear(Rgb888::BLACK)?;
+
+    if frame.panel.is_off {
+        // Skip mode dispatch + flash overlay. The black canvas is the
+        // entire output.
+        return Ok(());
+    }
 
     match &frame.mode {
         Mode::Text(t) => text::render(t, step, canvas)?,

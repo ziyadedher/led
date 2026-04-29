@@ -1,5 +1,6 @@
 "use client";
 
+import { PowerIcon } from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSWRConfig } from "swr";
 
@@ -232,6 +233,42 @@ export default function Page() {
                 </button>
               ) : null}
 
+              {/* Off / On hardware-power transport. Composes with
+                * pause: "off" short-circuits the driver to a black
+                * frame without losing the panel's mode/config or
+                * queued entries — flip back to resume the same
+                * scene. */}
+              {panelId.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void panels.setOff.call(
+                      panelId,
+                      !(activePanel?.is_off ?? false),
+                    )
+                  }
+                  aria-label={
+                    activePanel?.is_off ? "Turn panel on" : "Turn panel off"
+                  }
+                  title={
+                    activePanel?.is_off
+                      ? "click to turn on (resumes current mode)"
+                      : "click to turn off (panel goes dark; mode + queue preserved)"
+                  }
+                  className={[
+                    "flex items-center gap-2 border-l border-(--color-border) px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] transition-colors",
+                    activePanel?.is_off
+                      ? "bg-(--color-danger)/10 text-(--color-danger)"
+                      : activePanelOffline
+                        ? "text-(--color-text-faint)"
+                        : "text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
+                  ].join(" ")}
+                >
+                  <PowerIcon aria-hidden className="h-3.5 w-3.5" />
+                  <span>{activePanel?.is_off ? "off" : "on"}</span>
+                </button>
+              ) : null}
+
               {/* Format chip — pixel font for the resolution */}
               <div className="flex items-center gap-2 border-l border-(--color-border) px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-faint) tabular-nums">
                 <span style={{ fontFamily: "var(--font-pixel)", fontSize: 14 }}>
@@ -255,6 +292,7 @@ export default function Page() {
                 offline={activePanelOffline}
                 mode={modeFrame}
                 isPaused={activePanel?.is_paused ?? false}
+                isOff={activePanel?.is_off ?? false}
               />
             </div>
           </div>
