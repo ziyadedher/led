@@ -51,7 +51,7 @@ where
 
     let style = MonoTextStyleBuilder::new()
         .font(&font)
-        .text_color(frame.color.clone().into())
+        .text_color(frame.color.into())
         .build();
     Text::new(text, Point::new(text_x, text_y), style).draw(canvas)?;
 

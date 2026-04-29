@@ -135,17 +135,52 @@ fn handle_event(text: &str, nudge_tx: &mpsc::Sender<()>) {
         tracing::trace!(raw = %text, "Realtime: non-JSON frame ignored");
         return;
     };
-    let event = value.get("event").and_then(Value::as_str).unwrap_or("");
-    match event {
-        "postgres_changes" => {
-            // try_send so a slow consumer never blocks the listener.
-            // sync.rs re-pulls canonical state — no need to parse the
-            // payload's record/old_record diff.
+    match value.get("event").and_then(Value::as_str) {
+        Some("postgres_changes") => {
+            // Skip the self-loop: our own last_seen heartbeat updates
+            // round-trip through Realtime as panel UPDATEs that change
+            // only `last_seen` — every nudge for those would re-pull
+            // an unchanged row.
+            if is_last_seen_only_panel_update(&value) {
+                return;
+            }
             let _ = nudge_tx.try_send(());
         }
-        "phx_error" | "phx_close" => {
+        Some("phx_error" | "phx_close") => {
             tracing::warn!(frame = %value, "Realtime control frame indicates trouble");
         }
         _ => {} // phx_reply, system, presence, etc.
     }
+}
+
+/// `true` when the postgres_changes payload is an UPDATE on the
+/// `panels` table and the only column that actually changed is
+/// `last_seen`. Phoenix payload shape:
+///   { payload: { data: { table, type, record, old_record } } }
+fn is_last_seen_only_panel_update(frame: &Value) -> bool {
+    let data = frame
+        .get("payload")
+        .and_then(|p| p.get("data"));
+    let Some(data) = data else { return false };
+    if data.get("type").and_then(Value::as_str) != Some("UPDATE") {
+        return false;
+    }
+    if data.get("table").and_then(Value::as_str) != Some("panels") {
+        return false;
+    }
+    let record = data.get("record");
+    let old = data.get("old_record");
+    let (Some(record), Some(old)) = (record, old) else {
+        return false;
+    };
+    let (Some(record), Some(old)) = (record.as_object(), old.as_object()) else {
+        return false;
+    };
+    // Walk the keys and ensure every column besides last_seen matches.
+    let differing: Vec<&str> = record
+        .iter()
+        .filter(|(k, v)| old.get(*k) != Some(*v))
+        .map(|(k, _)| k.as_str())
+        .collect();
+    differing.len() == 1 && differing[0] == "last_seen"
 }

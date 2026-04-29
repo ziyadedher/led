@@ -329,12 +329,10 @@ fn build_mode(
             // time keeps advancing even though every other animated
             // mode honours the freeze via the static `step`.
             let now = if snapshot.panel.is_paused {
-                last_clock_now
-                    .clone()
-                    .unwrap_or_else(|| sample_time(config.timezone.as_deref()))
+                last_clock_now.unwrap_or_else(|| sample_time(config.timezone.as_deref()))
             } else {
                 let sampled = sample_time(config.timezone.as_deref());
-                *last_clock_now = Some(sampled.clone());
+                *last_clock_now = Some(sampled);
                 sampled
             };
             Mode::Clock(config.into_frame(now))

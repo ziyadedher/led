@@ -163,7 +163,7 @@ async fn maybe_download(
     last_updated: &str,
     client: &Postgrest,
 ) -> anyhow::Result<Option<State>> {
-    tracing::info!("Downloading state...");
+    tracing::debug!("Downloading state...");
     let now = Instant::now();
     tracing::debug!("Downloading panel information...");
     let panels: Vec<Panel> = serde_json::from_str(

@@ -11,7 +11,7 @@ use embedded_graphics::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Rgb {
     pub r: u8,
     pub g: u8,

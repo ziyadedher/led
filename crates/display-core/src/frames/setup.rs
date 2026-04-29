@@ -54,7 +54,7 @@ where
     //   row 7 (y=62): <PORTAL URL>
     let style_accent = MonoTextStyleBuilder::new()
         .font(&font)
-        .text_color(frame.color.clone().into())
+        .text_color(frame.color.into())
         .build();
     let style_dim = MonoTextStyleBuilder::new()
         .font(&font)

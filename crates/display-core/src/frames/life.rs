@@ -174,7 +174,7 @@ where
     D: DrawTarget<Color = Rgb888> + OriginDimensions,
 {
     let style = PrimitiveStyleBuilder::new()
-        .fill_color(frame.color.clone().into())
+        .fill_color(frame.color.into())
         .build();
     for y in 0..frame.lattice_height {
         for x in 0..frame.lattice_width {
