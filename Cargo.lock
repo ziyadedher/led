@@ -946,6 +946,7 @@ dependencies = [
  "futures-util",
  "hostname",
  "human-panic",
+ "libc",
  "opentelemetry",
  "opentelemetry-appender-tracing",
  "opentelemetry-otlp",
