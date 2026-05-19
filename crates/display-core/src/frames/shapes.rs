@@ -17,7 +17,8 @@ use core::f32::consts::PI;
 use embedded_graphics::{
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{Line, PrimitiveStyle, PrimitiveStyleBuilder, Triangle},
+    primitives::{Line, PrimitiveStyle},
+    Pixel,
 };
 use serde::{Deserialize, Serialize};
 
@@ -88,6 +89,23 @@ const MAX_VERTICES: usize = 96;
 // to leave headroom for future shapes without bumping the const.
 const MAX_FACES: usize = 128;
 
+// World-space directional light. Points FROM the surface TOWARD the
+// light, so a face whose normal aligns with this direction is fully
+// lit. Choice: upper-right-front of the camera (+x, -y up in screen
+// coords, -z toward viewer). The exact value is normalize((1,-1,-1)).
+const LIGHT_DIR: (f32, f32, f32) = (0.5773503, -0.5773503, -0.5773503);
+// Ambient + diffuse split. Ambient keeps fully back-facing parts of
+// the per-vertex shading from clipping to pitch black on the panel,
+// which crushed below visibility. Diffuse is the lit contribution
+// modulated by the surface normal × light dot product.
+const AMBIENT: f32 = 0.15;
+const DIFFUSE: f32 = 0.85;
+// Above this opacity the face fills fully cover anything behind them,
+// so back edges get culled to avoid painting over the silhouette. At
+// lower opacity the faces are translucent-ish (dim fills) and back
+// edges remain visible — needed for the wireframe (opacity=0) look.
+const CULL_BACK_EDGES_OPACITY: f32 = 0.5;
+
 #[allow(clippy::cast_possible_truncation)]
 #[allow(clippy::cast_precision_loss)]
 #[allow(clippy::cast_sign_loss)]
@@ -113,24 +131,32 @@ where
     // Rotate every vertex into camera space + project to screen.
     // `cam` keeps the post-rotation 3-D position for face-normal
     // math; `screen` is the 2-D projection consumed by the
-    // primitives.
+    // primitives. `vert_lit` is the per-vertex brightness from the
+    // directional light, used for Gouraud shading the face fills.
     let mut cam: [(f32, f32, f32); MAX_VERTICES] = [(0.0, 0.0, 0.0); MAX_VERTICES];
     let mut screen: [(i32, i32); MAX_VERTICES] = [(0, 0); MAX_VERTICES];
+    let mut vert_lit: [f32; MAX_VERTICES] = [0.0; MAX_VERTICES];
     for (i, &(x, y, z)) in vertices.iter().enumerate() {
         let (x, y, z) = rotate_y(x, y, z, yaw);
         let (x, y, z) = rotate_x(x, y, z, pitch);
         cam[i] = (x, y, z);
         screen[i] = ((cx + x * scale) as i32, (cy + y * scale) as i32);
+
+        let n = vertex_normal(scene.kind, i);
+        let n = rotate_y(n.0, n.1, n.2, yaw);
+        let n = rotate_x(n.0, n.1, n.2, pitch);
+        let d = (n.0 * LIGHT_DIR.0 + n.1 * LIGHT_DIR.1 + n.2 * LIGHT_DIR.2).max(0.0);
+        vert_lit[i] = (AMBIENT + DIFFUSE * d).clamp(0.0, 1.0);
     }
 
     let base = Rgb888::new(scene.color.r, scene.color.g, scene.color.b);
 
-    // Faces first (when opacity > 0), then edges on top.
+    // Faces first (when opacity > 0) so edges layer on top.
     let opacity = scene.opacity.clamp(0.0, 1.0);
     if opacity > 0.001 {
-        render_faces(scene, &cam, &screen, base, opacity, canvas)?;
+        render_faces(scene, &cam, &screen, &vert_lit, base, opacity, canvas)?;
     }
-    render_edges(scene, &cam, &screen, base, canvas)?;
+    render_edges(scene, &cam, &screen, base, opacity, canvas)?;
 
     Ok(())
 }
@@ -140,20 +166,47 @@ fn render_edges<D>(
     cam: &[(f32, f32, f32); MAX_VERTICES],
     screen: &[(i32, i32); MAX_VERTICES],
     base: Rgb888,
+    opacity: f32,
     canvas: &mut D,
 ) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888> + OriginDimensions,
 {
+    let faces = faces_of(scene.kind);
+    let cull_back = opacity >= CULL_BACK_EDGES_OPACITY;
     for &(a, b) in edges_of(scene.kind) {
+        // Back-edge cull only when faces fully cover them (high
+        // opacity). At low opacity the faces are dim/translucent —
+        // back edges remain visible, providing wireframe depth cues.
+        // Edges with no adjacent face (e.g. tesseract connectors)
+        // fall through and always draw.
+        if cull_back {
+            let mut has_adjacent = false;
+            let mut any_visible = false;
+            for &[fa, fb, fc] in faces.iter() {
+                let contains_a = fa == a || fb == a || fc == a;
+                let contains_b = fa == b || fb == b || fc == b;
+                if contains_a && contains_b {
+                    has_adjacent = true;
+                    if face_normal_z(cam[fa], cam[fb], cam[fc]) < 0.0 {
+                        any_visible = true;
+                        break;
+                    }
+                }
+            }
+            if has_adjacent && !any_visible {
+                continue;
+            }
+        }
+
         let (ax, ay) = screen[a];
         let (bx, by) = screen[b];
         let stroke = if scene.depth_shade {
             let depth = ((cam[a].2 + cam[b].2) * 0.5).clamp(-1.0, 1.0);
             // Closer (more negative z, near camera) = full brightness;
-            // far (positive z) = dim. Floor at 25% so the back is
-            // still legible.
-            let scale_f = 0.25 + 0.75 * (0.5 - depth * 0.5);
+            // far (positive z) = dim. Floor at 50% — 25% crushed back
+            // edges below visibility on the 64x64 panel.
+            let scale_f = 0.5 + 0.5 * (0.5 - depth * 0.5);
             scale_color(base, scale_f)
         } else {
             base
@@ -171,6 +224,7 @@ fn render_faces<D>(
     scene: &ShapesScene,
     cam: &[(f32, f32, f32); MAX_VERTICES],
     screen: &[(i32, i32); MAX_VERTICES],
+    vert_lit: &[f32; MAX_VERTICES],
     base: Rgb888,
     opacity: f32,
     canvas: &mut D,
@@ -183,35 +237,24 @@ where
         return Ok(());
     }
 
-    // Back-face cull + collect visible-face indices into a scratch
-    // buffer. For the convex shapes in our catalogue this leaves
-    // only triangles whose normals point toward the camera, which
-    // means they don't overlap in screen space — the painter sort
-    // can't ping-pong adjacent faces anymore. (The earlier
-    // centroid-z sort would occasionally swap two front-facing
-    // adjacent triangles whose centroids were almost coplanar,
-    // producing the "behind face flashes in front" artifact at
-    // certain rotations. Culling sidesteps the failure mode.)
+    // Back-face cull + painter sort. After culling, every kept
+    // triangle has a normal pointing toward the camera and for the
+    // convex shapes in our catalogue they don't overlap in screen
+    // space (the back-face cull alone is enough — the painter sort
+    // is belt-and-suspenders for the hypercube's nested cubes and
+    // the torus where adjacent cells can both pass culling).
     let mut visible: [(f32, usize); MAX_FACES] = [(0.0, 0); MAX_FACES];
     let mut visible_count = 0;
     for (i, &[a, b, c]) in faces.iter().enumerate() {
-        let normal_z = face_normal_z(cam[a], cam[b], cam[c]);
-        // normal_z < 0 means the face normal points toward the
-        // camera (camera at -z direction). Skip the rest.
-        if normal_z >= 0.0 {
+        if face_normal_z(cam[a], cam[b], cam[c]) >= 0.0 {
             continue;
         }
-        visible[visible_count] = (
-            (cam[a].2 + cam[b].2 + cam[c].2) / 3.0,
-            i,
-        );
+        visible[visible_count] = ((cam[a].2 + cam[b].2 + cam[c].2) / 3.0, i);
         visible_count += 1;
     }
     if visible_count == 0 {
         return Ok(());
     }
-
-    // Sort visible tris back-to-front. Bigger z = farther.
     let visible = &mut visible[..visible_count];
     for i in 1..visible_count {
         let key = visible[i];
@@ -223,32 +266,108 @@ where
         visible[j] = key;
     }
 
-    // For each visible (front-facing) face: shade by normal angle,
-    // scale by opacity (additive against black background), and
-    // fill. No stroke — edges get layered separately at full
-    // brightness.
+    // Gouraud-rasterize each visible triangle. Per-vertex brightness
+    // comes from a fixed directional light against the rotated
+    // vertex normal; the rasterizer linearly interpolates across the
+    // triangle so the face fill has a smooth gradient (real 3-D feel
+    // rather than the flat "cardboard" look of one-tone-per-face).
     for &(_, idx) in visible.iter() {
         let [a, b, c] = faces[idx];
-        let normal_z = face_normal_z(cam[a], cam[b], cam[c]);
-        // After culling, normal_z is always < 0. Map to brightness
-        // via -normal_z (range (0, 1]). Floor at 25% so glancing
-        // angles still look like real fills, not blank gaps.
-        let lit = (0.25 + 0.75 * (-normal_z)).clamp(0.0, 1.0);
-        let fill = scale_color(base, lit * opacity);
-        let style = PrimitiveStyleBuilder::new()
-            .fill_color(fill)
-            .stroke_color(fill)
-            .stroke_width(1)
-            .build();
-        Triangle::new(
-            Point::new(screen[a].0, screen[a].1),
-            Point::new(screen[b].0, screen[b].1),
-            Point::new(screen[c].0, screen[c].1),
-        )
-        .into_styled(style)
-        .draw(canvas)?;
+        let pts = [screen[a], screen[b], screen[c]];
+        let lits = [vert_lit[a], vert_lit[b], vert_lit[c]];
+        gouraud_triangle(canvas, pts, lits, base, opacity)?;
     }
     Ok(())
+}
+
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_precision_loss)]
+fn gouraud_triangle<D>(
+    canvas: &mut D,
+    p: [(i32, i32); 3],
+    b: [f32; 3],
+    base: Rgb888,
+    opacity: f32,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888> + OriginDimensions,
+{
+    let cs = canvas.size();
+    let cw = cs.width as i32;
+    let ch = cs.height as i32;
+    let min_x = p[0].0.min(p[1].0).min(p[2].0).max(0);
+    let max_x = p[0].0.max(p[1].0).max(p[2].0).min(cw - 1);
+    let min_y = p[0].1.min(p[1].1).min(p[2].1).max(0);
+    let max_y = p[0].1.max(p[1].1).max(p[2].1).min(ch - 1);
+    if min_x > max_x || min_y > max_y {
+        return Ok(());
+    }
+
+    // Signed area × 2 of the screen-space triangle. Negative = CW,
+    // positive = CCW after projection. Both windings are valid here
+    // (camera-side cull happens in 3-D before projection), so we
+    // accept "all barycentrics agree on sign with the area".
+    let denom = (p[1].1 - p[2].1) * (p[0].0 - p[2].0)
+        + (p[2].0 - p[1].0) * (p[0].1 - p[2].1);
+    if denom == 0 {
+        return Ok(());
+    }
+    let inv = 1.0 / (denom as f32);
+
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            let u_num =
+                (p[1].1 - p[2].1) * (x - p[2].0) + (p[2].0 - p[1].0) * (y - p[2].1);
+            let v_num =
+                (p[2].1 - p[0].1) * (x - p[2].0) + (p[0].0 - p[2].0) * (y - p[2].1);
+            // Inside-test: barycentrics u, v, (1-u-v) all same sign as denom.
+            // Doing it on the numerators saves the floating-point divide for
+            // pixels we'll skip — a meaningful win on the Pi Zero.
+            let w_num = denom - u_num - v_num;
+            let inside = if denom > 0 {
+                u_num >= 0 && v_num >= 0 && w_num >= 0
+            } else {
+                u_num <= 0 && v_num <= 0 && w_num <= 0
+            };
+            if !inside {
+                continue;
+            }
+            let u = (u_num as f32) * inv;
+            let v = (v_num as f32) * inv;
+            let w = 1.0 - u - v;
+            let lit = (u * b[0] + v * b[1] + w * b[2]).clamp(0.0, 1.0);
+            let color = scale_color(base, lit * opacity);
+            canvas.draw_iter(core::iter::once(Pixel(Point::new(x, y), color)))?;
+        }
+    }
+    Ok(())
+}
+
+/// Per-vertex unit normal in object space. For polyhedra whose
+/// vertices live on a sphere centered at the origin (or the corners
+/// of a cube — same direction after normalization) this is just the
+/// position. The torus is the one exception: its vertex sits on a
+/// minor-circle around a major-circle center, so the surface normal
+/// is the radial direction from that minor center, not from the
+/// origin.
+#[allow(clippy::cast_precision_loss)]
+fn vertex_normal(kind: ShapeKind, idx: usize) -> (f32, f32, f32) {
+    if kind == ShapeKind::Torus {
+        let major = idx / TORUS_MINOR;
+        let minor = idx % TORUS_MINOR;
+        let major_t = (major as f32) * 2.0 * PI / (TORUS_MAJOR as f32);
+        let minor_t = (minor as f32) * 2.0 * PI / (TORUS_MINOR as f32);
+        let (sm, cm) = major_t.sin_cos();
+        let (sn, cn) = minor_t.sin_cos();
+        return (cn * cm, sn, cn * sm);
+    }
+    let (x, y, z) = vertices_of(kind)[idx];
+    let len = (x * x + y * y + z * z).sqrt();
+    if len < 1e-6 {
+        (0.0, 0.0, 0.0)
+    } else {
+        (x / len, y / len, z / len)
+    }
 }
 
 fn face_normal_z(
