@@ -327,6 +327,146 @@ fn shapes_solid_lights_more_than_wireframe() {
 }
 
 #[test]
+fn shapes_back_edges_are_culled_for_convex_cube() {
+    // At step=20 the cube has rotated enough that front and back face
+    // edges project to distinct 2-D lines. Previously the renderer
+    // drew all 12 cube edges unconditionally, so the back-cube outline
+    // bled across the interior of the silhouette ("double cube"
+    // artifact). The fix is to skip an edge whose two adjacent faces
+    // are both back-facing.
+    //
+    // Bound is empirical: the cube has 12 edges and the old code
+    // drew them all at this orientation for a lit_count of 370.
+    // Culling the 3 fully-back edges leaves 9 visible (~280 lit
+    // pixels). The 320 threshold sits cleanly between the two —
+    // tight enough to catch the "all edges drawn" regression, loose
+    // enough to survive line-style tweaks.
+    // Cull is opacity-gated: with opacity=1 the faces fully cover
+    // any back edge, so culling those edges prevents bleed-through.
+    // With opacity=0 (wireframe) the back edges remain visible —
+    // see `shapes_wireframe_keeps_back_edges_at_low_opacity`.
+    let scene = scene_with(Mode::Shapes(ShapesScene {
+        kind: ShapeKind::Cube,
+        color: Rgb { r: 255, g: 0, b: 0 },
+        speed: 1.0,
+        depth_shade: false,
+        opacity: 1.0,
+    }));
+    let mut canvas = MockCanvas::new(W, H);
+    render(&scene, 20, &mut canvas).unwrap();
+    // Count pixels at full edge brightness only — face fills will be
+    // at intermediate brightnesses under Gouraud + opacity=1.
+    let edge_lit = (0..W)
+        .flat_map(|x| (0..H).map(move |y| (x, y)))
+        .filter(|&(x, y)| canvas.at(x, y).r() >= 250)
+        .count();
+    assert!(
+        edge_lit <= 320,
+        "expected back-edge cull to keep edge-bright pixels <=320, got {edge_lit}",
+    );
+    assert!(
+        edge_lit >= 40,
+        "front edges should still draw at full brightness, got {edge_lit}",
+    );
+}
+
+#[test]
+fn shapes_wireframe_keeps_back_edges_at_low_opacity() {
+    // With opacity=0 the faces are not drawn, so back edges have
+    // nothing covering them. Renderer must NOT cull them. Compare
+    // total lit pixels against a solid (opacity=1, cull active)
+    // render: the wireframe should light strictly more pixels
+    // because it draws ALL 12 edges instead of just the ~9 visible.
+    let make = |opacity| {
+        let scene = scene_with(Mode::Shapes(ShapesScene {
+            kind: ShapeKind::Cube,
+            color: Rgb { r: 255, g: 0, b: 0 },
+            speed: 1.0,
+            depth_shade: false,
+            opacity,
+        }));
+        let mut canvas = MockCanvas::new(W, H);
+        render(&scene, 20, &mut canvas).unwrap();
+        // Count only pixels at full edge brightness so face fills
+        // don't pollute the comparison.
+        (0..W)
+            .flat_map(|x| (0..H).map(move |y| (x, y)))
+            .filter(|&(x, y)| canvas.at(x, y).r() >= 250)
+            .count()
+    };
+    let wire_edges = make(0.0);
+    let solid_edges = make(1.0);
+    assert!(
+        wire_edges > solid_edges + 30,
+        "wireframe should draw more edges than solid (cull only when solid), got wire={wire_edges} solid={solid_edges}",
+    );
+}
+
+#[test]
+fn shapes_gouraud_creates_face_gradient() {
+    // Per-vertex shading with a fixed directional light: at step=0
+    // (axis-aligned cube, opacity=1) the front face should NOT be a
+    // single uniform tone — pixels on the "lit" side of the face
+    // (toward the light) must be strictly brighter than pixels on
+    // the opposite side. With light from upper-right, the top-right
+    // of the front face is the bright corner.
+    let scene = scene_with(Mode::Shapes(ShapesScene {
+        kind: ShapeKind::Cube,
+        color: Rgb { r: 255, g: 0, b: 0 },
+        speed: 1.0,
+        depth_shade: false,
+        opacity: 1.0,
+    }));
+    let mut canvas = MockCanvas::new(W, H);
+    render(&scene, 0, &mut canvas).unwrap();
+    // Both pixels lie inside the front face's silhouette (cube
+    // covers ~x:[12,52], y:[12,52] at scale 0.32*64).
+    let lit_corner = canvas.at(48, 16);
+    let dim_corner = canvas.at(16, 48);
+    assert!(
+        lit_corner.r() > dim_corner.r() + 30,
+        "expected upper-right brighter than lower-left by >30, got lit={} dim={}",
+        lit_corner.r(),
+        dim_corner.r(),
+    );
+}
+
+#[test]
+fn shapes_depth_shade_floor_is_at_least_half() {
+    // depth_shade=true scales edges by z. Old formula floored at 0.25
+    // which crushed back edges below visibility on a 64x64 panel.
+    // New floor is 0.5. Dimmest non-zero pixel must be >= 0.5*base.
+    let scene = scene_with(Mode::Shapes(ShapesScene {
+        kind: ShapeKind::Cube,
+        color: Rgb { r: 255, g: 0, b: 0 },
+        speed: 1.0,
+        depth_shade: true,
+        opacity: 0.0,
+    }));
+    let mut canvas = MockCanvas::new(W, H);
+    render(&scene, 20, &mut canvas).unwrap();
+    let mut min_r = 255_u8;
+    let mut any_lit = false;
+    for y in 0..H {
+        for x in 0..W {
+            let p = canvas.at(x, y);
+            let v = p.r();
+            if v > 0 {
+                any_lit = true;
+                if v < min_r {
+                    min_r = v;
+                }
+            }
+        }
+    }
+    assert!(any_lit, "depth_shade wireframe should render at least one edge");
+    assert!(
+        min_r >= 120,
+        "depth_shade floor should be >= 0.5*255=127, got min R={min_r}",
+    );
+}
+
+#[test]
 fn shapes_speed_clamp_doesnt_panic() {
     // Pathological speeds (NaN, infinity, zero, negative) shouldn't
     // panic the renderer — driver clamps to [0.05, 16] but the
