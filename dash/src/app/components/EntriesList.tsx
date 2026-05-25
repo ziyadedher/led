@@ -14,11 +14,21 @@ export function EntriesList() {
   const entriesData = entries.get.useSWR(panelId);
   const scrollData = entries.scroll.get.useSWR(panelId);
 
-  // While a drag/reorder/delete is in flight we render the optimistic
-  // list; once the round-trip completes we drop back to server-driven
-  // by setting it null. Avoids the setState-in-effect anti-pattern.
-  const [optimistic, setOptimistic] = useState<TextEntryItem[] | null>(null);
-  const items = optimistic ?? entriesData.data?.entries ?? [];
+  // Local order is held ONLY while a drag is in progress (framer-motion
+  // needs a stable `values` array to animate against mid-drag). On drag
+  // end we commit once; otherwise we render straight from the SWR cache,
+  // whose optimistic update is owned by actions.ts.
+  const [dragOrder, setDragOrder] = useState<TextEntryItem[] | null>(null);
+  // Inline error surfaced when a reorder/delete round-trip fails. The
+  // optimistic cache rolls back in actions.ts; this tells the user why
+  // the list snapped back.
+  const [actionError, setActionError] = useState<string | null>(null);
+  // Row pending delete confirmation — a first click arms it, a second
+  // (or the explicit confirm button) commits. Guards against fat-finger
+  // deletes from the tiny per-row control.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const serverItems = entriesData.data?.entries ?? [];
+  const items = dragOrder ?? serverItems;
 
   if (entriesData.isLoading) {
     return <Empty muted>loading messages ···</Empty>;
@@ -48,27 +58,44 @@ export function EntriesList() {
   const scroll = scrollData.data?.scroll ?? 0;
   const visibleCount = Math.min(VISIBLE_SLOTS, items.length - scroll);
 
-  const handleReorder = async (next: TextEntryItem[]) => {
-    setOptimistic(next);
+  // During a drag framer-motion fires onReorder on every intermediate
+  // position. We only stash the new order locally here — committing on
+  // each move spammed N parallel UPDATEs per pixel of travel.
+  const handleReorder = (next: TextEntryItem[]) => {
+    setDragOrder(next);
+  };
+
+  // Commit the final order exactly once when the drag settles. Compare
+  // against the server order so a click (no actual move) is a no-op.
+  const handleReorderCommit = async () => {
+    const next = dragOrder;
+    if (!next) return;
+    const serverIds = serverItems.map((e) => e.id).join(",");
+    const nextIds = next.map((e) => e.id);
+    if (nextIds.join(",") === serverIds) {
+      setDragOrder(null);
+      return;
+    }
+    setActionError(null);
     try {
-      await entries.reorder.call(
-        panelId,
-        next.map((e) => e.id),
-      );
-      await entriesData.mutate({ entries: next });
+      await entries.reorder.call(panelId, nextIds);
+    } catch {
+      // actions.ts already rolled back the optimistic cache; tell the
+      // user why the list jumped back.
+      setActionError("reorder failed · order restored");
     } finally {
-      setOptimistic(null);
+      // Drop back to the (now-authoritative or rolled-back) SWR cache.
+      setDragOrder(null);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    const next = items.filter((e) => e.id !== id);
-    setOptimistic(next);
+  const handleDelete = async (entry: TextEntryItem) => {
+    setConfirmingId(null);
+    setActionError(null);
     try {
-      await entries.delete.call(panelId, id);
-      await entriesData.mutate({ entries: next });
-    } finally {
-      setOptimistic(null);
+      await entries.delete.call(panelId, entry.id);
+    } catch {
+      setActionError(`delete failed · "${entry.data.text}" restored`);
     }
   };
 
@@ -93,6 +120,16 @@ export function EntriesList() {
           </span>
         </span>
       </div>
+
+      {actionError ? (
+        <p
+          role="alert"
+          className="border border-(--color-danger)/40 bg-(--color-danger)/5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-danger)"
+        >
+          {actionError}
+        </p>
+      ) : null}
+
       <Reorder.Group
         axis="y"
         values={items}
@@ -106,6 +143,9 @@ export function EntriesList() {
               <Reorder.Item
                 key={entry.id}
                 value={entry}
+                // Commit the final order once the drag settles, not on
+                // every intermediate onReorder move.
+                onDragEnd={() => void handleReorderCommit()}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -178,18 +218,47 @@ export function EntriesList() {
                   </span>
                 )}
 
-                <motion.button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={() => handleDelete(entry.id)}
-                  // Touch devices don't fire :hover, so the
-                  // group-hover gate would render the button
-                  // unreachable; show it always there.
-                  className="shrink-0 cursor-pointer p-1 text-(--color-text-faint) transition-colors hover:text-(--color-danger) sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-                  aria-label="Delete"
-                >
-                  <TrashIcon className="h-3 w-3" />
-                </motion.button>
+                {confirmingId === entry.id ? (
+                  // Two-step confirm: avoids an irreversible delete from
+                  // a single mis-tap on the small per-row control.
+                  <span className="flex shrink-0 items-center gap-1">
+                    <motion.button
+                      type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={() => void handleDelete(entry)}
+                      className="flex min-h-8 cursor-pointer items-center border border-(--color-danger)/50 bg-(--color-danger)/10 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.2em] text-(--color-danger) transition-colors hover:bg-(--color-danger)/20"
+                      aria-label={`Confirm delete message "${entry.data.text}"`}
+                    >
+                      delete
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={() => setConfirmingId(null)}
+                      className="flex min-h-8 cursor-pointer items-center px-2 py-1 font-mono text-[9px] uppercase tracking-[0.2em] text-(--color-text-faint) transition-colors hover:text-(--color-text)"
+                      aria-label="Cancel delete"
+                    >
+                      cancel
+                    </motion.button>
+                  </span>
+                ) : (
+                  <motion.button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={() => {
+                      setActionError(null);
+                      setConfirmingId(entry.id);
+                    }}
+                    // Touch devices don't fire :hover, so the
+                    // group-hover gate would render the button
+                    // unreachable; show it always there. 32px min hit
+                    // target for touch (the icon stays small).
+                    className="flex min-h-8 min-w-8 shrink-0 cursor-pointer items-center justify-center text-(--color-text-faint) transition-colors hover:text-(--color-danger) sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                    aria-label={`Delete message "${entry.data.text}"`}
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </motion.button>
+                )}
               </Reorder.Item>
             );
           })}

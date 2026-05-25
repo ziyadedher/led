@@ -1,6 +1,9 @@
 "use client";
 
-const FORCE_MARQUEE_THRESHOLD = 12;
+/** Single source of truth: at/above this length the marquee is
+ * auto-enabled (a static message this long won't fit the panel).
+ * page.tsx imports this so the force-enable threshold can't drift. */
+export const FORCE_ENABLE_MARQUEE_LENGTH = 12;
 const MAX_SPEED = 50;
 
 export type EffectsState = {
@@ -16,7 +19,7 @@ export function EffectsPanel({
   onChange: (e: EffectsState) => void;
   messageLength: number;
 }) {
-  const isForced = messageLength >= FORCE_MARQUEE_THRESHOLD;
+  const isForced = messageLength >= FORCE_ENABLE_MARQUEE_LENGTH;
   const min = isForced ? 1 : 0;
   // Defensive: never render below `min`.
   const displayValue = isForced ? Math.max(value.marqueeSpeed, min) : value.marqueeSpeed;
@@ -61,5 +64,3 @@ export function EffectsPanel({
     </div>
   );
 }
-
-export const FORCE_ENABLE_MARQUEE_LENGTH = FORCE_MARQUEE_THRESHOLD;
