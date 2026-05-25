@@ -11,7 +11,8 @@ use crate::telemetry::Metrics;
 
 const HEARTBEAT_PERIOD: Duration = Duration::from_secs(30);
 
-#[derive(PartialEq, Eq, Clone, Debug, Default, Deserialize, Serialize)]
+// Not `Eq`: `Panel` carries an f32 brightness.
+#[derive(PartialEq, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct State {
     /// Panel configuration.
     pub panel: Panel,

@@ -32,7 +32,10 @@ pub use display_core::{
 
 /// Driver-side panel: the renderer-relevant subset (scroll, pause,
 /// flash, mode) plus the DB fields we keep around for sync.
-#[derive(PartialEq, Eq, Clone, Debug, Default, Deserialize, Serialize)]
+// Not `Eq`: `brightness` is an f32. Manual `Default` so brightness
+// defaults to full (1.0), not 0.0 — a derived default would render the
+// pre-first-fetch boot screen black.
+#[derive(PartialEq, Clone, Debug, Deserialize, Serialize)]
 pub struct Panel {
     /// Unique identifier of the panel.
     #[serde(skip_serializing)]
@@ -62,6 +65,31 @@ pub struct Panel {
     /// jsonb; per-mode helpers parse the relevant subset.
     #[serde(default)]
     pub mode_config: JsonValue,
+    /// Final brightness multiplier in [0, 1] applied to every pixel.
+    /// Defaults to full for rows predating the column.
+    #[serde(default = "default_brightness")]
+    pub brightness: f32,
+}
+
+fn default_brightness() -> f32 {
+    1.0
+}
+
+impl Default for Panel {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: String::new(),
+            scroll: 0,
+            is_paused: false,
+            is_off: false,
+            flash: FlashState::default(),
+            last_updated: String::new(),
+            mode: String::new(),
+            mode_config: JsonValue::default(),
+            brightness: 1.0,
+        }
+    }
 }
 
 pub async fn drive(
@@ -91,6 +119,7 @@ pub async fn drive(
                 is_paused: snapshot.panel.is_paused,
                 is_off: snapshot.panel.is_off,
                 flash: snapshot.panel.flash.clone(),
+                brightness: snapshot.panel.brightness,
             };
             let mode = build_mode(
                 &snapshot,

@@ -114,14 +114,6 @@ export function StatusBar({
         />
 
         <span aria-hidden className="hidden flex-1 md:block" />
-
-        {/* Right-aligned hint plate */}
-        <div className="hidden items-center gap-1 px-3 font-mono text-[9px] leading-none uppercase tracking-[0.25em] text-(--color-text-faint) md:flex">
-          <kbd className="border border-(--color-border) bg-(--color-surface)/60 px-1.5 py-0.5">
-            ↵
-          </kbd>
-          <span>transmit</span>
-        </div>
       </div>
     </footer>
   );

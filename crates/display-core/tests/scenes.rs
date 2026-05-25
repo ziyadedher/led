@@ -484,6 +484,76 @@ fn shapes_speed_clamp_doesnt_panic() {
     }
 }
 
+/* ─── brightness ─────────────────────────────────────────────────── */
+
+fn channel_sum(c: &MockCanvas) -> u64 {
+    c.pixels
+        .iter()
+        .map(|p| u64::from(p.r()) + u64::from(p.g()) + u64::from(p.b()))
+        .sum()
+}
+
+#[test]
+fn brightness_scales_output_linearly() {
+    let render_at = |brightness: f32| {
+        let mut scene = scene_with(Mode::Test(TestScene {
+            pattern: TestPattern::ColorBars,
+        }));
+        scene.panel.brightness = brightness;
+        let mut canvas = MockCanvas::new(W, H);
+        render(&scene, 0, &mut canvas).unwrap();
+        channel_sum(&canvas)
+    };
+    let full = render_at(1.0);
+    let half = render_at(0.5);
+    assert!(full > 0, "color bars at full brightness should light pixels");
+    let ratio = half as f64 / full as f64;
+    assert!(
+        (0.45..=0.55).contains(&ratio),
+        "half brightness should ~halve total output, got ratio {ratio:.3}",
+    );
+}
+
+#[test]
+fn brightness_default_is_full() {
+    // A scene with no brightness set (Default / missing JSON field) must
+    // render at full brightness, not black.
+    let mut explicit = scene_with(Mode::Test(TestScene {
+        pattern: TestPattern::ColorBars,
+    }));
+    explicit.panel.brightness = 1.0;
+    let mut c_explicit = MockCanvas::new(W, H);
+    render(&explicit, 0, &mut c_explicit).unwrap();
+
+    let defaulted = scene_with(Mode::Test(TestScene {
+        pattern: TestPattern::ColorBars,
+    })); // panel via PanelState::default()
+    let mut c_default = MockCanvas::new(W, H);
+    render(&defaulted, 0, &mut c_default).unwrap();
+
+    assert_eq!(channel_sum(&c_explicit), channel_sum(&c_default));
+}
+
+#[test]
+fn brightness_zero_is_black() {
+    let mut scene = scene_with(Mode::Test(TestScene {
+        pattern: TestPattern::ColorBars,
+    }));
+    scene.panel.brightness = 0.0;
+    let mut canvas = MockCanvas::new(W, H);
+    render(&scene, 0, &mut canvas).unwrap();
+    assert_eq!(canvas.lit_count(), 0, "brightness 0 should render black");
+}
+
+#[test]
+fn brightness_missing_json_field_defaults_full() {
+    // Old persisted scenes (and the dash before it sends brightness)
+    // omit the field; serde must default it to 1.0, not 0.0.
+    let json = r#"{"mode":{"Test":{"pattern":"ColorBars"}},"panel":{"is_paused":false,"is_off":false,"flash":{"is_active":false,"on_steps":0,"total_steps":0}}}"#;
+    let scene: Scene = serde_json::from_str(json).unwrap();
+    assert_eq!(scene.panel.brightness, 1.0);
+}
+
 /* ─── gif ────────────────────────────────────────────────────────── */
 
 #[test]
