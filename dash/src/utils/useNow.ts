@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
 
 /**
@@ -12,10 +13,13 @@ import useSWR from "swr";
  * at the same interval share a single timer + render trigger.
  */
 export function useNow(intervalMs: number): number {
-  const { data } = useSWR(
-    `__now/${intervalMs}`,
-    () => Date.now(),
-    { refreshInterval: intervalMs, dedupingInterval: 0 },
-  );
-  return data ?? Date.now();
+  // Lazy initial keeps `Date.now()` out of the render body (it runs
+  // once, in the initializer) and seeds SWR's fallback so the first
+  // paint has a real timestamp.
+  const [initialNow] = useState(() => Date.now());
+  const { data } = useSWR(`__now/${intervalMs}`, () => Date.now(), {
+    refreshInterval: intervalMs,
+    fallbackData: initialNow,
+  });
+  return data;
 }
