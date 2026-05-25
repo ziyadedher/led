@@ -9,3 +9,6 @@ embedded-graphics.workspace = true
 # of Arc-wrapped Mode payloads, the trick that lets the driver's
 # cache hand out cheap Arc clones instead of 720KB Vec memcpys.
 serde = { workspace = true, features = ["rc"] }
+
+[dev-dependencies]
+serde_json.workspace = true

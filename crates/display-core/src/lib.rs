@@ -15,6 +15,7 @@ use embedded_graphics::{
     pixelcolor::Rgb888,
     prelude::*,
     primitives::{PrimitiveStyleBuilder, Rectangle},
+    Pixel,
 };
 use serde::{Deserialize, Serialize};
 
@@ -37,11 +38,33 @@ pub struct FlashState {
 /// renderer runs. `is_off` short-circuits the dispatch entirely
 /// (panel renders fully black) without disturbing the configured
 /// mode — flipping back gives you the same scene you left.
-#[derive(PartialEq, Eq, Clone, Debug, Default, Deserialize, Serialize)]
+/// `brightness` is a final 0.0–1.0 multiplier applied to every pixel.
+// Not `Eq`: `brightness` is an f32.
+#[derive(PartialEq, Clone, Debug, Deserialize, Serialize)]
 pub struct PanelState {
     pub is_paused: bool,
     pub is_off: bool,
     pub flash: FlashState,
+    /// Final brightness multiplier in [0, 1] applied to every pixel
+    /// before output. 1.0 = full. Missing in older persisted scenes,
+    /// so it defaults to full rather than black.
+    #[serde(default = "full_brightness")]
+    pub brightness: f32,
+}
+
+fn full_brightness() -> f32 {
+    1.0
+}
+
+impl Default for PanelState {
+    fn default() -> Self {
+        Self {
+            is_paused: false,
+            is_off: false,
+            flash: FlashState::default(),
+            brightness: 1.0,
+        }
+    }
 }
 
 /// Tagged union over render modes. Externally-tagged so JSON looks
@@ -95,6 +118,26 @@ where
         return Ok(());
     }
 
+    let brightness = frame.panel.brightness.clamp(0.0, 1.0);
+    if brightness >= 0.999 {
+        dispatch(frame, step, canvas)
+    } else {
+        // Render through a wrapper that scales every drawn pixel.
+        // embedded-graphics' fill_*/clear default impls all route
+        // through draw_iter, so this catches every mode + the flash
+        // overlay without each renderer knowing about brightness.
+        let mut dimmed = BrightnessTarget {
+            inner: canvas,
+            scale: brightness,
+        };
+        dispatch(frame, step, &mut dimmed)
+    }
+}
+
+fn dispatch<D>(frame: &Scene, step: usize, canvas: &mut D) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888> + OriginDimensions,
+{
     match &frame.mode {
         Mode::Text(t) => text::render(t, step, canvas)?,
         Mode::Clock(c) => clock::render(c, canvas)?,
@@ -106,9 +149,48 @@ where
         Mode::Boot(b) => boot::render(b, step, canvas)?,
         Mode::Setup(s) => setup::render(s, step, canvas)?,
     }
-
     apply_flash(canvas, &frame.panel, step)?;
     Ok(())
+}
+
+/// `DrawTarget` wrapper that scales every pixel's color by `scale`
+/// before forwarding to the real canvas. Used to apply the panel's
+/// global brightness as a final multiply.
+struct BrightnessTarget<'a, D> {
+    inner: &'a mut D,
+    scale: f32,
+}
+
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_sign_loss)]
+impl<D> DrawTarget for BrightnessTarget<'_, D>
+where
+    D: DrawTarget<Color = Rgb888> + OriginDimensions,
+{
+    type Color = Rgb888;
+    type Error = D::Error;
+
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = Pixel<Rgb888>>,
+    {
+        let s = self.scale;
+        let scale = |c: u8| (f32::from(c) * s) as u8;
+        self.inner.draw_iter(
+            pixels
+                .into_iter()
+                .map(|Pixel(p, c)| Pixel(p, Rgb888::new(scale(c.r()), scale(c.g()), scale(c.b())))),
+        )
+    }
+}
+
+impl<D> OriginDimensions for BrightnessTarget<'_, D>
+where
+    D: OriginDimensions,
+{
+    fn size(&self) -> Size {
+        self.inner.size()
+    }
 }
 
 fn apply_flash<D>(canvas: &mut D, panel: &PanelState, step: usize) -> Result<(), D::Error>

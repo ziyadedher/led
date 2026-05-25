@@ -420,10 +420,11 @@ dependencies = [
 
 [[package]]
 name = "display-core"
-version = "1.1.5"
+version = "1.1.6"
 dependencies = [
  "embedded-graphics",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -934,7 +935,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "led-driver"
-version = "1.1.5"
+version = "1.1.6"
 dependencies = [
  "anyhow",
  "chrono",
@@ -968,7 +969,7 @@ dependencies = [
 
 [[package]]
 name = "led-wifi-setup"
-version = "1.1.5"
+version = "1.1.6"
 dependencies = [
  "anyhow",
  "axum",

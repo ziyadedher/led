@@ -230,6 +230,19 @@ export const panels = {
         .throwOnError();
     },
   },
+
+  setBrightness: {
+    call: async (panelId: string, brightness: number) => {
+      await supabase
+        .from("panels")
+        .update({
+          brightness: Math.max(0, Math.min(1, brightness)),
+          last_updated: new Date().toISOString(),
+        })
+        .eq("id", panelId)
+        .throwOnError();
+    },
+  },
 };
 
 export const entries = {

@@ -3,6 +3,7 @@
 import { PowerIcon } from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { BrightnessControl } from "@/app/components/BrightnessControl";
 import { Composer } from "@/app/components/Composer";
 import { type ColorState } from "@/app/components/ColorPicker";
 import { CornerBracket } from "@/app/components/ComposerShell";
@@ -198,9 +199,8 @@ export default function Page() {
 
   return (
     <PanelContext.Provider value={panelId}>
-      <div className="mx-auto flex min-h-dvh max-w-6xl flex-col gap-5 px-4 pb-12 sm:px-6 lg:px-10">
-        <InstrumentHeader realtimeStatus={realtimeStatus} />
-
+      <InstrumentHeader realtimeStatus={realtimeStatus} />
+      <div className="mx-auto flex min-h-dvh max-w-6xl flex-col gap-5 px-4 pt-5 pb-12 sm:px-6 lg:px-10">
         {/* ─── instrument: matrix simulator ──────────────────────── */}
         {/* This section is the tabpanel the PanelSwitcher tabs drive
           * (each tab's aria-controls points at PANEL_CONTENT_ID). When a
@@ -229,6 +229,16 @@ export default function Page() {
 
               <span aria-hidden className="flex-1" />
 
+              {/* Global brightness fader — final multiply, alongside
+                * the pause/off transport. */}
+              {panelId.length > 0 ? (
+                <BrightnessControl
+                  panelId={panelId}
+                  brightness={activePanel?.brightness ?? 1}
+                  disabled={activePanelOffline}
+                />
+              ) : null}
+
               {/* Pause / Live transport button */}
               {panelId.length > 0 ? (
                 <button
@@ -244,12 +254,12 @@ export default function Page() {
                   }
                   title={`last seen ${relativeTime(activePanel?.last_seen, now)} · click to ${activePanel?.is_paused ? "resume" : "pause"}`}
                   className={[
-                    "flex items-center gap-2 border-l border-(--color-border) px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] transition-colors",
+                    "flex items-center gap-2 border-l border-(--color-border) bg-(--color-surface-2)/60 px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] transition-colors active:brightness-90",
                     activePanel?.is_paused
-                      ? "bg-(--color-accent)/10 text-(--color-accent)"
+                      ? "text-(--color-accent) hover:bg-(--color-accent)/20"
                       : activePanelOffline
-                        ? "text-(--color-danger)"
-                        : "text-(--color-phosphor) hover:bg-(--color-surface-2)",
+                        ? "text-(--color-danger) hover:bg-(--color-surface-3)"
+                        : "text-(--color-phosphor) hover:bg-(--color-surface-3)",
                   ].join(" ")}
                 >
                   <span
@@ -304,12 +314,12 @@ export default function Page() {
                       : "click to turn off (panel goes dark; mode + queue preserved)"
                   }
                   className={[
-                    "flex items-center gap-2 border-l border-(--color-border) px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] transition-colors",
+                    "flex items-center gap-2 border-l border-(--color-border) bg-(--color-surface-2)/60 px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] transition-colors active:brightness-90",
                     activePanel?.is_off
-                      ? "bg-(--color-danger)/10 text-(--color-danger)"
+                      ? "text-(--color-danger) hover:bg-(--color-danger)/20"
                       : activePanelOffline
-                        ? "text-(--color-text-faint)"
-                        : "text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
+                        ? "text-(--color-text-faint) hover:bg-(--color-surface-3)"
+                        : "text-(--color-text-muted) hover:bg-(--color-surface-3) hover:text-(--color-text)",
                   ].join(" ")}
                 >
                   <PowerIcon aria-hidden className="h-3.5 w-3.5" />
@@ -342,6 +352,7 @@ export default function Page() {
                   mode={modeFrame}
                   isPaused={activePanel?.is_paused ?? false}
                   isOff={activePanel?.is_off ?? false}
+                  brightness={activePanel?.brightness ?? 1}
                 />
               ) : (
                 // No panels registered — an offline simulator here would

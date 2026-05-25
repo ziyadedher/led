@@ -43,6 +43,7 @@ export type Database = {
       };
       panels: {
         Row: {
+          brightness: number;
           created_at: string;
           description: string;
           driver_version: string | null;
@@ -58,6 +59,7 @@ export type Database = {
           scroll: number;
         };
         Insert: {
+          brightness?: number;
           created_at?: string;
           description?: string;
           driver_version?: string | null;
@@ -73,6 +75,7 @@ export type Database = {
           scroll?: number;
         };
         Update: {
+          brightness?: number;
           created_at?: string;
           description?: string;
           driver_version?: string | null;

@@ -30,6 +30,7 @@ type Scene = {
   panel: {
     is_paused: boolean;
     is_off: boolean;
+    brightness: number;
     flash: { is_active: boolean; on_steps: number; total_steps: number };
   };
 };
@@ -166,6 +167,7 @@ export function MatrixPreview({
   offline,
   isPaused = false,
   isOff = false,
+  brightness = 1,
 }: {
   mode: Mode;
   offline?: boolean;
@@ -175,6 +177,8 @@ export function MatrixPreview({
   /** Whether the panel is "off". Render short-circuits to black —
    * mirrors the Pi driver. Composes with isPaused. */
   isOff?: boolean;
+  /** Final 0–1 brightness multiplier, mirrors the Pi driver. */
+  brightness?: number;
 }) {
   const panelId = useContext(PanelContext);
   const entriesData = entriesActions.get.useSWR(panelId);
@@ -256,9 +260,9 @@ export function MatrixPreview({
       : mode;
     return {
       mode: expanded,
-      panel: { is_paused: isPaused, is_off: isOff, flash: FLASH_OFF },
+      panel: { is_paused: isPaused, is_off: isOff, brightness, flash: FLASH_OFF },
     };
-  }, [items, mode, scroll, isPaused, isOff]);
+  }, [items, mode, scroll, isPaused, isOff, brightness]);
 
   // Whether the active mode produces motion. Static modes (image,
   // test) and an empty/blank text panel never advance, so once their
@@ -613,7 +617,7 @@ export function MatrixPreview({
 // push effect. Everything else is fully captured by this key.
 function structuralKey(frame: Scene): string {
   const { panel, mode } = frame;
-  const p = `${panel.is_paused ? 1 : 0}${panel.is_off ? 1 : 0}`;
+  const p = `${panel.is_paused ? 1 : 0}${panel.is_off ? 1 : 0}b${panel.brightness}`;
   if ("Text" in mode) {
     const t = mode.Text;
     const entries = t.entries

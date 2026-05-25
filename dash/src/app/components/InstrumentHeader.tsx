@@ -31,10 +31,10 @@ export function InstrumentHeader({
 
   return (
     <header
-      className="bezel-recessed sticky top-0 z-20 -mx-4 mb-4 border-b border-(--color-border) bg-(--color-bg)/90 px-4 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10"
+      className="bezel-recessed sticky top-0 z-20 border-b border-(--color-border) bg-(--color-bg)/90 backdrop-blur-sm"
       aria-label="Control surface header"
     >
-      <div className="mx-auto flex h-12 max-w-6xl items-center gap-4">
+      <div className="mx-auto flex h-12 max-w-6xl items-center gap-4 border-x border-(--color-border) px-4 sm:px-6 lg:px-10">
         {/* Identity plate. flex items-center, not items-baseline,
          * because the pixel font has different metrics from the mono
          * tag and would visually drift on baseline alignment. */}

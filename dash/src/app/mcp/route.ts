@@ -76,6 +76,7 @@ const summarisePanel = (
   mode: p.mode,
   is_paused: p.is_paused,
   is_off: p.is_off,
+  brightness: p.brightness,
   online: isOnline(p.last_seen),
   last_seen: p.last_seen,
   last_updated: p.last_updated,
@@ -641,6 +642,39 @@ const handler = createMcpHandler(
     );
 
     server.registerTool(
+      "set_brightness",
+      {
+        title: "Set a panel's global brightness",
+        description:
+          "Set the panel's global brightness: a final 0–1 multiplier the driver applies to every pixel, independent of mode and composing with set_paused / set_off. 1 = full, 0 = black. Useful for dimming a panel at night without changing its scene.",
+        inputSchema: {
+          name: z.string().min(1).describe("Panel name."),
+          brightness: z
+            .number()
+            .min(0)
+            .max(1)
+            .describe("Brightness multiplier in [0, 1]. 1 = full, 0 = black."),
+        },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      async ({ name, brightness }) => {
+        const panel = await panelByName(name);
+        if (!panel) return err(`No panel named '${name}'. Try list_panels.`);
+        await supabase
+          .from("panels")
+          .update({ brightness, last_updated: new Date().toISOString() })
+          .eq("id", panel.id)
+          .throwOnError();
+        return ok({ name, brightness });
+      },
+    );
+
+    server.registerTool(
       "clear_messages",
       {
         title: "Clear the text queue",
@@ -821,6 +855,7 @@ export async function GET(): Promise<Response> {
     <li><code>paint_pixels</code> — set 64×64 pixel art via sparse (x,y,r,g,b) list</li>
     <li><code>set_paused</code> — freeze/resume render loop</li>
     <li><code>set_off</code> — power-toggle: render fully black, mode + queue preserved</li>
+    <li><code>set_brightness</code> — global 0–1 brightness multiplier</li>
     <li><code>clear_messages</code> — wipe text queue</li>
     <li><code>delete_message</code> — remove one entry</li>
     <li><code>reorder_messages</code> — reshuffle the queue</li>
