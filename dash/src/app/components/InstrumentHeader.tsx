@@ -70,7 +70,7 @@ export function InstrumentHeader({
           <Telemetry
             label="off"
             value={pad(stats.off)}
-            tone={stats.off > 0 ? "dim" : "dim"}
+            tone={stats.off > 0 ? "warn" : "dim"}
           />
         </div>
 

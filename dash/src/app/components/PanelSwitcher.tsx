@@ -1,20 +1,29 @@
 "use client";
 
 import { PowerIcon } from "@heroicons/react/24/outline";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 
 import { panels } from "@/utils/actions";
 import { isOffline, relativeTime } from "@/utils/offline";
 import { useNow } from "@/utils/useNow";
 
-type VersionState = "current" | "stale" | "dirty" | "unreported";
+/**
+ * The id of the content region these tabs drive — the matrix
+ * simulator section in page.tsx. Each tab's `aria-controls` points
+ * here so AT announces the tab/panel relationship. page.tsx must
+ * carry the matching `id={PANEL_CONTENT_ID}` + `role="tabpanel"`.
+ */
+export const PANEL_CONTENT_ID = "panel-content";
+
+type VersionState = "current" | "stale" | "dirty" | "legacy" | "unreported";
 
 type SemverTriple = [number, number, number];
 
 /** Parse a leading `MAJOR.MINOR.PATCH` triple, ignoring any trailing
  * label. Returns `null` for legacy git-SHA versions that don't match
  * the shape — those aren't comparable, so we skip them in the max
- * search and treat them as `current` at classify time. */
+ * search and flag them as `legacy` (not `current`) at classify time
+ * so a stale old build can't masquerade as up-to-date. */
 function parseSemver(v: string): SemverTriple | null {
   const cleaned = v.replace(/-dirty$/, "");
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(cleaned);
@@ -45,12 +54,42 @@ function classifyVersions(versions: (string | null)[]): VersionState[] {
     if (v == null) return "unreported";
     if (v.endsWith("-dirty")) return "dirty";
     const parsed = parseSemver(v);
-    // Legacy git-SHA versions can't be ordered against semvers, so
-    // we don't claim they're stale — show them as-is and let the
-    // user reflash if they care.
-    if (!parsed || !max) return "current";
+    // Legacy git-SHA (or otherwise non-semver) versions can't be
+    // ordered against semvers. Don't silently call them `current` —
+    // a stale old build would masquerade as up-to-date. Surface them
+    // as `legacy` so the user knows the version is unverified.
+    if (!parsed) return "legacy";
+    // No parseable fleet-max to compare against → can't prove stale.
+    if (!max) return "current";
     return cmpSemver(parsed, max) < 0 ? "stale" : "current";
   });
+}
+
+/** Short human label for a panel's operational state, used for both
+ * the visible chip and the consolidated accessible name. Mirrors the
+ * lamp priority: offline (truth check) → off → paused → live. */
+function stateLabel(p: {
+  is_off: boolean;
+  is_paused: boolean;
+}): "offline" | "off" | "paused" | "live" {
+  return p.is_off ? "off" : p.is_paused ? "paused" : "live";
+}
+
+/** Trailing version clause for the accessible name. Keeps state out
+ * of color alone — every distinction is also spelled in text. */
+function versionClause(version: string | null, state: VersionState): string {
+  switch (state) {
+    case "unreported":
+      return "version not reported";
+    case "legacy":
+      return version ? `legacy build ${version}` : "legacy build";
+    case "dirty":
+      return version ? `dirty build ${version}` : "dirty build";
+    case "stale":
+      return version ? `stale, driver ${version}` : "stale";
+    case "current":
+      return version ? `driver ${version}` : "driver up to date";
+  }
 }
 
 export function PanelSwitcher({
@@ -67,9 +106,44 @@ export function PanelSwitcher({
     [list],
   );
 
+  // Refs to each tab button, so arrow-key navigation can move DOM
+  // focus to the newly-selected tab (roving tabindex pattern).
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
   // Cheap re-render every 5s so the offline badge rolls over
   // without a fresh data pull.
   const now = useNow(5_000);
+
+  // ARIA tab pattern: arrow keys move selection (and focus) between
+  // tabs; Home/End jump to the ends. Selection follows focus, which
+  // matches a single-content-region switcher.
+  const onKeyDown = (e: React.KeyboardEvent, index: number) => {
+    let next: number | null = null;
+    switch (e.key) {
+      case "ArrowDown":
+      case "ArrowRight":
+        next = (index + 1) % list.length;
+        break;
+      case "ArrowUp":
+      case "ArrowLeft":
+        next = (index - 1 + list.length) % list.length;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = list.length - 1;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    const target = list[next];
+    if (target) {
+      onChange(target.id);
+      tabRefs.current[next]?.focus();
+    }
+  };
 
   return (
     <div className="flex flex-col gap-2 font-mono text-[11px]">
@@ -103,6 +177,9 @@ export function PanelSwitcher({
           const versionState = versionStates[i];
           const offline = isOffline(p.last_seen, now);
           const heartbeatLabel = `last seen ${relativeTime(p.last_seen, now)}`;
+          // `offline` is a derived liveness truth-check that overrides
+          // the panel's reported on/off/paused state in the label.
+          const state = offline ? "offline" : stateLabel(p);
           const tooltip = [
             p.description || p.name,
             heartbeatLabel,
@@ -111,6 +188,13 @@ export function PanelSwitcher({
           ]
             .filter(Boolean)
             .join(" · ");
+
+          // One clean accessible name per tab: "<name> — <state>,
+          // <version clause>". State is always spelled out (never
+          // color-only); offline drops the version clause as moot.
+          const accessibleName = offline
+            ? `${p.name} — offline, ${heartbeatLabel}`
+            : `${p.name} — ${state}, ${versionClause(p.driver_version, versionState)}`;
 
           // Status indicator: phosphor lamp for live-active, dim for
           // off, amber for paused, danger for offline, dim for
@@ -129,8 +213,17 @@ export function PanelSwitcher({
           return (
             <button
               key={p.id}
+              ref={(el) => {
+                tabRefs.current[i] = el;
+              }}
               role="tab"
+              type="button"
+              id={`panel-tab-${p.id}`}
               aria-selected={active}
+              aria-controls={PANEL_CONTENT_ID}
+              aria-label={accessibleName}
+              tabIndex={active ? 0 : -1}
+              onKeyDown={(e) => onKeyDown(e, i)}
               onClick={() => onChange(p.id)}
               className={[
                 "group relative flex flex-col gap-0.5 border-l-2 px-2 py-1.5 text-left transition-colors",
@@ -184,25 +277,28 @@ export function PanelSwitcher({
                   {p.name}
                 </span>
 
-                {/* Right-side state chips */}
+                {/* Right-side state chips. Decorative — the tab's
+                 * `aria-label` carries the canonical state, so these
+                 * are hidden from AT to avoid a muddy double-read. */}
                 {p.is_off ? (
                   <PowerIcon
-                    aria-label="off"
-                    title={`off · ${heartbeatLabel}`}
+                    aria-hidden
                     className="h-3 w-3 shrink-0 text-(--color-text-faint)"
                   />
                 ) : null}
                 {p.is_paused ? (
                   <span
-                    aria-label="paused"
-                    title={`paused · ${heartbeatLabel}`}
+                    aria-hidden
                     className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-(--color-amber)/80"
                   >
                     ❚❚
                   </span>
                 ) : null}
                 {offline ? (
-                  <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-(--color-danger)/80">
+                  <span
+                    aria-hidden
+                    className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-(--color-danger)/80"
+                  >
                     offline
                   </span>
                 ) : null}
@@ -240,12 +336,14 @@ function VersionTag({
     current: "text-(--color-text-faint)",
     stale: "text-(--color-danger)/80",
     dirty: "text-(--color-amber)/80",
+    legacy: "text-(--color-amber)/80",
     unreported: "text-(--color-text-faint)/60",
   };
   const label: Record<VersionState, string> = {
     current: "v",
     stale: "stale",
     dirty: "dirty",
+    legacy: "legacy",
     unreported: "—",
   };
 

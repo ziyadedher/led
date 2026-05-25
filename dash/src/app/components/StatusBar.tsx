@@ -33,12 +33,26 @@ export function StatusBar({
   const queueDepth = useQueueDepth(panelId);
   const versionShort = driverVersion ? driverVersion.slice(0, 10) : "—";
 
+  // Each state carries a non-color glyph in addition to its hue and
+  // the (optional) animated lamp, so paused/offline/transmitting stay
+  // distinguishable for color-blind users and when the lamp is off.
   const beat = isPanelPaused
-    ? { label: "paused", tone: "text-(--color-amber)", lampClass: "" }
+    ? {
+        label: "paused",
+        glyph: "⏸",
+        tone: "text-(--color-amber)",
+        lampClass: "",
+      }
     : offline
-      ? { label: "offline", tone: "text-(--color-danger)", lampClass: "" }
+      ? {
+          label: "offline",
+          glyph: "✕",
+          tone: "text-(--color-danger)",
+          lampClass: "",
+        }
       : {
           label: "transmitting",
+          glyph: "●",
           tone: "text-(--color-phosphor)",
           lampClass: "animate-pulse bg-(--color-phosphor)",
         };
@@ -59,6 +73,16 @@ export function StatusBar({
           label="state"
           value={beat.label}
           valueClass={beat.tone}
+          // role="status" makes this a valid aria-live region (a bare
+          // div + aria-label is aria-prohibited). The visible "state"
+          // label + value carry the accessible name, so it announces
+          // once — no aria-label needed (which would double-announce).
+          role="status"
+          prefix={
+            <span aria-hidden className="mr-1 leading-none">
+              {beat.glyph}
+            </span>
+          }
           suffix={
             beat.lampClass ? (
               <span
@@ -110,7 +134,9 @@ function Cell({
   accent,
   muted,
   mono,
+  prefix,
   suffix,
+  role,
   className,
 }: {
   label: string;
@@ -120,17 +146,25 @@ function Cell({
   muted?: boolean;
   /** When true, render value in mono (raw) instead of pixel font. */
   mono?: boolean;
+  prefix?: React.ReactNode;
   suffix?: React.ReactNode;
+  /** ARIA role for the cell (e.g. "status" for the live state cell).
+   * The visible label + value carry the accessible name, so no
+   * aria-label is set — that would double-announce. */
+  role?: React.AriaRole;
   className?: string;
 }) {
   return (
     <div
+      role={role}
       className={[
         "flex items-center gap-2 px-3",
         className ?? "",
       ].join(" ")}
     >
-      <span className="font-mono text-[9px] leading-none uppercase tracking-[0.3em] text-(--color-text-dim)">
+      <span
+        className="font-mono text-[9px] leading-none uppercase tracking-[0.3em] text-(--color-text-dim)"
+      >
         {label}
       </span>
       <span
@@ -156,6 +190,7 @@ function Cell({
               }
         }
       >
+        {prefix}
         <span className="truncate">{value}</span>
         {suffix}
       </span>
