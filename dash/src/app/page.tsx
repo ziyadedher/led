@@ -2,7 +2,6 @@
 
 import { PowerIcon } from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSWRConfig } from "swr";
 
 import { Composer } from "@/app/components/Composer";
 import { type ColorState } from "@/app/components/ColorPicker";
@@ -14,7 +13,10 @@ import {
 import { EntriesList } from "@/app/components/EntriesList";
 import { InstrumentHeader } from "@/app/components/InstrumentHeader";
 import { MatrixPreview } from "@/app/components/MatrixPreview";
-import { PanelSwitcher } from "@/app/components/PanelSwitcher";
+import {
+  PANEL_CONTENT_ID,
+  PanelSwitcher,
+} from "@/app/components/PanelSwitcher";
 import { StatusBar } from "@/app/components/StatusBar";
 import { PanelContext } from "@/app/context";
 import { SCENES } from "@/app/scenes";
@@ -34,7 +36,6 @@ const AUTO_FORCED_DEFAULT = 10;
 
 export default function Page() {
   const realtimeStatus = useRealtimeRevalidation();
-  const { mutate } = useSWRConfig();
   const { data: panelsData } = panels.get.useSWR();
 
   const [chosenPanelId, setChosenPanelId] = useState<string | null>(null);
@@ -52,14 +53,20 @@ export default function Page() {
     setChosenPanelId(null);
   }
   const panelId = chosenPanelId ?? defaultPanelId;
-  const activePanel = panelsData?.find((p) => p.id === panelId);
 
-  // Resolve the active mode against the SCENES registry. Anything
-  // unknown falls through to text mode.
-  const activeMode: PanelMode = MODES.some((m) => m.id === activePanel?.mode)
-    ? (activePanel!.mode as PanelMode)
-    : "text";
+  // Resolve the active panel + its mode in one pass instead of
+  // re-scanning panelsData with find/some/find every render. Unknown
+  // modes fall through to text.
+  const { activePanel, activeMode } = useMemo(() => {
+    const panel = panelsData?.find((p) => p.id === panelId);
+    const mode: PanelMode = MODES.some((m) => m.id === panel?.mode)
+      ? (panel!.mode as PanelMode)
+      : "text";
+    return { activePanel: panel, activeMode: mode };
+  }, [panelsData, panelId]);
   const frame = SCENES[activeMode];
+
+  const hasPanels = (panelsData?.length ?? 0) > 0;
 
   // 1Hz tick for the clock simulator + offline indicator.
   const now = useNow(1_000);
@@ -72,18 +79,39 @@ export default function Page() {
     rgb: { r: 255, g: 138, b: 44 },
   });
   const [effects, setEffects] = useState<EffectsState>({ marqueeSpeed: 0 });
+  const [submitError, setSubmitError] = useState(false);
+
+  // Switching panels starts a fresh composition. Reset composer effects
+  // (so one panel's auto-forced marquee doesn't bleed into the next) and
+  // clear any stale transmit-failure flag — done during render via the
+  // documented "adjust state when a prop changes" pattern (matches the
+  // chosenPanelId reset above), keeping it out of an effect.
+  const [effectsPanelId, setEffectsPanelId] = useState(panelId);
+  if (effectsPanelId !== panelId) {
+    setEffectsPanelId(panelId);
+    setEffects({ marqueeSpeed: 0 });
+    setSubmitError(false);
+  }
 
   const isSubmittable =
     activeMode === "text" && message.length > 0 && panelId.length > 0;
   const isMarqueeForced = message.length >= FORCE_ENABLE_MARQUEE_LENGTH;
 
   const wasForced = useRef(false);
+
   useEffect(() => {
     if (isMarqueeForced && !wasForced.current && effects.marqueeSpeed === 0) {
       setEffects((e) => ({ ...e, marqueeSpeed: AUTO_FORCED_DEFAULT }));
     }
     wasForced.current = isMarqueeForced;
   }, [isMarqueeForced, effects.marqueeSpeed]);
+
+  // Clear the auto-force latch when the panel changes so the next
+  // panel's first long message re-applies the default marquee speed.
+  // (Ref writes belong in an effect, not in render.)
+  useEffect(() => {
+    wasForced.current = false;
+  }, [panelId]);
 
   const effectiveMarqueeSpeed =
     isMarqueeForced && effects.marqueeSpeed === 0
@@ -101,16 +129,26 @@ export default function Page() {
               speed: color.speed,
             },
           };
-    await entries.add.call(panelId, {
-      text: message,
-      options: {
-        color: wireColor,
-        marquee: { speed: effectiveMarqueeSpeed },
-      },
-    });
+    setSubmitError(false);
+    try {
+      // actions.ts inserts optimistically + rolls back on error, so the
+      // queue updates instantly and no manual mutate is needed.
+      await entries.add.call(panelId, {
+        text: message,
+        options: {
+          color: wireColor,
+          marquee: { speed: effectiveMarqueeSpeed },
+        },
+      });
+    } catch (e) {
+      setSubmitError(true);
+      // Re-throw so the Composer keeps the message + skips its
+      // success-only input refocus.
+      throw e;
+    }
+    // Only clear the payload once the transmit is confirmed.
     setMessage("");
-    await mutate(`/entries/${panelId}`);
-  }, [color, message, mutate, panelId, effectiveMarqueeSpeed]);
+  }, [color, message, panelId, effectiveMarqueeSpeed]);
 
   // Parse the active mode's config once per mode_config change. Only
   // the active mode's parser runs.
@@ -163,9 +201,18 @@ export default function Page() {
         <InstrumentHeader realtimeStatus={realtimeStatus} />
 
         {/* ─── instrument: matrix simulator ──────────────────────── */}
+        {/* This section is the tabpanel the PanelSwitcher tabs drive
+          * (each tab's aria-controls points at PANEL_CONTENT_ID). When a
+          * panel is selected we label it by its tab; otherwise a static
+          * label so AT still announces the region. */}
         <section
+          id={PANEL_CONTENT_ID}
+          role="tabpanel"
+          aria-label={hasPanels && panelId ? undefined : "Live simulator"}
+          aria-labelledby={
+            hasPanels && panelId ? `panel-tab-${panelId}` : undefined
+          }
           className="grid gap-4 lg:grid-cols-[1fr_240px]"
-          aria-label="Live simulator"
         >
           <div className="relative">
             {/* Section heading plate — instrument-label feel */}
@@ -288,12 +335,25 @@ export default function Page() {
               <CornerBracket pos="tr" size="lg" />
               <CornerBracket pos="bl" size="lg" />
               <CornerBracket pos="br" size="lg" />
-              <MatrixPreview
-                offline={activePanelOffline}
-                mode={modeFrame}
-                isPaused={activePanel?.is_paused ?? false}
-                isOff={activePanel?.is_off ?? false}
-              />
+              {hasPanels ? (
+                <MatrixPreview
+                  offline={activePanelOffline}
+                  mode={modeFrame}
+                  isPaused={activePanel?.is_paused ?? false}
+                  isOff={activePanel?.is_off ?? false}
+                />
+              ) : (
+                // No panels registered — an offline simulator here would
+                // read as a broken panel rather than an empty fleet.
+                <div className="flex aspect-square w-full flex-col items-center justify-center gap-2 rounded-2xl border border-(--color-border) bg-black text-center font-mono uppercase tracking-[0.3em]">
+                  <span className="text-[11px] text-(--color-text-dim)">
+                    no panels registered
+                  </span>
+                  <span className="text-[9px] text-(--color-text-faint)">
+                    connect a driver to begin
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -316,13 +376,18 @@ export default function Page() {
           <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_1fr]">
             <Composer
               message={message}
-              onMessageChange={setMessage}
+              onMessageChange={(s) => {
+                // Editing the payload clears a stale transmit failure.
+                if (submitError) setSubmitError(false);
+                setMessage(s);
+              }}
               color={color}
               onColorChange={setColor}
               effects={effects}
               onEffectsChange={setEffects}
               onSubmit={handleSubmit}
               disabled={!isSubmittable}
+              transmitFailed={submitError}
             />
             <section
               className="flex min-h-0 flex-col gap-3"

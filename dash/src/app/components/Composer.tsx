@@ -17,6 +17,7 @@ export function Composer({
   onEffectsChange,
   onSubmit,
   disabled,
+  transmitFailed = false,
 }: {
   message: string;
   onMessageChange: (s: string) => void;
@@ -26,6 +27,9 @@ export function Composer({
   onEffectsChange: (e: EffectsState) => void;
   onSubmit: () => Promise<void> | void;
   disabled: boolean;
+  /** True when the last transmit threw. Surfaced as a status + banner;
+   * cleared by the parent when the payload is edited. */
+  transmitFailed?: boolean;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -36,7 +40,13 @@ export function Composer({
     setSubmitting(true);
     try {
       await onSubmit();
+      // Refocus only on confirmed success — onSubmit re-throws on
+      // failure, so a throw skips this line. An unconditional refocus
+      // would re-summon the mobile keyboard even when transmit failed.
       inputRef.current?.focus();
+    } catch {
+      // Failure state is owned by the parent (transmitFailed); swallow
+      // here so the rejection doesn't surface as an unhandled error.
     } finally {
       setSubmitting(false);
     }
@@ -44,9 +54,11 @@ export function Composer({
 
   const status = submitting
     ? "transmitting"
-    : disabled
-      ? "awaiting payload"
-      : "ready / press ↵";
+    : transmitFailed
+      ? "transmit failed"
+      : disabled
+        ? "awaiting payload"
+        : "ready / press ↵";
 
   const countTone =
     message.length === 0
@@ -161,6 +173,15 @@ export function Composer({
         />
 
         <div className="border-t border-dashed border-(--color-hairline)" />
+
+        {transmitFailed ? (
+          <p
+            role="alert"
+            className="border border-(--color-danger)/40 bg-(--color-danger)/5 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-danger)"
+          >
+            transmit failed · payload kept · retry
+          </p>
+        ) : null}
 
         <button
           type="submit"
