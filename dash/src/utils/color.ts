@@ -2,9 +2,12 @@
 
 export type Rgb = { r: number; g: number; b: number };
 
+const clampChannel = (v: number): number =>
+  Math.max(0, Math.min(255, Math.round(v)));
+
 export const rgbToHex = ({ r, g, b }: Rgb): string =>
   `#${[r, g, b]
-    .map((v) => v.toString(16).padStart(2, "0").toUpperCase())
+    .map((v) => clampChannel(v).toString(16).padStart(2, "0").toUpperCase())
     .join("")}`;
 
 export function hexToRgb(hex: string): Rgb | null {
