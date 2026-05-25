@@ -4,28 +4,33 @@ import { parseGIF, decompressFrames, type ParsedFrame } from "gifuct-js";
 import { useRef, useState } from "react";
 
 import {
-  DEFAULT_GIF_CONFIG,
+  defaultGifConfig,
   type GifFrame,
   type GifSceneConfig,
 } from "./types";
 
 import { ComposerShell } from "@/app/components/ComposerShell";
+import { Fader } from "@/app/components/Fader";
 import { panels } from "@/utils/actions";
 import { useDebouncedSetMode } from "@/utils/useDebouncedSetMode";
 
 const PANEL_W = 64;
 const PANEL_H = 64;
-// Cap at 60; Supabase update latency degrades past ~120.
+// Cap frame count: each frame is ~16KB of RGBA bytes and the whole
+// payload is JSON-stringified into mode_config, so Supabase write
+// latency climbs roughly linearly with frame count past this point.
 const MAX_FRAMES = 60;
 // Defensive floor — some gifs ship 0ms delays.
 const MIN_DELAY_MS = 20;
 
 export function parseGifConfig(raw: unknown): GifSceneConfig {
-  if (!raw || typeof raw !== "object") return DEFAULT_GIF_CONFIG;
+  if (!raw || typeof raw !== "object") return defaultGifConfig();
   const obj = raw as Record<string, unknown>;
   const width = typeof obj.width === "number" ? obj.width : 0;
   const height = typeof obj.height === "number" ? obj.height : 0;
   const framesRaw = Array.isArray(obj.frames) ? obj.frames : [];
+  // RGBA, 4-byte stride: each frame's bitmap is exactly 4 * w * h
+  // (matches display_core::frames::gif::GifFrame).
   const expectedLen = width * height * 4;
   const frames: GifFrame[] = [];
   for (const f of framesRaw) {
@@ -37,10 +42,13 @@ export function parseGifConfig(raw: unknown): GifSceneConfig {
     frames.push({ bitmap, delay_ms: Math.max(MIN_DELAY_MS, delay) });
   }
   if (width <= 0 || height <= 0 || frames.length === 0) {
-    return DEFAULT_GIF_CONFIG;
+    return defaultGifConfig();
   }
+  // Clamp uniformly to the driver's render range [0.05, 16]; only a
+  // missing/non-numeric speed falls back to 1. A stored 0 clamps up
+  // to the slider floor (0.05), consistent with the driver's clamp.
   const speed =
-    typeof obj.speed === "number" && obj.speed > 0
+    typeof obj.speed === "number"
       ? Math.max(0.05, Math.min(16, obj.speed))
       : 1;
   const source = typeof obj.source === "string" ? obj.source : undefined;
@@ -52,9 +60,10 @@ export function parseGifConfig(raw: unknown): GifSceneConfig {
 }
 
 /**
- * Decode an uploaded GIF into a sequence of fixed-size RGB888 frames.
- * gifuct-js gives us patches per frame plus disposal/dims metadata;
- * we composite onto a working canvas to resolve disposal correctly,
+ * Decode an uploaded GIF into a sequence of fixed-size RGBA frames
+ * (4-byte stride; what the Rust/WASM renderer expects). gifuct-js
+ * gives us patches per frame plus disposal/dims metadata; we
+ * composite onto a working canvas to resolve disposal correctly,
  * downsample to PANEL_W × PANEL_H (centered, fit), then snapshot.
  */
 async function decodeGif(file: File): Promise<GifSceneConfig> {
@@ -91,30 +100,36 @@ async function decodeGif(file: File): Promise<GifSceneConfig> {
   octx.imageSmoothingQuality = "high";
 
   const frames: GifFrame[] = [];
-  let prevImage: ImageData | null = null;
+  // Snapshot of the working canvas taken immediately BEFORE the
+  // previous frame's patch was drawn. GIF disposal method 3
+  // ("restore to previous") requires reverting to exactly that state
+  // — NOT to a rolling buffer that already has the previous frame's
+  // pixels composited in (which drifts on chained type-3 frames).
+  let preDrawSnapshot: ImageData | null = null;
 
   const limit = Math.min(parsed.length, MAX_FRAMES);
   for (let fi = 0; fi < limit; fi++) {
     const frame = parsed[fi];
 
     // Apply disposal of the *previous* frame before drawing this one.
-    if (prevImage && fi > 0) {
+    if (fi > 0) {
       const prev = parsed[fi - 1];
       if (prev.disposalType === 2) {
         // Restore to background = clear that frame's region.
         const d = prev.dims;
         wctx.clearRect(d.left, d.top, d.width, d.height);
-      } else if (prev.disposalType === 3) {
-        // Restore to previous: paint back what was there before.
-        wctx.putImageData(prevImage, 0, 0);
+      } else if (prev.disposalType === 3 && preDrawSnapshot) {
+        // Restore to previous: revert the whole canvas to the state
+        // captured right before the previous frame was drawn.
+        wctx.putImageData(preDrawSnapshot, 0, 0);
       }
       // disposal 0/1: leave in place.
     }
 
     // Snapshot the working buffer *before* drawing this frame's
-    // patch — needed for "restore to previous" disposal handling on
-    // the next iteration.
-    prevImage = wctx.getImageData(0, 0, work.width, work.height);
+    // patch — this is the state a following frame with disposal
+    // type 3 ("restore to previous") must revert to.
+    preDrawSnapshot = wctx.getImageData(0, 0, work.width, work.height);
 
     // Paint this frame's patch.
     const patch = new ImageData(
@@ -142,10 +157,9 @@ async function decodeGif(file: File): Promise<GifSceneConfig> {
     octx.drawImage(work, 0, 0, drawW, drawH);
     const data = octx.getImageData(0, 0, drawW, drawH).data;
 
-    const bitmap = new Array<number>(drawW * drawH * 4);
-    for (let i = 0; i < data.length; i++) {
-      bitmap[i] = data[i];
-    }
+    // Bulk-copy the RGBA Uint8ClampedArray; Array.from is far faster
+    // than a per-byte assignment loop over ~16K elements per frame.
+    const bitmap = Array.from(data);
     // Per-frame delay: gifuct returns delay in 1/100s units.
     const delay_ms = Math.max(MIN_DELAY_MS, (frame.delay ?? 10) * 10);
     frames.push({ bitmap, delay_ms });
@@ -267,7 +281,19 @@ export function GifComposer({
           <>
             <div className="border-t border-dashed border-(--color-hairline)" />
 
-            <SpeedRow value={config.speed} onChange={setSpeed} />
+            <Fader
+              label="// speed"
+              value={config.speed}
+              min={SPEED_PRESETS[0]}
+              max={SPEED_PRESETS[SPEED_PRESETS.length - 1]}
+              step={0.05}
+              onChange={setSpeed}
+              format={(v) => `${v.toFixed(2)}x`}
+              endpoints={["slow", "fast"]}
+              presets={SPEED_PRESETS}
+              presetLabel={(v) => `${v}x`}
+              ariaLabel="GIF speed"
+            />
 
             <div className="border-t border-dashed border-(--color-hairline)" />
 
@@ -296,75 +322,6 @@ export function GifComposer({
         ) : null}
       </div>
     </ComposerShell>
-  );
-}
-
-function SpeedRow({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (next: number) => void;
-}) {
-  // Min slider step so dragging feels smooth; presets are markers.
-  const min = SPEED_PRESETS[0];
-  const max = SPEED_PRESETS[SPEED_PRESETS.length - 1];
-  const pct = ((value - min) / (max - min)) * 100;
-  return (
-    <div className="space-y-2.5">
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-          {"// speed"}
-        </span>
-        <span
-          className="tabular-nums text-(--color-text)"
-          style={{ fontFamily: "var(--font-pixel)", fontSize: 14 }}
-        >
-          {value.toFixed(2)}x
-        </span>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
-          slow
-        </span>
-        <input
-          type="range"
-          min={min}
-          max={max}
-          step={0.05}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="fader flex-1"
-          style={{ ["--fader-pos" as string]: `${pct}%` } as React.CSSProperties}
-          aria-label="GIF speed"
-        />
-        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
-          fast
-        </span>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-1">
-        {SPEED_PRESETS.map((p) => {
-          const active = Math.abs(value - p) < 0.01;
-          return (
-            <button
-              key={p}
-              type="button"
-              onClick={() => onChange(p)}
-              className={[
-                "border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.25em] transition-colors",
-                active
-                  ? "border-(--color-accent) bg-(--color-accent)/15 text-(--color-accent)"
-                  : "border-(--color-border) text-(--color-text-muted) hover:border-(--color-border-strong) hover:text-(--color-text)",
-              ].join(" ")}
-            >
-              {p}x
-            </button>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 

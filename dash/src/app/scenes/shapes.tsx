@@ -2,14 +2,17 @@
 
 import {
   DEFAULT_SHAPES_CONFIG,
+  defaultShapesConfig,
+  oneOf,
+  SHAPE_KINDS,
   type ShapeKind,
   type ShapesSceneConfig,
 } from "./types";
 
 import { ComposerShell } from "@/app/components/ComposerShell";
+import { Fader } from "@/app/components/Fader";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
-import { useDebouncedSetMode } from "@/utils/useDebouncedSetMode";
-import { useSyncedFromProp } from "@/utils/useSyncedFromProp";
+import { useComposerConfig } from "@/utils/useComposerConfig";
 
 const SHAPES: { id: ShapeKind; label: string; glyph: string; blurb: string }[] = [
   { id: "Cube", label: "cube", glyph: "▣", blurb: "8v · 12e" },
@@ -23,9 +26,9 @@ const SHAPES: { id: ShapeKind; label: string; glyph: string; blurb: string }[] =
 const SPEED_PRESETS = [0.25, 0.5, 1, 2, 4, 8];
 
 export function parseShapesConfig(raw: unknown): ShapesSceneConfig {
-  if (!raw || typeof raw !== "object") return DEFAULT_SHAPES_CONFIG;
+  if (!raw || typeof raw !== "object") return defaultShapesConfig();
   const obj = raw as Record<string, unknown>;
-  const kind = isShapeKind(obj.kind) ? obj.kind : DEFAULT_SHAPES_CONFIG.kind;
+  const kind = oneOf(obj.kind, SHAPE_KINDS, DEFAULT_SHAPES_CONFIG.kind);
   const colorRaw =
     obj.color && typeof obj.color === "object"
       ? (obj.color as Record<string, unknown>)
@@ -36,7 +39,7 @@ export function parseShapesConfig(raw: unknown): ShapesSceneConfig {
         g: clamp255(colorRaw.g),
         b: clamp255(colorRaw.b),
       }
-    : DEFAULT_SHAPES_CONFIG.color;
+    : { ...DEFAULT_SHAPES_CONFIG.color };
   const speed =
     typeof obj.speed === "number" && obj.speed > 0
       ? Math.max(0.05, Math.min(16, obj.speed))
@@ -47,17 +50,6 @@ export function parseShapesConfig(raw: unknown): ShapesSceneConfig {
       ? Math.max(0, Math.min(1, obj.opacity))
       : 0;
   return { kind, color, speed, depth_shade, opacity };
-}
-
-function isShapeKind(v: unknown): v is ShapeKind {
-  return (
-    v === "Cube" ||
-    v === "Tetrahedron" ||
-    v === "Octahedron" ||
-    v === "Icosahedron" ||
-    v === "Torus" ||
-    v === "Hypercube"
-  );
 }
 
 function clamp255(n: unknown): number {
@@ -77,20 +69,11 @@ export function ShapesComposer({
   panelId: string;
   config: ShapesSceneConfig;
 }) {
-  const [local, setLocal] = useSyncedFromProp(JSON.stringify(config), config);
-  const [pushDebounced] = useDebouncedSetMode<ShapesSceneConfig>(
+  const [draft, update] = useComposerConfig<ShapesSceneConfig>(
     panelId,
     "shapes",
+    config,
   );
-  const persist = (next: ShapesSceneConfig) => {
-    setLocal(next);
-    pushDebounced(next);
-  };
-
-  const speedPct =
-    ((local.speed - SPEED_PRESETS[0]) /
-      (SPEED_PRESETS[SPEED_PRESETS.length - 1] - SPEED_PRESETS[0])) *
-    100;
 
   return (
     <ComposerShell
@@ -104,18 +87,24 @@ export function ShapesComposer({
           <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
             :: shape
           </div>
-          <div className="grid grid-cols-2 gap-px border border-(--color-border) bg-(--color-border) sm:grid-cols-3">
+          <div
+            role="radiogroup"
+            aria-label="Shape"
+            className="grid grid-cols-2 gap-px border border-(--color-border) bg-(--color-border) sm:grid-cols-3"
+          >
             {SHAPES.map((s) => {
-              const active = s.id === local.kind;
+              const active = s.id === draft.kind;
               return (
                 <button
                   key={s.id}
                   type="button"
-                  onClick={() => persist({ ...local, kind: s.id })}
-                  aria-pressed={active}
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => update({ ...draft, kind: s.id })}
                   title={s.blurb}
                   className={[
                     "flex items-center gap-3 px-3 py-2.5 text-left transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-accent) focus-visible:ring-inset",
                     active
                       ? "bg-(--color-bg) text-(--color-accent)"
                       : "bg-(--color-surface)/70 text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
@@ -143,9 +132,9 @@ export function ShapesComposer({
                     </span>
                     <span
                       className={[
-                        "truncate font-mono text-[9px] tracking-wide",
+                        "truncate font-mono text-[10px] tracking-wide",
                         active
-                          ? "text-(--color-accent)/70"
+                          ? "text-(--color-accent)"
                           : "text-(--color-text-faint)",
                       ].join(" ")}
                     >
@@ -161,103 +150,35 @@ export function ShapesComposer({
         <div className="border-t border-dashed border-(--color-hairline)" />
 
         {/* Speed */}
-        <div className="space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-              {"// speed"}
-            </span>
-            <span
-              className="tabular-nums text-(--color-text)"
-              style={{ fontFamily: "var(--font-pixel)", fontSize: 14 }}
-            >
-              {local.speed.toFixed(2)}x
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
-              slow
-            </span>
-            <input
-              type="range"
-              min={SPEED_PRESETS[0]}
-              max={SPEED_PRESETS[SPEED_PRESETS.length - 1]}
-              step={0.05}
-              value={local.speed}
-              onChange={(e) =>
-                persist({ ...local, speed: Number(e.target.value) })
-              }
-              className="fader flex-1"
-              style={
-                { ["--fader-pos" as string]: `${speedPct}%` } as React.CSSProperties
-              }
-              aria-label="Rotation speed"
-            />
-            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
-              fast
-            </span>
-          </div>
-          <div className="flex flex-wrap items-center gap-1">
-            {SPEED_PRESETS.map((p) => {
-              const active = Math.abs(local.speed - p) < 0.01;
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => persist({ ...local, speed: p })}
-                  className={[
-                    "border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.25em] transition-colors",
-                    active
-                      ? "border-(--color-accent) bg-(--color-accent)/15 text-(--color-accent)"
-                      : "border-(--color-border) text-(--color-text-muted) hover:border-(--color-border-strong) hover:text-(--color-text)",
-                  ].join(" ")}
-                >
-                  {p}x
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <Fader
+          label="// speed"
+          value={draft.speed}
+          min={SPEED_PRESETS[0]}
+          max={SPEED_PRESETS[SPEED_PRESETS.length - 1]}
+          step={0.05}
+          onChange={(speed) => update({ ...draft, speed })}
+          format={(v) => `${v.toFixed(2)}x`}
+          endpoints={["slow", "fast"]}
+          presets={SPEED_PRESETS}
+          presetLabel={(v) => `${v}x`}
+          ariaLabel="Rotation speed"
+        />
 
         <div className="border-t border-dashed border-(--color-hairline)" />
 
         {/* Face opacity — 0 = wireframe-only, 1 = fully filled. Edges
          * are always drawn on top at full brightness regardless. */}
-        <div className="space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-              {"// face opacity"}
-            </span>
-            <span
-              className="tabular-nums text-(--color-text)"
-              style={{ fontFamily: "var(--font-pixel)", fontSize: 14 }}
-            >
-              {Math.round(local.opacity * 100)}%
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
-              wire
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.02}
-              value={local.opacity}
-              onChange={(e) =>
-                persist({ ...local, opacity: Number(e.target.value) })
-              }
-              className="fader flex-1"
-              style={
-                { ["--fader-pos" as string]: `${local.opacity * 100}%` } as React.CSSProperties
-              }
-              aria-label="Face opacity"
-            />
-            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
-              solid
-            </span>
-          </div>
-        </div>
+        <Fader
+          label="// face opacity"
+          value={draft.opacity}
+          min={0}
+          max={1}
+          step={0.02}
+          onChange={(opacity) => update({ ...draft, opacity })}
+          format={(v) => `${Math.round(v * 100)}%`}
+          endpoints={["wire", "solid"]}
+          ariaLabel="Face opacity"
+        />
 
         <label className="flex cursor-pointer items-center justify-between gap-3">
           <span className="flex flex-col gap-0.5">
@@ -270,11 +191,9 @@ export function ShapesComposer({
           </span>
           <input
             type="checkbox"
-            checked={local.depth_shade}
-            onChange={(e) =>
-              persist({ ...local, depth_shade: e.target.checked })
-            }
-            className="h-3.5 w-3.5 rounded-[1px] border-(--color-border-strong) bg-(--color-bg) text-(--color-accent) focus:ring-0 focus:ring-offset-0"
+            checked={draft.depth_shade}
+            onChange={(e) => update({ ...draft, depth_shade: e.target.checked })}
+            className="h-3.5 w-3.5 rounded-[1px] border-(--color-border-strong) bg-(--color-bg) text-(--color-accent) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-accent) focus-visible:ring-offset-1 focus-visible:ring-offset-(--color-bg)"
           />
         </label>
 
@@ -282,8 +201,8 @@ export function ShapesComposer({
 
         {/* Color */}
         <SolidColorPicker
-          value={local.color}
-          onChange={(next) => persist({ ...local, color: next })}
+          value={draft.color}
+          onChange={(color) => update({ ...draft, color })}
         />
       </div>
     </ComposerShell>

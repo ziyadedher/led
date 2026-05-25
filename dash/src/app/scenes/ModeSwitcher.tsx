@@ -16,9 +16,21 @@ import { MODES } from "./types";
 import { panels, type PanelMode } from "@/utils/actions";
 
 /**
- * Segmented mode picker. Switching writes the new mode + an empty
- * mode_config to Supabase; per-mode forms hydrate their own defaults
- * if config is missing/partial.
+ * Per-mode config cache, module-scoped so it survives this component's
+ * remounts within a session. Keyed by `panelId:mode`. The DB stores a
+ * single `mode_config` column shared across modes, so naively writing
+ * `{}` on every switch wiped the outgoing editor's work. We instead
+ * stash the outgoing mode's config here on switch and restore the
+ * incoming mode's last-known config (if we've seen it), so toggling
+ * modes back and forth no longer destroys the previous editor's state.
+ */
+const configCache = new Map<string, Record<string, unknown>>();
+const cacheKey = (panelId: string, mode: PanelMode) => `${panelId}:${mode}`;
+
+/**
+ * Segmented mode picker. Switching preserves per-mode config across
+ * toggles (see `configCache`); per-mode forms still hydrate their own
+ * defaults if config is missing/partial.
  *
  * Each tile is a "preset key" — heroicon glyph, label, and short
  * blurb. Active tile gets a recessed/illuminated treatment; inactive
@@ -31,6 +43,26 @@ export function ModeSwitcher({
   panelId: string;
   current: PanelMode;
 }) {
+  // Read the live panel row from the SWR cache (already subscribed at
+  // the page root) so we can snapshot the OUTGOING mode's config
+  // before we switch away from it.
+  const { data: allPanels } = panels.get.useSWR();
+  const currentConfig =
+    (allPanels?.find((p) => p.id === panelId)?.mode_config as
+      | Record<string, unknown>
+      | null
+      | undefined) ?? null;
+
+  const switchTo = (next: PanelMode) => {
+    // Snapshot what's currently persisted under the outgoing mode so a
+    // later switch back restores it rather than the empty default.
+    if (currentConfig && Object.keys(currentConfig).length > 0) {
+      configCache.set(cacheKey(panelId, current), currentConfig);
+    }
+    const restored = configCache.get(cacheKey(panelId, next)) ?? {};
+    void panels.setMode.call(panelId, next, restored);
+  };
+
   return (
     <div
       role="tablist"
@@ -48,7 +80,7 @@ export function ModeSwitcher({
             aria-selected={active}
             onClick={() => {
               if (active) return;
-              void panels.setMode.call(panelId, m.id, {});
+              switchTo(m.id);
             }}
             // Even-rows wrap: each tile takes a slightly-less-than-25%
             // basis so a row of 4 fits exactly even with the
@@ -92,7 +124,7 @@ export function ModeSwitcher({
                 className={[
                   "truncate font-mono text-[9px] tracking-wide",
                   active
-                    ? "text-(--color-accent)/70"
+                    ? "text-(--color-accent)"
                     : "text-(--color-text-faint)",
                 ].join(" ")}
               >
