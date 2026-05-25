@@ -22,19 +22,42 @@
   --color-border: #26262f;
   --color-border-strong: #3a3a47;
 
+  /* Text ramp. Three muted tiers below `--color-text`, each tuned to
+   * clear WCAG AA (≥4.5:1) against the dark surfaces they actually sit
+   * on (bg #08080a → surface-3 #1d1d24) — the faint tier was a serious
+   * contrast failure (~1.6:1) before. Still cool-tinted and quiet, just
+   * legible: faint ≈4.5–5.4:1, dim ≈6–7:1, muted ≈8–9.7:1, so the
+   * hierarchy stays visible. */
   --color-text: #e6e6ea;
-  --color-text-muted: #8b8b96;
-  --color-text-dim: #5d5d68;
-  --color-text-faint: #3a3a44;
+  --color-text-muted: #b4b4bd;
+  --color-text-dim: #9a9aa3;
+  --color-text-faint: #84848d;
 
-  --color-accent: #ff8a2c;
+  /* Accent family, unified on oklch so the orange is one consistent
+   * hue across the flat fill, the brighter glow, and the soft fade.
+   * (Was split between an sRGB hex and an oklch glow.) */
+  --color-accent: oklch(72.5% 0.17 52);
   --color-accent-glow: oklch(78% 0.16 50);
-  --color-accent-fade: color-mix(in oklch, #ff8a2c 18%, transparent);
+  --color-accent-fade: color-mix(in oklch, var(--color-accent) 18%, transparent);
 
   --color-phosphor: #5dffa9;
   --color-phosphor-fade: color-mix(in oklch, #5dffa9 18%, transparent);
   --color-amber: #ffb84d;
   --color-danger: #ff4d6d;
+
+  /* Swatch palette — the color-picker rainbow/preset grid currently
+   * hardcodes these hexes inline. Hoisted here as tokens so the pickers
+   * can reference them later (next agent wires them up). The rose/sun
+   * stops deliberately reuse the danger/amber hues; the rest fill out a
+   * coherent spectrum. Ordered as a rainbow sweep. */
+  --color-swatch-rose: #ff4d6d; /* ≈ --color-danger */
+  --color-swatch-amber: #ff8a2c; /* ≈ --color-accent (LED orange) */
+  --color-swatch-sun: #ffe066; /* ≈ --color-amber, brighter */
+  --color-swatch-lime: #a6e22e;
+  --color-swatch-cyan: #4de0e0;
+  --color-swatch-azure: #4da3ff;
+  --color-swatch-violet: #a04dff;
+  --color-swatch-white: #ffffff;
 
   --shadow-glow:
     0 0 20px -2px var(--color-accent-fade),
@@ -108,7 +131,7 @@ body::before {
     ),
     radial-gradient(
       ellipse 40% 30% at 90% 100%,
-      color-mix(in oklch, #ff4d6d 12%, transparent),
+      color-mix(in oklch, var(--color-danger) 12%, transparent),
       transparent 70%
     );
 }
@@ -213,4 +236,29 @@ button:not(:disabled),
 button:disabled,
 [role="button"][aria-disabled="true"] {
   cursor: not-allowed;
+}
+
+/* Motion-sensitive users: neutralize every moving piece of the
+ * instrument chrome. Covers our custom keyframes (cursor blink,
+ * marching tape) and the Tailwind utilities we lean on (pulse / ping
+ * for the live lamps, plus any transition). The status indicators
+ * still read fine static — color + glyph + label carry the state, not
+ * the animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* The "ping" ring expands to a faint halo; with the animation frozen
+   * at frame 0 it would sit as an opaque dot over the lamp. Drop it
+   * entirely so the solid lamp underneath stays clean. */
+  .animate-ping {
+    display: none !important;
+  }
 }
