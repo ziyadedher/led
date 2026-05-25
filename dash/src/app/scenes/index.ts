@@ -19,7 +19,7 @@ import {
 import { GifComposer, parseGifConfig } from "./gif";
 import { ImageComposer, parseImageConfig } from "./image";
 import { LifeComposer, parseLifeConfig } from "./life";
-import { PaintComposer, parsePaintConfig } from "./paint";
+import { PaintComposer, parsePaintConfig, type PaintSceneConfig } from "./paint";
 import { parseShapesConfig, ShapesComposer } from "./shapes";
 import { parseTestConfig, TestComposer } from "./test";
 import type {
@@ -143,8 +143,9 @@ export const SCENES: Record<PanelMode, SceneRegistration> = {
   ),
 
   // Paint shares Image's render path on both sides of the wire — the
-  // distinction lives entirely in this composer's UX.
-  paint: scene<ImageSceneConfig>(
+  // distinction lives entirely in this composer's UX. Paint also
+  // persists a sticky brush `color` the renderer ignores.
+  paint: scene<PaintSceneConfig>(
     parsePaintConfig,
     (config) => ({
       Image: {

@@ -8,6 +8,20 @@
 import type { PanelMode } from "@/utils/actions";
 
 /**
+ * Validate a raw value against a closed set of allowed literals,
+ * falling back to `fallback` when it's not a member. Collapses the
+ * repeated "is this one of N enum strings, else default" pattern the
+ * scene parsers each re-implemented by hand.
+ */
+export function oneOf<T extends string>(
+  raw: unknown,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  return (allowed as readonly unknown[]).includes(raw) ? (raw as T) : fallback;
+}
+
+/**
  * Tagged union describing the contents of `display_core::Mode`.
  * Externally-tagged so JSON looks like `{ "Text": {...} }`.
  */
@@ -79,6 +93,13 @@ export const DEFAULT_CLOCK_CONFIG: ClockSceneConfig = {
   color: { r: 0xff, g: 0x8a, b: 0x2c },
 };
 
+/** Fresh copy of the clock defaults (incl. a new `color` object) — a
+ * shared mutable singleton would let one panel's edits leak into the
+ * next parse fall-through. */
+export function defaultClockConfig(): ClockSceneConfig {
+  return { ...DEFAULT_CLOCK_CONFIG, color: { ...DEFAULT_CLOCK_CONFIG.color } };
+}
+
 /**
  * Game of Life. Both the dash (in TS) and the driver (in Rust) tick
  * an independent simulation locally; the dash ships its current cell
@@ -113,11 +134,18 @@ export const DEFAULT_LIFE_CONFIG: LifeSceneConfig = {
   step_interval_frames: 8,
 };
 
+/** Fresh copy of the life defaults — see `defaultClockConfig`. */
+export function defaultLifeConfig(): LifeSceneConfig {
+  return { ...DEFAULT_LIFE_CONFIG, color: { ...DEFAULT_LIFE_CONFIG.color } };
+}
+
 /**
  * Static image frame. The dash downsamples uploads/URLs to fit the
- * panel and stores raw RGB888 row-major bytes. Black pixels are
- * treated as transparent on the panel side (matches the gif
- * decoder's transparent-pixel convention).
+ * panel and stores raw RGBA row-major bytes (4-byte stride; length is
+ * exactly `4 * width * height`). Alpha is binary on the panel side:
+ * `0` = leave the pixel unset, anything else = render at full
+ * intensity (the matrix has no partial transparency). Mirrors
+ * `display_core::frames::image::ImageScene`.
  */
 export type ImageScene = {
   width: number;
@@ -130,17 +158,23 @@ export type ImageSceneConfig = ImageScene & {
   source?: string;
 };
 
-export const DEFAULT_IMAGE_CONFIG: ImageSceneConfig = {
-  width: 0,
-  height: 0,
-  bitmap: [],
-};
+/**
+ * Returns a fresh copy each call — callers store this directly into
+ * mode_config state, so a shared mutable singleton would let one
+ * panel's edits leak into the next fall-through default.
+ */
+export function defaultImageConfig(): ImageSceneConfig {
+  return { width: 0, height: 0, bitmap: [] };
+}
 
 /**
  * Animated GIF. The dash decodes the gif, downsamples each frame to
- * fit the panel, resolves disposal, and stores the resulting RGB888
- * frames + per-frame delays in mode_config. The driver steps through
- * the sequence based on accumulated step time.
+ * fit the panel, resolves disposal, and stores the resulting RGBA
+ * frames (4-byte stride; length is exactly `4 * width * height`) +
+ * per-frame delays in mode_config. Alpha is binary on the panel side
+ * (`0` = transparent, e.g. disposal masks; anything else = full
+ * intensity). The driver steps through the sequence based on
+ * accumulated step time. Mirrors `display_core::frames::gif`.
  */
 export type GifFrame = {
   bitmap: number[];
@@ -165,12 +199,13 @@ export type GifSceneConfig = GifScene & {
   source_frame_count?: number;
 };
 
-export const DEFAULT_GIF_CONFIG: GifSceneConfig = {
-  width: 0,
-  height: 0,
-  frames: [],
-  speed: 1,
-};
+/**
+ * Returns a fresh copy each call (incl. a new `frames` array) — see
+ * `defaultImageConfig` for why a shared mutable singleton is unsafe.
+ */
+export function defaultGifConfig(): GifSceneConfig {
+  return { width: 0, height: 0, frames: [], speed: 1 };
+}
 
 /**
  * Rotating 3-D wireframe. Picks a shape from a small catalogue
@@ -218,6 +253,21 @@ export const DEFAULT_SHAPES_CONFIG: ShapesSceneConfig = {
   opacity: 0,
 };
 
+/** Fresh copy of the shapes defaults — see `defaultClockConfig`. */
+export function defaultShapesConfig(): ShapesSceneConfig {
+  return { ...DEFAULT_SHAPES_CONFIG, color: { ...DEFAULT_SHAPES_CONFIG.color } };
+}
+
+/** The closed set of valid shape kinds — drives parse validation. */
+export const SHAPE_KINDS: readonly ShapeKind[] = [
+  "Cube",
+  "Tetrahedron",
+  "Octahedron",
+  "Icosahedron",
+  "Torus",
+  "Hypercube",
+];
+
 /**
  * Test/diagnostic patterns. Render-only — no animation, no per-frame
  * state. Mirrors `display_core::test::TestPattern` + `TestScene`.
@@ -233,6 +283,18 @@ export type TestSceneConfig = TestScene;
 export const DEFAULT_TEST_CONFIG: TestSceneConfig = {
   pattern: "ColorBars",
 };
+
+/** Fresh copy of the test defaults — see `defaultClockConfig`. */
+export function defaultTestConfig(): TestSceneConfig {
+  return { ...DEFAULT_TEST_CONFIG };
+}
+
+/** The closed set of valid test pattern ids — drives parse validation. */
+export const TEST_PATTERNS: readonly TestPatternId[] = [
+  "ColorBars",
+  "Gradient",
+  "Checkerboard",
+];
 
 export type ModeMeta = {
   id: PanelMode;

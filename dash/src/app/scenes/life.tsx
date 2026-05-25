@@ -4,14 +4,15 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   DEFAULT_LIFE_CONFIG,
+  defaultLifeConfig,
   type LifeSceneConfig,
   type LifeScene,
 } from "./types";
 
 import { ComposerShell } from "@/app/components/ComposerShell";
+import { SegmentedToggle } from "@/app/components/SegmentedToggle";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
-import { useDebouncedSetMode } from "@/utils/useDebouncedSetMode";
-import { useSyncedFromProp } from "@/utils/useSyncedFromProp";
+import { useComposerConfig } from "@/utils/useComposerConfig";
 
 const W = 64;
 const H = 64;
@@ -27,7 +28,7 @@ const SPEED_PRESETS: { id: string; label: string; frames: number }[] = [
 ];
 
 export function parseLifeConfig(raw: unknown): LifeSceneConfig {
-  if (!raw || typeof raw !== "object") return DEFAULT_LIFE_CONFIG;
+  if (!raw || typeof raw !== "object") return defaultLifeConfig();
   const obj = raw as Record<string, unknown>;
   const colorRaw =
     obj.color && typeof obj.color === "object"
@@ -39,7 +40,7 @@ export function parseLifeConfig(raw: unknown): LifeSceneConfig {
         g: clamp255(colorRaw.g),
         b: clamp255(colorRaw.b),
       }
-    : DEFAULT_LIFE_CONFIG.color;
+    : { ...DEFAULT_LIFE_CONFIG.color };
   const stepRaw =
     typeof obj.step_interval_frames === "number" ? obj.step_interval_frames : 0;
   const step =
@@ -70,13 +71,21 @@ export function useLifeScene(config: LifeSceneConfig): LifeScene {
   const generationsRef = useRef(0);
   const recentPopRef = useRef<number[]>([0, 0, 0, 0]);
   // Read step_interval_frames via ref so the loop closure picks up
-  // changes without re-arming requestAnimationFrame.
-  const intervalRef = useRef(config.step_interval_frames);
-  intervalRef.current = Math.max(1, config.step_interval_frames);
+  // changes without re-arming requestAnimationFrame. Synced in an
+  // effect — writing a ref during render is a React anti-pattern
+  // (and a lint error): the value isn't needed until the next frame.
+  const intervalRef = useRef(Math.max(1, config.step_interval_frames));
+  useEffect(() => {
+    intervalRef.current = Math.max(1, config.step_interval_frames);
+  }, [config.step_interval_frames]);
 
+  // The hook only mounts while life is the active mode, so the loop is
+  // already scoped to "visible". We additionally suspend it while the
+  // tab is hidden — rAF throttles in the background but we skip the
+  // simulation work entirely so a backgrounded tab does zero ticking.
   useEffect(() => {
     let raf = 0;
-    const loop = () => {
+    const tick = () => {
       framesRef.current += 1;
       if (framesRef.current >= intervalRef.current) {
         framesRef.current = 0;
@@ -100,6 +109,9 @@ export function useLifeScene(config: LifeSceneConfig): LifeScene {
           return next;
         });
       }
+    };
+    const loop = () => {
+      if (!document.hidden) tick();
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -150,7 +162,7 @@ function step(cells: Uint8Array): Uint8Array {
   return next;
 }
 
-/** Composer for life mode — just a color picker for the live cells. */
+/** Composer for life mode — speed preset + color for the live cells. */
 export function LifeComposer({
   panelId,
   config,
@@ -158,20 +170,19 @@ export function LifeComposer({
   panelId: string;
   config: LifeSceneConfig;
 }) {
-  const [local, setLocal] = useSyncedFromProp(JSON.stringify(config), config);
-  const [pushDebounced] = useDebouncedSetMode<LifeSceneConfig>(panelId, "life");
-  const persist = (next: LifeSceneConfig) => {
-    setLocal(next);
-    pushDebounced(next);
-  };
+  const [draft, update] = useComposerConfig<LifeSceneConfig>(
+    panelId,
+    "life",
+    config,
+  );
 
   // Map current step interval to the closest preset; if it doesn't
   // match exactly, the closest one still highlights for context.
   const activePreset =
-    SPEED_PRESETS.find((p) => p.frames === local.step_interval_frames)?.id ??
+    SPEED_PRESETS.find((p) => p.frames === draft.step_interval_frames)?.id ??
     SPEED_PRESETS.reduce((best, p) =>
-      Math.abs(p.frames - local.step_interval_frames) <
-      Math.abs(best.frames - local.step_interval_frames)
+      Math.abs(p.frames - draft.step_interval_frames) <
+      Math.abs(best.frames - draft.step_interval_frames)
         ? p
         : best,
     ).id;
@@ -187,30 +198,20 @@ export function LifeComposer({
           <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
             :: speed
           </span>
-          <div className="flex items-center gap-px border border-(--color-border)">
-            {SPEED_PRESETS.map((p) => {
-              const active = p.id === activePreset;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => persist({ ...local, step_interval_frames: p.frames })}
-                  className={[
-                    "px-3 py-1 font-mono text-[10px] uppercase tracking-[0.3em] transition-colors",
-                    active
-                      ? "bg-(--color-accent) text-black"
-                      : "text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
-                  ].join(" ")}
-                >
-                  {p.label}
-                </button>
-              );
-            })}
-          </div>
+          <SegmentedToggle
+            ariaLabel="Simulation speed"
+            options={SPEED_PRESETS.map((p) => ({ id: p.id, label: p.label }))}
+            value={activePreset}
+            onChange={(id) => {
+              const preset = SPEED_PRESETS.find((p) => p.id === id);
+              if (preset)
+                update({ ...draft, step_interval_frames: preset.frames });
+            }}
+          />
         </div>
         <SolidColorPicker
-          value={local.color}
-          onChange={(next) => persist({ ...local, color: next })}
+          value={draft.color}
+          onChange={(color) => update({ ...draft, color })}
         />
       </div>
     </ComposerShell>

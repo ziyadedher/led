@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 
 import {
-  DEFAULT_IMAGE_CONFIG,
+  defaultImageConfig,
   type ImageSceneConfig,
 } from "./types";
 
@@ -14,21 +14,25 @@ const PANEL_W = 64;
 const PANEL_H = 64;
 
 export function parseImageConfig(raw: unknown): ImageSceneConfig {
-  if (!raw || typeof raw !== "object") return DEFAULT_IMAGE_CONFIG;
+  if (!raw || typeof raw !== "object") return defaultImageConfig();
   const obj = raw as Record<string, unknown>;
   const width = typeof obj.width === "number" ? obj.width : 0;
   const height = typeof obj.height === "number" ? obj.height : 0;
   const bitmap = Array.isArray(obj.bitmap) ? (obj.bitmap as number[]) : [];
   const source = typeof obj.source === "string" ? obj.source : undefined;
+  // RGBA, 4-byte stride: length must be exactly 4 * width * height
+  // (matches display_core::frames::image::ImageScene).
   if (bitmap.length === 0 || bitmap.length !== width * height * 4) {
-    return DEFAULT_IMAGE_CONFIG;
+    return defaultImageConfig();
   }
   return { width, height, bitmap, source };
 }
 
 /**
  * Read an image from a URL or File, downsample (fit + center) to
- * panel dims, and return RGBA row-major bytes.
+ * panel dims, and return RGBA row-major bytes (4-byte stride). The
+ * Rust/WASM renderer treats alpha as binary — any non-zero alpha
+ * renders at full intensity, alpha 0 leaves the LED unset.
  */
 async function loadAndDownsample(
   src: string | File,
@@ -48,14 +52,13 @@ async function loadAndDownsample(
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(img, 0, 0, drawW, drawH);
-    // ImageData is already RGBA. Treat the source's alpha as binary
-    // (panels have no PWM blending against the background): any
-    // non-zero alpha → fully opaque on the panel.
+    // ImageData is already RGBA (matches the renderer's expected
+    // 4-byte stride). Treat the source's alpha as binary (panels have
+    // no PWM blending against the background): any non-zero alpha →
+    // fully opaque on the panel. Array.from bulk-copies the
+    // Uint8ClampedArray far faster than a per-byte assignment loop.
     const data = ctx.getImageData(0, 0, drawW, drawH).data;
-    const bitmap: number[] = new Array(drawW * drawH * 4);
-    for (let i = 0; i < data.length; i++) {
-      bitmap[i] = data[i];
-    }
+    const bitmap = Array.from(data);
     return {
       width: drawW,
       height: drawH,

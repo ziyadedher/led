@@ -12,13 +12,14 @@ import { useMemo, useState } from "react";
 import {
   type ClockSceneConfig,
   type ClockScene,
+  defaultClockConfig,
   DEFAULT_CLOCK_CONFIG,
 } from "./types";
 
 import { ComposerShell } from "@/app/components/ComposerShell";
+import { SegmentedToggle } from "@/app/components/SegmentedToggle";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
-import { useDebouncedSetMode } from "@/utils/useDebouncedSetMode";
-import { useSyncedFromProp } from "@/utils/useSyncedFromProp";
+import { useComposerConfig } from "@/utils/useComposerConfig";
 
 /** Build a renderable clock frame from saved config + current time. */
 export function clockSceneFromConfig(config: ClockSceneConfig): ClockScene {
@@ -65,7 +66,7 @@ function sampleTime(timezone: string | null) {
 
 /** Read a stored mode_config jsonb back into a typed `ClockSceneConfig`. */
 export function parseClockConfig(raw: unknown): ClockSceneConfig {
-  if (!raw || typeof raw !== "object") return DEFAULT_CLOCK_CONFIG;
+  if (!raw || typeof raw !== "object") return defaultClockConfig();
   const obj = raw as Record<string, unknown>;
   const fmt = obj.format === "H12" ? "H12" : "H24";
   const colorRaw =
@@ -78,7 +79,7 @@ export function parseClockConfig(raw: unknown): ClockSceneConfig {
         g: clamp255(colorRaw.g),
         b: clamp255(colorRaw.b),
       }
-    : DEFAULT_CLOCK_CONFIG.color;
+    : { ...DEFAULT_CLOCK_CONFIG.color };
   const timezone =
     typeof obj.timezone === "string" && obj.timezone.length > 0
       ? obj.timezone
@@ -109,70 +110,65 @@ export function ClockComposer({
   panelId: string;
   config: ClockSceneConfig;
 }) {
-  // Local copy keeps the form responsive against the 30s last_seen
-  // heartbeat refreshes; resyncs only when the server's config bytes
-  // actually change.
-  const [local, setLocal] = useSyncedFromProp(JSON.stringify(config), config);
-
-  const [pushDebounced] = useDebouncedSetMode<ClockSceneConfig>(
+  // Editable local mirror + debounced persist, keyed on the stable
+  // panelId:mode identity so a server echo doesn't snap the form.
+  const [draft, update] = useComposerConfig<ClockSceneConfig>(
     panelId,
     "clock",
+    config,
   );
-  const persist = (next: ClockSceneConfig) => {
-    setLocal(next);
-    pushDebounced(next);
-  };
 
   return (
     <ComposerShell title="clock" status="local time" ariaLabel="Clock configuration">
       <div className="space-y-5 px-4 py-4">
         <Row label="format">
-          <SegmentedToggle
+          <SegmentedToggle<"H12" | "H24">
+            ariaLabel="Time format"
             options={[
               { id: "H24", label: "24h" },
               { id: "H12", label: "12h" },
             ]}
-            value={local.format}
-            onChange={(v) => persist({ ...local, format: v as "H12" | "H24" })}
+            value={draft.format}
+            onChange={(format) => update({ ...draft, format })}
           />
         </Row>
 
         <Row label="seconds">
           <SegmentedToggle
+            ariaLabel="Show seconds"
             options={[
               { id: "off", label: "off" },
               { id: "on", label: "on" },
             ]}
-            value={local.show_seconds ? "on" : "off"}
-            onChange={(v) => persist({ ...local, show_seconds: v === "on" })}
+            value={draft.show_seconds ? "on" : "off"}
+            onChange={(v) => update({ ...draft, show_seconds: v === "on" })}
           />
         </Row>
 
-        {local.format === "H12" ? (
+        {draft.format === "H12" ? (
           <Row label="meridiem">
             <SegmentedToggle
+              ariaLabel="Show meridiem"
               options={[
                 { id: "off", label: "hidden" },
                 { id: "on", label: "a/p" },
               ]}
-              value={local.show_meridiem ? "on" : "off"}
-              onChange={(v) =>
-                persist({ ...local, show_meridiem: v === "on" })
-              }
+              value={draft.show_meridiem ? "on" : "off"}
+              onChange={(v) => update({ ...draft, show_meridiem: v === "on" })}
             />
           </Row>
         ) : null}
 
         <Row label="timezone">
           <TimezoneSelect
-            value={local.timezone}
-            onChange={(next) => persist({ ...local, timezone: next })}
+            value={draft.timezone}
+            onChange={(timezone) => update({ ...draft, timezone })}
           />
         </Row>
 
         <SolidColorPicker
-          value={local.color}
-          onChange={(next) => persist({ ...local, color: next })}
+          value={draft.color}
+          onChange={(color) => update({ ...draft, color })}
         />
       </div>
     </ComposerShell>
@@ -285,36 +281,4 @@ function TimezoneSelect({
   );
 }
 
-function SegmentedToggle({
-  options,
-  value,
-  onChange,
-}: {
-  options: { id: string; label: string }[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex items-center gap-px border border-(--color-border)">
-      {options.map((o) => {
-        const active = o.id === value;
-        return (
-          <button
-            key={o.id}
-            type="button"
-            onClick={() => onChange(o.id)}
-            className={[
-              "px-3 py-1 font-mono text-[10px] uppercase tracking-[0.3em] transition-colors",
-              active
-                ? "bg-(--color-accent) text-black"
-                : "text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
-            ].join(" ")}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 

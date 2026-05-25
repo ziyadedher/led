@@ -2,13 +2,15 @@
 
 import {
   DEFAULT_TEST_CONFIG,
+  defaultTestConfig,
+  oneOf,
+  TEST_PATTERNS,
   type TestSceneConfig,
   type TestPatternId,
 } from "./types";
 
 import { ComposerShell } from "@/app/components/ComposerShell";
-import { panels } from "@/utils/actions";
-import { useSyncedFromProp } from "@/utils/useSyncedFromProp";
+import { useComposerConfig } from "@/utils/useComposerConfig";
 
 const PATTERNS: { id: TestPatternId; label: string; blurb: string }[] = [
   { id: "ColorBars",    label: "color bars",    blurb: "RGB primaries + corner pixels for geometry" },
@@ -17,11 +19,10 @@ const PATTERNS: { id: TestPatternId; label: string; blurb: string }[] = [
 ];
 
 export function parseTestConfig(raw: unknown): TestSceneConfig {
-  if (!raw || typeof raw !== "object") return DEFAULT_TEST_CONFIG;
+  if (!raw || typeof raw !== "object") return defaultTestConfig();
   const obj = raw as Record<string, unknown>;
-  const valid = PATTERNS.some((p) => p.id === obj.pattern);
   return {
-    pattern: valid ? (obj.pattern as TestPatternId) : DEFAULT_TEST_CONFIG.pattern,
+    pattern: oneOf(obj.pattern, TEST_PATTERNS, DEFAULT_TEST_CONFIG.pattern),
   };
 }
 
@@ -32,12 +33,11 @@ export function TestComposer({
   panelId: string;
   config: TestSceneConfig;
 }) {
-  const [local, setLocal] = useSyncedFromProp(JSON.stringify(config), config);
-
-  const persist = (next: TestSceneConfig) => {
-    setLocal(next);
-    void panels.setMode.call(panelId, "test", next);
-  };
+  const [draft, update] = useComposerConfig<TestSceneConfig>(
+    panelId,
+    "test",
+    config,
+  );
 
   return (
     <ComposerShell title="test" status="diagnostic patterns" ariaLabel="Test pattern configuration">
@@ -46,16 +46,19 @@ export function TestComposer({
           static patterns for diagnosing dead pixels, geometry,
           PWM linearity, moiré.
         </p>
-        <div className="space-y-1">
+        <div role="radiogroup" aria-label="Test pattern" className="space-y-1">
           {PATTERNS.map((p) => {
-            const active = p.id === local.pattern;
+            const active = p.id === draft.pattern;
             return (
               <button
                 key={p.id}
                 type="button"
-                onClick={() => persist({ pattern: p.id })}
+                role="radio"
+                aria-checked={active}
+                onClick={() => update({ pattern: p.id })}
                 className={[
                   "flex w-full items-baseline justify-between gap-3 border px-3 py-2 text-left transition",
+                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-accent)",
                   active
                     ? "border-(--color-accent) bg-(--color-accent)/10"
                     : "border-(--color-border) hover:border-(--color-border-strong) hover:bg-(--color-surface-2)",
