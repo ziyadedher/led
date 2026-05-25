@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { Fader } from "@/app/components/Fader";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
+import { LED_ORANGE } from "@/utils/color";
 
 export type ColorState =
   | {
@@ -20,7 +21,7 @@ export type ColorState =
 type RgbState = Extract<ColorState, { mode: "rgb" }>;
 type RainbowState = Extract<ColorState, { mode: "rainbow" }>;
 
-const DEFAULT_RGB: RgbState = { mode: "rgb", rgb: { r: 255, g: 138, b: 44 } };
+const DEFAULT_RGB: RgbState = { mode: "rgb", rgb: LED_ORANGE };
 const DEFAULT_RAINBOW: RainbowState = {
   mode: "rainbow",
   perLetter: false,

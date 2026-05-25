@@ -6,6 +6,7 @@
  */
 
 import type { PanelMode } from "@/utils/actions";
+import { LED_ORANGE } from "@/utils/color";
 
 /**
  * Validate a raw value against a closed set of allowed literals,
@@ -90,7 +91,7 @@ export const DEFAULT_CLOCK_CONFIG: ClockSceneConfig = {
   show_seconds: false,
   show_meridiem: false,
   timezone: null,
-  color: { r: 0xff, g: 0x8a, b: 0x2c },
+  color: LED_ORANGE,
 };
 
 /** Fresh copy of the clock defaults (incl. a new `color` object) — a
@@ -247,7 +248,7 @@ export type ShapesSceneConfig = ShapesScene;
 
 export const DEFAULT_SHAPES_CONFIG: ShapesSceneConfig = {
   kind: "Cube",
-  color: { r: 0xff, g: 0x8a, b: 0x2c },
+  color: LED_ORANGE,
   speed: 1,
   depth_shade: false,
   opacity: 0,

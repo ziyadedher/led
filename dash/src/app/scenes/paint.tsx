@@ -8,12 +8,12 @@ import { type ImageSceneConfig } from "./types";
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
 import { panels } from "@/utils/actions";
-import { type Rgb } from "@/utils/color";
+import { LED_ORANGE, parseRgb, type Rgb } from "@/utils/color";
 
 const PANEL_W = 64;
 const PANEL_H = 64;
 const MAX_RECENT = 8;
-const DEFAULT_COLOR: Rgb = { r: 255, g: 138, b: 44 };
+const DEFAULT_COLOR: Rgb = LED_ORANGE;
 
 /**
  * Paint mode produces the same shape as image mode (RGB888 row-major
@@ -24,21 +24,13 @@ const DEFAULT_COLOR: Rgb = { r: 255, g: 138, b: 44 };
  */
 export type PaintSceneConfig = ImageSceneConfig & { color?: Rgb };
 
-function clamp255(n: unknown): number {
-  const v = typeof n === "number" ? n : 0;
-  return Math.max(0, Math.min(255, Math.round(v)));
-}
-
 /** Parse paint config: the image bitmap plus the sticky brush colour. */
 export function parsePaintConfig(raw: unknown): PaintSceneConfig {
   const base = parseImageConfig(raw);
   let color: Rgb | undefined;
   if (raw && typeof raw === "object") {
     const c = (raw as Record<string, unknown>).color;
-    if (c && typeof c === "object") {
-      const o = c as Record<string, unknown>;
-      color = { r: clamp255(o.r), g: clamp255(o.g), b: clamp255(o.b) };
-    }
+    if (c && typeof c === "object") color = parseRgb(c, LED_ORANGE);
   }
   return { ...base, color };
 }

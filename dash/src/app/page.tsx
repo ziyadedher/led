@@ -29,6 +29,7 @@ import {
   type PanelMode,
   useRealtimeRevalidation,
 } from "@/utils/actions";
+import { LED_ORANGE } from "@/utils/color";
 import { isOffline, relativeTime } from "@/utils/offline";
 import { useNow } from "@/utils/useNow";
 
@@ -76,7 +77,7 @@ export default function Page() {
   const [message, setMessage] = useState("");
   const [color, setColor] = useState<ColorState>({
     mode: "rgb",
-    rgb: { r: 255, g: 138, b: 44 },
+    rgb: LED_ORANGE,
   });
   const [effects, setEffects] = useState<EffectsState>({ marqueeSpeed: 0 });
   const [submitError, setSubmitError] = useState(false);
@@ -165,7 +166,7 @@ export default function Page() {
     () => parseLifeConfig(activePanel?.mode_config),
     [activePanel?.mode_config],
   );
-  const lifeScene = useLifeScene(lifeConfig);
+  const lifeScene = useLifeScene(lifeConfig, activeMode === "life");
 
   // Build the Scene the simulator renders. Clock mode samples
   // `now` internally, so its memo needs to re-run each tick — but
