@@ -268,11 +268,13 @@ export const entries = {
           const minOrder = existing.length
             ? Math.min(...existing.map((e) => e.order))
             : 0;
-          await supabase
-            .from("entries")
-            .insert({ panel_id: panelId, data: entry, order: minOrder - 1 })
-            .throwOnError();
-          await updatePanelLastUpdated(panelId);
+          await Promise.all([
+            supabase
+              .from("entries")
+              .insert({ panel_id: panelId, data: entry, order: minOrder - 1 })
+              .throwOnError(),
+            updatePanelLastUpdated(panelId),
+          ]);
           return { entries: await getEntries(panelId) };
         },
         {
@@ -292,13 +294,15 @@ export const entries = {
       await globalMutate(
         key,
         async (current?: EntriesCache): Promise<EntriesCache> => {
-          await supabase
-            .from("entries")
-            .delete()
-            .eq("id", entryId)
-            .eq("panel_id", panelId)
-            .throwOnError();
-          await updatePanelLastUpdated(panelId);
+          await Promise.all([
+            supabase
+              .from("entries")
+              .delete()
+              .eq("id", entryId)
+              .eq("panel_id", panelId)
+              .throwOnError(),
+            updatePanelLastUpdated(panelId),
+          ]);
           const base = current?.entries ?? (await getEntries(panelId));
           return { entries: base.filter((e) => e.id !== entryId) };
         },
@@ -324,8 +328,8 @@ export const entries = {
       await globalMutate(
         key,
         async (current?: EntriesCache): Promise<EntriesCache> => {
-          await Promise.all(
-            orderedIds.map((id, order) =>
+          await Promise.all([
+            ...orderedIds.map((id, order) =>
               supabase
                 .from("entries")
                 .update({ order })
@@ -333,8 +337,8 @@ export const entries = {
                 .eq("panel_id", panelId)
                 .throwOnError(),
             ),
-          );
-          await updatePanelLastUpdated(panelId);
+            updatePanelLastUpdated(panelId),
+          ]);
           void current;
           return { entries: await getEntries(panelId) };
         },

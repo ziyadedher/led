@@ -45,14 +45,11 @@
   --color-amber: #ffb84d;
   --color-danger: #ff4d6d;
 
-  /* Swatch palette — the color-picker rainbow/preset grid currently
-   * hardcodes these hexes inline. Hoisted here as tokens so the pickers
-   * can reference them later (next agent wires them up). The rose/sun
-   * stops deliberately reuse the danger/amber hues; the rest fill out a
-   * coherent spectrum. Ordered as a rainbow sweep. */
-  --color-swatch-rose: #ff4d6d; /* ≈ --color-danger */
-  --color-swatch-amber: #ff8a2c; /* ≈ --color-accent (LED orange) */
-  --color-swatch-sun: #ffe066; /* ≈ --color-amber, brighter */
+  /* Swatch palette for the color-picker preset grid, ordered as a
+   * rainbow sweep. rose/sun deliberately reuse the danger/amber hues. */
+  --color-swatch-rose: #ff4d6d;
+  --color-swatch-amber: #ff8a2c;
+  --color-swatch-sun: #ffe066;
   --color-swatch-lime: #a6e22e;
   --color-swatch-cyan: #4de0e0;
   --color-swatch-azure: #4da3ff;

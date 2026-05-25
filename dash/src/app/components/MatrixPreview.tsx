@@ -13,6 +13,7 @@ import {
 import { PanelContext } from "@/app/context";
 import type { Mode, WireColor } from "@/app/scenes/types";
 import { entries as entriesActions } from "@/utils/actions";
+import { LED_ORANGE } from "@/utils/color";
 
 const ROWS = 64;
 const COLS = 64;
@@ -33,7 +34,7 @@ type Scene = {
   };
 };
 
-const DEFAULT_COLOR: WireColor = { Rgb: { r: 255, g: 138, b: 44 } };
+const DEFAULT_COLOR: WireColor = { Rgb: LED_ORANGE };
 const FLASH_OFF = { is_active: false, on_steps: 0, total_steps: 0 };
 
 // Geometry derived from container width + DPR. Recomputed cheaply on
@@ -280,20 +281,12 @@ export function MatrixPreview({
   // static, we render a single frame and idle until state changes.
   const shouldAnimate = !offline && !isPaused && !isOff && isAnimatedMode;
 
-  // Push state into the renderer whenever it actually changes. The
-  // frame ref can rebuild for reasons that don't affect the rendered
-  // output (SWR refresh handing back a fresh object reference, etc.).
-  // The old code full-`JSON.stringify`'d the scene on every rebuild to
-  // dedupe — but a loaded gif scene is ~720KB and clock rebuilds at
-  // 1Hz, so that stringified large payloads on the main thread for no
-  // reason. Instead we dedupe with a cheap structural key plus a
-  // reference check on the bitmap payload, and only stringify once we
-  // know the scene genuinely changed.
+  // Dedupe scene pushes without stringifying the whole frame on every
+  // rebuild: a loaded gif scene is ~720KB and clock rebuilds at 1Hz.
+  // A cheap structural key catches most changes; for bitmap modes we
+  // also reference-check the payload array (rebuilt only on real
+  // content change) so SWR churn can't trigger the 720KB stringify.
   const lastKeyRef = useRef<string | null>(null);
-  // Reference to the bitmap payload array (image.bitmap / gif.frames)
-  // we last serialized. Those arrays are rebuilt on real content change,
-  // so a reference match means the 720KB payload is unchanged and we can
-  // skip stringifying it entirely.
   const lastBitmapRef = useRef<unknown>(null);
   // Bumped only when the scene the renderer holds actually changed, so
   // an idle (static-mode) loop knows to repaint exactly once.

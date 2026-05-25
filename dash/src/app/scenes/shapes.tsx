@@ -12,6 +12,7 @@ import {
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { Fader } from "@/app/components/Fader";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
+import { parseRgb } from "@/utils/color";
 import { useComposerConfig } from "@/utils/useComposerConfig";
 
 const SHAPES: { id: ShapeKind; label: string; glyph: string; blurb: string }[] = [
@@ -29,17 +30,7 @@ export function parseShapesConfig(raw: unknown): ShapesSceneConfig {
   if (!raw || typeof raw !== "object") return defaultShapesConfig();
   const obj = raw as Record<string, unknown>;
   const kind = oneOf(obj.kind, SHAPE_KINDS, DEFAULT_SHAPES_CONFIG.kind);
-  const colorRaw =
-    obj.color && typeof obj.color === "object"
-      ? (obj.color as Record<string, unknown>)
-      : null;
-  const color = colorRaw
-    ? {
-        r: clamp255(colorRaw.r),
-        g: clamp255(colorRaw.g),
-        b: clamp255(colorRaw.b),
-      }
-    : { ...DEFAULT_SHAPES_CONFIG.color };
+  const color = parseRgb(obj.color, DEFAULT_SHAPES_CONFIG.color);
   const speed =
     typeof obj.speed === "number" && obj.speed > 0
       ? Math.max(0.05, Math.min(16, obj.speed))
@@ -50,11 +41,6 @@ export function parseShapesConfig(raw: unknown): ShapesSceneConfig {
       ? Math.max(0, Math.min(1, obj.opacity))
       : 0;
   return { kind, color, speed, depth_shade, opacity };
-}
-
-function clamp255(n: unknown): number {
-  const v = typeof n === "number" ? n : 0;
-  return Math.max(0, Math.min(255, Math.round(v)));
 }
 
 /**

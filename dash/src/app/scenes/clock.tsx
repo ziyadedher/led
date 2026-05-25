@@ -19,6 +19,7 @@ import {
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { SegmentedToggle } from "@/app/components/SegmentedToggle";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
+import { parseRgb } from "@/utils/color";
 import { useComposerConfig } from "@/utils/useComposerConfig";
 
 /** Build a renderable clock frame from saved config + current time. */
@@ -69,17 +70,7 @@ export function parseClockConfig(raw: unknown): ClockSceneConfig {
   if (!raw || typeof raw !== "object") return defaultClockConfig();
   const obj = raw as Record<string, unknown>;
   const fmt = obj.format === "H12" ? "H12" : "H24";
-  const colorRaw =
-    obj.color && typeof obj.color === "object"
-      ? (obj.color as Record<string, unknown>)
-      : null;
-  const color = colorRaw
-    ? {
-        r: clamp255(colorRaw.r),
-        g: clamp255(colorRaw.g),
-        b: clamp255(colorRaw.b),
-      }
-    : { ...DEFAULT_CLOCK_CONFIG.color };
+  const color = parseRgb(obj.color, DEFAULT_CLOCK_CONFIG.color);
   const timezone =
     typeof obj.timezone === "string" && obj.timezone.length > 0
       ? obj.timezone
@@ -91,11 +82,6 @@ export function parseClockConfig(raw: unknown): ClockSceneConfig {
     timezone,
     color,
   };
-}
-
-function clamp255(n: unknown): number {
-  const v = typeof n === "number" ? n : 0;
-  return Math.max(0, Math.min(255, Math.round(v)));
 }
 
 /**

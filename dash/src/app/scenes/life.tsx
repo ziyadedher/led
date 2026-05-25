@@ -12,6 +12,7 @@ import {
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { SegmentedToggle } from "@/app/components/SegmentedToggle";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
+import { parseRgb } from "@/utils/color";
 import { useComposerConfig } from "@/utils/useComposerConfig";
 
 const W = 64;
@@ -30,17 +31,7 @@ const SPEED_PRESETS: { id: string; label: string; frames: number }[] = [
 export function parseLifeConfig(raw: unknown): LifeSceneConfig {
   if (!raw || typeof raw !== "object") return defaultLifeConfig();
   const obj = raw as Record<string, unknown>;
-  const colorRaw =
-    obj.color && typeof obj.color === "object"
-      ? (obj.color as Record<string, unknown>)
-      : null;
-  const color = colorRaw
-    ? {
-        r: clamp255(colorRaw.r),
-        g: clamp255(colorRaw.g),
-        b: clamp255(colorRaw.b),
-      }
-    : { ...DEFAULT_LIFE_CONFIG.color };
+  const color = parseRgb(obj.color, DEFAULT_LIFE_CONFIG.color);
   const stepRaw =
     typeof obj.step_interval_frames === "number" ? obj.step_interval_frames : 0;
   const step =
@@ -48,11 +39,6 @@ export function parseLifeConfig(raw: unknown): LifeSceneConfig {
       ? Math.round(stepRaw)
       : DEFAULT_LIFE_CONFIG.step_interval_frames;
   return { color, step_interval_frames: step };
-}
-
-function clamp255(n: unknown): number {
-  const v = typeof n === "number" ? n : 0;
-  return Math.max(0, Math.min(255, Math.round(v)));
 }
 
 /**
@@ -65,7 +51,10 @@ function clamp255(n: unknown): number {
  * from config so a fresh seed evolves through visually comparable
  * patterns at matching wall-clock speed.
  */
-export function useLifeScene(config: LifeSceneConfig): LifeScene {
+export function useLifeScene(
+  config: LifeSceneConfig,
+  enabled = true,
+): LifeScene {
   const [cells, setCells] = useState<Uint8Array>(() => seed());
   const framesRef = useRef(0);
   const generationsRef = useRef(0);
@@ -79,11 +68,12 @@ export function useLifeScene(config: LifeSceneConfig): LifeScene {
     intervalRef.current = Math.max(1, config.step_interval_frames);
   }, [config.step_interval_frames]);
 
-  // The hook only mounts while life is the active mode, so the loop is
-  // already scoped to "visible". We additionally suspend it while the
-  // tab is hidden — rAF throttles in the background but we skip the
-  // simulation work entirely so a backgrounded tab does zero ticking.
+  // page.tsx calls this hook unconditionally (so switching to life is
+  // instant), so gate the simulation on `enabled` — otherwise a 64×64
+  // Conway board would tick forever on every page view. Also suspend
+  // while the tab is hidden.
   useEffect(() => {
+    if (!enabled) return;
     let raf = 0;
     const tick = () => {
       framesRef.current += 1;
@@ -116,7 +106,7 @@ export function useLifeScene(config: LifeSceneConfig): LifeScene {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [enabled]);
 
   return {
     color: config.color,
