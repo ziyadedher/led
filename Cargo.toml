@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/display-core", "crates/driver", "crates/wifi-setup"]
+members = ["crates/display-core", "crates/driver", "crates/rp1-pio", "crates/wifi-setup"]
 
 # Lockstep version across every workspace crate (and, by manual mirror,
 # wasm-sim + dash — both are excluded from the workspace for unrelated
