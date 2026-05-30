@@ -499,7 +499,7 @@ dependencies = [
 
 [[package]]
 name = "display-core"
-version = "1.1.6"
+version = "1.1.7"
 dependencies = [
  "embedded-graphics",
  "serde",
@@ -1086,7 +1086,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "led-driver"
-version = "1.1.6"
+version = "1.1.7"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1123,7 +1123,7 @@ dependencies = [
 
 [[package]]
 name = "led-wifi-setup"
-version = "1.1.6"
+version = "1.1.7"
 dependencies = [
  "anyhow",
  "axum",
@@ -1948,7 +1948,7 @@ dependencies = [
 
 [[package]]
 name = "rp1-pio"
-version = "1.1.6"
+version = "1.1.7"
 dependencies = [
  "libc",
  "nix",
