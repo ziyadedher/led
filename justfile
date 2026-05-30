@@ -49,6 +49,16 @@ deploy host user="root": build
         && systemctl restart led-driver.service \
         && rm /usr/local/bin/led-driver.new'
 
+# Build + deploy for a Raspberry Pi 5 (aarch64 + RP1 PIO backend). The
+# aarch64 image carries both backends (`rpi`,`rpi5`); the driver picks
+# RP1 vs BCM at runtime by detecting the board.
+deploy-pi5 host user="root":
+    cross build -p led-driver --target aarch64-unknown-linux-musl --release --features rpi5
+    scp target/aarch64-unknown-linux-musl/release/led-driver "{{ user }}@{{ host }}:/usr/local/bin/led-driver.new"
+    ssh "{{ user }}@{{ host }}" 'install -m 0755 /usr/local/bin/led-driver.new /usr/local/bin/led-driver \
+        && systemctl restart led-driver.service \
+        && rm /usr/local/bin/led-driver.new'
+
 # Tail the driver service journal on a host.
 logs host user="root":
     ssh "{{ user }}@{{ host }}" journalctl -u led-driver.service -f

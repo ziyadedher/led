@@ -14,7 +14,7 @@ use std::fs;
 pub enum PiModel {
     /// Pi 5 / RP1-era: GPIO is behind the RP1 chip, driven via PIO.
     Pi5,
-    /// Pi Zero W .. Pi 4: GPIO is a BCM SoC peripheral (`mmap` path).
+    /// Pi Zero W .. Pi 4: GPIO is a BCM `SoC` peripheral (`mmap` path).
     Bcm,
 }
 

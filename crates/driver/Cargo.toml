@@ -14,7 +14,7 @@ rpi = ["dep:rpi-led-panel"]
 # RP1 PIO backend (Pi 5). Built into the aarch64 image alongside `rpi`
 # so one binary drives Pi 3/4 (BCM) and Pi 5 (RP1) via runtime model
 # detection. Not built into the armv6 Pi Zero W image.
-rpi5 = []
+rpi5 = ["dep:rp1-pio", "dep:pio", "dep:pio-proc"]
 
 [dependencies]
 display-core = { path = "../display-core" }
@@ -55,6 +55,9 @@ tokio-tungstenite = { version = "0.24", default-features = false, features = [
     "connect",
 ] }
 rpi-led-panel = { version = "0.5.1", optional = true }
+rp1-pio = { path = "../rp1-pio", optional = true }
+pio = { version = "0.2", optional = true }
+pio-proc = { version = "0.2", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror = "1.0.63"
