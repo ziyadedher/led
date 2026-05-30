@@ -107,7 +107,11 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "rpi")]
+/// Pick the output backend. `--terminal` always wins (native dev).
+/// Otherwise the running board decides: Pi 5 → RP1 PIO, everything
+/// else → BCM register mmap (`rpi-led-panel`). The relevant backend
+/// must be compiled in (`rpi` / `rpi5` features); a board with no
+/// matching backend fails loudly with an actionable message.
 fn build_sink(
     terminal: bool,
     color_order: Option<&str>,
@@ -115,39 +119,51 @@ fn build_sink(
     if terminal {
         return Ok(Box::new(TerminalMatrixSink::new(64, 64, 30.0)));
     }
+    let order = led_driver::color_order::from_config(color_order)
+        .map_err(|e| anyhow::anyhow!(e))?;
+    match led_driver::model::detect() {
+        led_driver::model::PiModel::Pi5 => build_rp1_sink(order),
+        led_driver::model::PiModel::Bcm => build_bcm_sink(order),
+    }
+}
+
+#[cfg(feature = "rpi")]
+fn build_bcm_sink(
+    order: led_driver::color_order::ColorOrder,
+) -> anyhow::Result<Box<dyn MatrixSink>> {
     use led_driver::sink::RpiMatrixSink;
-    use rpi_led_panel::{LedSequence, RGBMatrixConfig};
-    let led_sequence = match color_order
-        .map(|s| s.trim().to_ascii_uppercase())
-        .as_deref()
-    {
-        None | Some("") | Some("RGB") => LedSequence::Rgb,
-        Some("RBG") => LedSequence::Rbg,
-        Some("GRB") => LedSequence::Grb,
-        Some("GBR") => LedSequence::Gbr,
-        Some("BRG") => LedSequence::Brg,
-        Some("BGR") => LedSequence::Bgr,
-        Some(other) => {
-            anyhow::bail!(
-                "config color_order = {other:?}; expected one of RGB / RBG / GRB / GBR / BRG / BGR"
-            );
-        }
-    };
+    use rpi_led_panel::RGBMatrixConfig;
     let matrix_config = RGBMatrixConfig {
-        led_sequence,
+        led_sequence: order.into(),
         ..Default::default()
     };
     Ok(Box::new(RpiMatrixSink::new(matrix_config)?))
 }
 
 #[cfg(not(feature = "rpi"))]
-#[allow(clippy::unnecessary_wraps)] // mirror the `rpi` branch's signature
-fn build_sink(
-    _terminal: bool,
-    _color_order: Option<&str>,
+fn build_bcm_sink(
+    _order: led_driver::color_order::ColorOrder,
 ) -> anyhow::Result<Box<dyn MatrixSink>> {
-    // Built without the `rpi` feature — terminal sink is the only
-    // option. `--terminal` is implied; the flag is accepted but a
-    // no-op so call sites stay uniform.
-    Ok(Box::new(TerminalMatrixSink::new(64, 64, 30.0)))
+    anyhow::bail!(
+        "this board uses the BCM GPIO backend but the binary was built without the \
+         `rpi` feature; rebuild with `--features rpi` or run with `--terminal`"
+    )
+}
+
+#[cfg(feature = "rpi5")]
+fn build_rp1_sink(
+    order: led_driver::color_order::ColorOrder,
+) -> anyhow::Result<Box<dyn MatrixSink>> {
+    use led_driver::sink::Rp1PioSink;
+    Ok(Box::new(Rp1PioSink::new(64, 64, order)?))
+}
+
+#[cfg(not(feature = "rpi5"))]
+fn build_rp1_sink(
+    _order: led_driver::color_order::ColorOrder,
+) -> anyhow::Result<Box<dyn MatrixSink>> {
+    anyhow::bail!(
+        "detected a Raspberry Pi 5 (RP1 GPIO) but this binary was built without the \
+         `rpi5` feature; rebuild with `--features rpi5`"
+    )
 }
