@@ -6,8 +6,10 @@
 /// startup via `panels.driver_version`.
 pub const DRIVER_VERSION: &str = env!("LED_DRIVER_VERSION");
 
+pub mod color_order;
 pub mod config;
 pub mod display;
+pub mod model;
 pub mod realtime;
 pub mod sink;
 pub mod state;

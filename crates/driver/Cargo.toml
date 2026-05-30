@@ -9,7 +9,12 @@ edition = "2021"
 # (`cargo run --no-default-features` / `just dev`) — the binary then
 # only knows about the terminal sink.
 default = ["rpi"]
+# BCM-register backend (Pi Zero W .. Pi 4) via `rpi-led-panel`.
 rpi = ["dep:rpi-led-panel"]
+# RP1 PIO backend (Pi 5). Built into the aarch64 image alongside `rpi`
+# so one binary drives Pi 3/4 (BCM) and Pi 5 (RP1) via runtime model
+# detection. Not built into the armv6 Pi Zero W image.
+rpi5 = []
 
 [dependencies]
 display-core = { path = "../display-core" }

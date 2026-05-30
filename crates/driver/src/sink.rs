@@ -154,6 +154,17 @@ mod rpi {
 #[cfg(feature = "rpi")]
 pub use rpi::RpiMatrixSink;
 
+/// RP1 PIO backend (Raspberry Pi 5). The Pi 5 routes GPIO through the
+/// RP1 chip; HUB75 is driven by a PIO state machine fed a packed
+/// bit-plane command stream rather than by BCM register mmap. Lives
+/// behind the `rpi5` feature; the encoder + state-machine plumbing is
+/// in the [`rp1`] module.
+#[cfg(feature = "rpi5")]
+mod rp1;
+
+#[cfg(feature = "rpi5")]
+pub use rp1::Rp1PioSink;
+
 /// ANSI half-block renderer for `just dev`. Each terminal row prints
 /// the `▀` glyph for two vertical panel pixels — foreground for the
 /// top, background for the bottom. We re-home the cursor each frame
