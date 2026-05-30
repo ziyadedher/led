@@ -42,9 +42,14 @@ pub const BIT_PLANES: u32 = 8;
 /// Base OE-on dwell (PIO cycles) for the least-significant plane; each
 /// more-significant plane doubles it (binary-coded modulation).
 const BASE_DWELL: u32 = 8;
-/// LAT pulse + inter-row blank widths (PIO cycles).
-const LATCH_TICKS: u32 = 2;
-const BLANK_TICKS: u32 = 2;
+/// LAT latch-pulse width (PIO cycles).
+const LATCH_TICKS: u32 = 4;
+/// OE-off guard after the dwell, before the next row's address changes.
+/// This is the anti-ghosting knob: the panel's output drivers need time
+/// to fully switch off, otherwise the bright row bleeds faintly onto the
+/// next address row ("the LED below is slightly lit"). Generous here is
+/// cheap — it's a fixed cost per row, negligible against the dwell sum.
+const BLANK_TICKS: u32 = 24;
 
 /// `data_header(n)` then exactly `n` sample words follow.
 fn data_header(n: u32) -> u32 {
@@ -103,19 +108,36 @@ pub fn encode_frame(buf: &PixelBuffer, order: ColorOrder, out: &mut Vec<u32>) {
         (lut[r as usize], lut[g as usize], lut[b as usize])
     };
 
+    // Pipelined to avoid row-transition ghosting: the address lines
+    // always match the row currently in the output latches. We clock
+    // row N's data while the address still points at the previously
+    // latched row, then latch, THEN advance the address, then
+    // illuminate. So there's never a window where the address selects
+    // one row while the latches hold a different (bright) row — that
+    // mismatch is what bleeds a faint copy onto the next row.
+    //
+    // `prev` is the row whose data is in the latches right now. Seeded
+    // to the last scan row so the first iteration is consistent; any
+    // startup transient is a single sub-frame and invisible.
+    let mut prev = scan_rows - 1;
+
     // MSB plane first (p = 0) so the longest dwell leads each row.
     for plane in 0..BIT_PLANES {
         let bit = BIT_PLANES - 1 - plane; // plane 0 → MSB
         let dwell = BASE_DWELL << (BIT_PLANES - 1 - plane);
         for addr in 0..scan_rows {
+            let prev_abits = addr_word(prev);
             let abits = addr_word(addr);
 
-            // Clock 64 columns; OE blanked while shifting.
+            // Clock row `addr`'s data in. OE blanked; address still
+            // selects `prev` (matching the latched data) so any leakage
+            // during the long shift can only re-light `prev`, not bleed
+            // onto a neighbour.
             out.push(data_header(width));
             for x in 0..width {
                 let (tr, tg, tb) = level(buf.pixel(x, addr));
                 let (br, bg, bb) = level(buf.pixel(x, addr + scan_rows));
-                let mut w = OE_DISABLED | abits;
+                let mut w = OE_DISABLED | prev_abits;
                 if tr & (1 << bit) != 0 {
                     w |= 1 << PIN_R1;
                 }
@@ -137,18 +159,22 @@ pub fn encode_frame(buf: &PixelBuffer, order: ColorOrder, out: &mut Vec<u32>) {
                 out.push(w);
             }
 
-            // Latch the shifted row (still blanked).
+            // Latch the shifted row into the output latches (still
+            // blanked, address still `prev`).
             out.push(delay_header(LATCH_TICKS));
-            out.push(OE_DISABLED | abits | LAT_BIT);
+            out.push(OE_DISABLED | prev_abits | LAT_BIT);
+
+            // Advance the address to the row we just latched, while
+            // still blanked, and let it settle.
+            out.push(delay_header(BLANK_TICKS));
+            out.push(OE_DISABLED | abits);
 
             // Illuminate for this plane's weighted dwell (OE active-low
-            // = 0; LAT low).
+            // = 0; LAT low; address now matches the latched data).
             out.push(delay_header(dwell));
             out.push(abits);
 
-            // Blank before the next row's shifting.
-            out.push(delay_header(BLANK_TICKS));
-            out.push(OE_DISABLED | abits);
+            prev = addr;
         }
     }
 }
@@ -235,20 +261,58 @@ mod tests {
         assert_ne!(w & OE_DISABLED, 0);
     }
 
+    /// Decode the row address (A–E) carried in a GPIO word.
+    fn decode_addr(word: u32) -> u32 {
+        // PIN_ADDR = [A,B,C,D,E] at bits [22,26,27,20,24]
+        let pins = [22, 26, 27, 20, 24];
+        let mut a = 0;
+        for (i, p) in pins.iter().enumerate() {
+            if word & (1 << p) != 0 {
+                a |= 1 << i;
+            }
+        }
+        a
+    }
+
     #[test]
     fn dwell_doubles_per_more_significant_plane() {
         let mut out = Vec::new();
         encode_frame(&solid(Rgb888::WHITE), ColorOrder::Rgb, &mut out);
-        // The OE-on dwell is the second delay header in each row block.
-        // Pull the dwell of row 0 for the first two planes by walking
-        // the stream structurally: each row block is
-        //   [data_hdr][64 samples][lat_hdr][lat_word][dwell_hdr][on_word][blank_hdr][blank_word]
+        // Each row block is, in order:
+        //   [data_hdr][64 samples][lat_hdr][lat_word][blank_hdr][addr_word][dwell_hdr][on_word]
         let row_block = 64 + 1 + 2 + 2 + 2; // = 71 words
-        let dwell_hdr_offset = 1 + 64 + 2; // into a block
+        let dwell_hdr_offset = 1 + 64 + 2 + 2; // past data, samples, latch, blank
         let plane0_dwell = out[dwell_hdr_offset] + 1;
         let plane1_dwell = out[row_block * 32 + dwell_hdr_offset] + 1;
         // plane 0 is MSB → exactly double plane 1.
         assert_eq!(plane0_dwell, plane1_dwell * 2);
+    }
+
+    #[test]
+    fn address_is_pipelined_to_avoid_ghosting() {
+        // The anti-ghosting invariant: while clocking a row's data in,
+        // the address must still select the row currently in the latches
+        // (the one displayed by the PREVIOUS block's dwell), never the
+        // row being shifted. So block i's dwell address == block i+1's
+        // sample-clock address.
+        let mut out = Vec::new();
+        encode_frame(&solid(Rgb888::WHITE), ColorOrder::Rgb, &mut out);
+        let row_block = 64 + 1 + 2 + 2 + 2;
+        let sample_offset = 1; // first sample word
+        let dwell_word_offset = 1 + 64 + 2 + 2 + 1; // the OE-on word
+        for i in 0..5 {
+            let dwell_addr = decode_addr(out[i * row_block + dwell_word_offset]);
+            let next_clock_addr = decode_addr(out[(i + 1) * row_block + sample_offset]);
+            assert_eq!(
+                dwell_addr, next_clock_addr,
+                "block {i} displays row {dwell_addr} but block {} clocks against row {next_clock_addr}",
+                i + 1
+            );
+            // And within a block, the clock-in address differs from the
+            // row being displayed (it's the previous row).
+            let this_clock_addr = decode_addr(out[i * row_block + sample_offset]);
+            assert_ne!(this_clock_addr, dwell_addr);
+        }
     }
 
     #[test]
