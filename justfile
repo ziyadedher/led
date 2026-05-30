@@ -1,6 +1,12 @@
 # Default target architecture for the LED matrix Pis (Pi Zero W = armv6 hardfp).
-# Override per-invocation: `just arch=aarch64-unknown-linux-musl build`.
+# Pi 5 builds set arch=aarch64-unknown-linux-musl (use the `*-pi5`
+# recipes, which do this for you).
 arch := "arm-unknown-linux-gnueabihf"
+
+# The RP1 PIO backend (`rpi5`) is 64-bit-only and only needed on the
+# Pi 5 image, so it's enabled automatically when targeting aarch64 and
+# left out of the armv6 Zero W build (where the crate wouldn't compile).
+features := if arch =~ "aarch64" { "--features rpi5" } else { "" }
 
 # Non-sensitive runtime config. Exported so scripts inherit them
 # without re-declaring; sensitive values live in secrets/*.sops.json
@@ -16,8 +22,10 @@ default:
 
 # Cross-compile the driver and the WiFi onboarding binary. Requires `cross`
 # (https://github.com/cross-rs/cross) and a running Docker daemon.
+# Builds the two deployed binaries explicitly (not `--workspace`) so the
+# armv6 build never pulls in the 64-bit-only `rp1-pio` crate.
 build:
-    cross build --workspace --target {{ arch }} --release
+    cross build -p led-driver -p led-wifi-setup --target {{ arch }} --release {{ features }}
 
 # Sanity: the workspace builds for the host arch (no cross involved).
 check:
@@ -49,15 +57,19 @@ deploy host user="root": build
         && systemctl restart led-driver.service \
         && rm /usr/local/bin/led-driver.new'
 
-# Build + deploy for a Raspberry Pi 5 (aarch64 + RP1 PIO backend). The
-# aarch64 image carries both backends (`rpi`,`rpi5`); the driver picks
-# RP1 vs BCM at runtime by detecting the board.
+# Pi 5 convenience wrappers. They re-invoke the matching recipe with
+# `arch=aarch64-unknown-linux-musl`, which (a) cross-builds the right
+# target, (b) auto-enables the `rpi5` RP1 PIO backend via `features`,
+# and (c) makes flash-sd.sh fetch the 64-bit Pi OS image. The aarch64
+# build carries both backends; the driver picks RP1 vs BCM at runtime.
+
+# Flash a fresh Pi 5 SD card (64-bit image + RP1 PIO backend).
+flash-sd-pi5 id host device color-order="RGB":
+    just arch=aarch64-unknown-linux-musl flash-sd "{{ id }}" "{{ host }}" "{{ device }}" "{{ color-order }}"
+
+# Build + deploy to a running Pi 5.
 deploy-pi5 host user="root":
-    cross build -p led-driver --target aarch64-unknown-linux-musl --release --features rpi5
-    scp target/aarch64-unknown-linux-musl/release/led-driver "{{ user }}@{{ host }}:/usr/local/bin/led-driver.new"
-    ssh "{{ user }}@{{ host }}" 'install -m 0755 /usr/local/bin/led-driver.new /usr/local/bin/led-driver \
-        && systemctl restart led-driver.service \
-        && rm /usr/local/bin/led-driver.new'
+    just arch=aarch64-unknown-linux-musl deploy "{{ host }}" "{{ user }}"
 
 # Tail the driver service journal on a host.
 logs host user="root":
