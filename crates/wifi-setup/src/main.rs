@@ -165,8 +165,47 @@ struct Network {
 
 #[derive(Deserialize)]
 struct ConnectForm {
+    #[serde(default)]
     ssid: String,
+    /// Manually-typed SSID (hidden network); overrides the dropdown.
+    #[serde(default)]
+    ssid_manual: String,
+    /// "personal" (WPA-PSK) or "enterprise" (WPA-EAP / 802.1X). Empty
+    /// defaults to personal.
+    #[serde(default)]
+    mode: String,
+    // Personal:
+    #[serde(default)]
     psk: String,
+    // Enterprise (802.1X username/password — PEAP or TTLS):
+    #[serde(default)]
+    eap: String,
+    #[serde(default)]
+    phase2: String,
+    #[serde(default)]
+    identity: String,
+    #[serde(default)]
+    password: String,
+    #[serde(default)]
+    anonymous: String,
+}
+
+/// How to authenticate to the chosen network.
+enum NetworkAuth {
+    /// WPA/WPA2/WPA3-Personal pre-shared key.
+    Personal { psk: String },
+    /// WPA/WPA2/WPA3-Enterprise (802.1X) with a username + password.
+    /// `eap` is `peap`|`ttls`; `phase2` is the inner auth
+    /// (`mschapv2`|`pap`). The server cert is not validated (no
+    /// `ca-cert`), which is the pragmatic default for guest enterprise
+    /// networks.
+    Enterprise {
+        eap: String,
+        phase2: String,
+        identity: String,
+        password: String,
+        anonymous: Option<String>,
+    },
 }
 
 async fn captive_redirect() -> Redirect {
@@ -214,20 +253,64 @@ async fn form(State(state): State<Arc<AppState>>) -> Html<String> {
   details {{ margin-top: 12px; color: #888; font-size: 0.9em; }}
   details input {{ width: 100%; box-sizing: border-box; }}
   .err {{ color: #ff6b6b; font-size: 0.9em; }}
+  fieldset {{ border: 1px solid #333; border-radius: 8px; padding: 12px; display: grid; gap: 12px; margin: 0; }}
+  legend {{ color: #888; font-size: 0.85em; padding: 0 6px; }}
+  .seg {{ display: flex; gap: 0; border: 1px solid #333; border-radius: 8px; overflow: hidden; }}
+  .seg label {{ flex: 1; text-align: center; padding: 10px; cursor: pointer; color: #bbb; }}
+  .seg input {{ position: absolute; opacity: 0; }}
+  .seg input:checked + span {{ color: #fff; }}
+  .seg label:has(input:checked) {{ background: #2a3550; }}
 </style>
 </head>
 <body>
   <h1>LED matrix WiFi setup</h1>
-  <p class="muted">Pick a network and enter the password. The Pi will join it and finish setup automatically.</p>
+  <p class="muted">Pick a network and sign in. The Pi will join it and finish setup automatically.</p>
   <form method="post" action="/connect">
     <label>Network
       <select name="ssid" required>
         {options}
       </select>
     </label>
-    <label>Password
-      <input type="password" name="psk" autocomplete="off" required minlength="8">
-    </label>
+
+    <div class="seg">
+      <label><input type="radio" name="mode" value="personal" checked onchange="updateMode()"><span>Personal</span></label>
+      <label><input type="radio" name="mode" value="enterprise" onchange="updateMode()"><span>Enterprise</span></label>
+    </div>
+
+    <div id="personal-fields">
+      <label>Password
+        <input type="password" name="psk" autocomplete="off" minlength="8">
+      </label>
+    </div>
+
+    <fieldset id="enterprise-fields" hidden>
+      <legend>Enterprise (802.1X) login</legend>
+      <label>Username
+        <input type="text" name="identity" autocomplete="username" placeholder="you@company.com">
+      </label>
+      <label>Password
+        <input type="password" name="password" autocomplete="current-password">
+      </label>
+      <details>
+        <summary>Advanced</summary>
+        <label style="margin-top:8px;">EAP method
+          <select name="eap">
+            <option value="peap" selected>PEAP</option>
+            <option value="ttls">TTLS</option>
+          </select>
+        </label>
+        <label style="margin-top:8px;">Inner auth
+          <select name="phase2">
+            <option value="mschapv2" selected>MSCHAPv2</option>
+            <option value="pap">PAP</option>
+          </select>
+        </label>
+        <label style="margin-top:8px;">Anonymous identity (optional)
+          <input type="text" name="anonymous" placeholder="anonymous@company.com">
+        </label>
+      </details>
+    </fieldset>
+
     <details>
       <summary>Network not listed?</summary>
       <label style="margin-top:8px;">SSID
@@ -236,6 +319,19 @@ async fn form(State(state): State<Arc<AppState>>) -> Html<String> {
     </details>
     <button type="submit">Connect</button>
   </form>
+  <script>
+    function updateMode() {{
+      var ent = document.querySelector('input[name=mode]:checked').value === 'enterprise';
+      var p = document.getElementById('personal-fields');
+      var e = document.getElementById('enterprise-fields');
+      p.hidden = ent; e.hidden = !ent;
+      // Disabled inputs aren't submitted and skip validation, so the
+      // hidden section's `required`/`minlength` can't block the form.
+      p.querySelectorAll('input').forEach(function(i) {{ i.disabled = ent; }});
+      e.querySelectorAll('input,select').forEach(function(i) {{ i.disabled = !ent; }});
+    }}
+    updateMode();
+  </script>
 </body>
 </html>"##
     ))
@@ -245,17 +341,54 @@ async fn connect_handler(
     State(state): State<Arc<AppState>>,
     Form(form): Form<ConnectForm>,
 ) -> (axum::http::StatusCode, Html<String>) {
-    let ssid = form.ssid.trim().to_string();
+    // A manually-typed SSID (hidden network) overrides the dropdown.
+    let ssid = {
+        let manual = form.ssid_manual.trim();
+        if manual.is_empty() {
+            form.ssid.trim().to_string()
+        } else {
+            manual.to_string()
+        }
+    };
     if ssid.is_empty() {
         return (
             axum::http::StatusCode::BAD_REQUEST,
-            Html("missing ssid".to_string()),
+            Html(error_page("Pick or enter a network name.")),
         );
     }
-    let psk = form.psk;
-    tracing::info!(%ssid, "applying network");
 
-    let result = apply_network(&ssid, &psk).await;
+    let bad = |msg: &str| {
+        (
+            axum::http::StatusCode::BAD_REQUEST,
+            Html(error_page(msg)),
+        )
+    };
+    let auth = if form.mode == "enterprise" {
+        let identity = form.identity.trim().to_string();
+        let password = form.password;
+        if identity.is_empty() || password.is_empty() {
+            return bad("Enterprise networks need a username and password.");
+        }
+        let eap = if form.eap == "ttls" { "ttls" } else { "peap" }.to_string();
+        let phase2 = if form.phase2 == "pap" { "pap" } else { "mschapv2" }.to_string();
+        let anonymous = {
+            let a = form.anonymous.trim();
+            if a.is_empty() {
+                None
+            } else {
+                Some(a.to_string())
+            }
+        };
+        NetworkAuth::Enterprise { eap, phase2, identity, password, anonymous }
+    } else {
+        if form.psk.is_empty() {
+            return bad("Enter the network password.");
+        }
+        NetworkAuth::Personal { psk: form.psk }
+    };
+    tracing::info!(%ssid, enterprise = matches!(auth, NetworkAuth::Enterprise { .. }), "applying network");
+
+    let result = apply_network(&ssid, &auth).await;
     match result {
         Ok(()) => {
             // Defer the actual shutdown briefly so the success page renders.
@@ -309,12 +442,48 @@ fn error_page(msg: &str) -> String {
     )
 }
 
-async fn apply_network(ssid: &str, psk: &str) -> Result<()> {
+async fn apply_network(ssid: &str, auth: &NetworkAuth) -> Result<()> {
     tear_down_ap().await.ok();
 
     // Remove any prior connection of the same name to keep state idempotent.
     let _ = nmcli(["connection", "delete", "led-wifi"]).await;
 
+    // Build the `nmcli connection add` argument list. Common shell +
+    // the per-auth security settings.
+    let mut args: Vec<String> = [
+        "connection", "add", "type", "wifi", "ifname", "wlan0", "con-name",
+        "led-wifi", "ssid", ssid,
+    ]
+    .iter()
+    .map(|s| (*s).to_string())
+    .collect();
+
+    let mut push = |k: &str, v: &str| {
+        args.push(k.to_string());
+        args.push(v.to_string());
+    };
+    match auth {
+        NetworkAuth::Personal { psk } => {
+            push("wifi-sec.key-mgmt", "wpa-psk");
+            push("wifi-sec.psk", psk);
+        }
+        NetworkAuth::Enterprise {
+            eap,
+            phase2,
+            identity,
+            password,
+            anonymous,
+        } => {
+            push("wifi-sec.key-mgmt", "wpa-eap");
+            push("802-1x.eap", eap);
+            push("802-1x.phase2-auth", phase2);
+            push("802-1x.identity", identity);
+            push("802-1x.password", password);
+            if let Some(anon) = anonymous {
+                push("802-1x.anonymous-identity", anon);
+            }
+        }
+    }
     // IPv6 is disabled on this connection. Reason: home routers
     // commonly hand out a SLAAC global address but don't actually
     // forward IPv6 upstream. With v6 enabled, NetworkManager sets it
@@ -322,28 +491,10 @@ async fn apply_network(ssid: &str, psk: &str) -> Result<()> {
     // AAAA record for controlplane.tailscale.com and stalls on TCP
     // connect for the full timeout. Disabling v6 entirely sidesteps
     // happy-eyeballs corner cases on cheap CPE.
-    nmcli([
-        "connection",
-        "add",
-        "type",
-        "wifi",
-        "ifname",
-        "wlan0",
-        "con-name",
-        "led-wifi",
-        "ssid",
-        ssid,
-        "wifi-sec.key-mgmt",
-        "wpa-psk",
-        "wifi-sec.psk",
-        psk,
-        "ipv6.method",
-        "disabled",
-        "connection.autoconnect",
-        "yes",
-    ])
-    .await
-    .context("nmcli connection add")?;
+    push("ipv6.method", "disabled");
+    push("connection.autoconnect", "yes");
+
+    nmcli(args).await.context("nmcli connection add")?;
 
     nmcli(["connection", "up", "led-wifi"])
         .await
