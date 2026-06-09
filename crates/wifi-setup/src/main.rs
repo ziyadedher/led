@@ -192,8 +192,13 @@ struct ConnectForm {
 
 /// How to authenticate to the chosen network.
 enum NetworkAuth {
-    /// WPA/WPA2/WPA3-Personal pre-shared key.
-    Personal { psk: String },
+    /// Open network — no security.
+    Open,
+    /// Personal password. `sae` selects WPA3 (key-mgmt `sae`) vs WPA2
+    /// (`wpa-psk`); deriving this from the scanned security is what lets
+    /// a WPA3-Personal network join — forcing `wpa-psk` makes a
+    /// WPA3/SAE AP reject every BSS (ssid-not-found).
+    Psk { psk: String, sae: bool },
     /// WPA/WPA2/WPA3-Enterprise (802.1X) with a username + password.
     /// `eap` is `peap`|`ttls`; `phase2` is the inner auth
     /// (`mschapv2`|`pap`). The server cert is not validated (no
@@ -206,6 +211,32 @@ enum NetworkAuth {
         password: String,
         anonymous: Option<String>,
     },
+}
+
+impl NetworkAuth {
+    /// Short label for logs.
+    fn kind(&self) -> &'static str {
+        match self {
+            NetworkAuth::Open => "open",
+            NetworkAuth::Psk { sae: true, .. } => "psk-wpa3",
+            NetworkAuth::Psk { sae: false, .. } => "psk-wpa2",
+            NetworkAuth::Enterprise { .. } => "enterprise",
+        }
+    }
+}
+
+/// Personal key-management for a network given its scanned SECURITY
+/// string (nmcli's `WPA2` / `WPA3` / `WPA2 WPA3` / `802.1X` / empty).
+/// `None` when the network is open (caller maps that to no password).
+fn psk_uses_sae(security: &str) -> bool {
+    // A WPA3 (or WPA2/WPA3 transition) network supports SAE; pick it.
+    // Pure WPA2/WPA1 uses WPA-PSK.
+    security.to_ascii_uppercase().contains("WPA3")
+}
+
+fn is_open_security(security: &str) -> bool {
+    let s = security.trim().to_ascii_uppercase();
+    s.is_empty() || s == "--"
 }
 
 async fn captive_redirect() -> Redirect {
@@ -363,6 +394,16 @@ async fn connect_handler(
             Html(error_page(msg)),
         )
     };
+    // The scanned security for the chosen SSID decides WPA2 vs WPA3 vs
+    // open on the personal path. `None` = not in the scan (a manually-
+    // typed/hidden SSID), which we treat as secured-unknown (require a
+    // password, default WPA-PSK) rather than open.
+    let scanned_security = state
+        .networks
+        .iter()
+        .find(|n| n.ssid == ssid)
+        .map(|n| n.security.clone());
+
     let auth = if form.mode == "enterprise" {
         let identity = form.identity.trim().to_string();
         let password = form.password;
@@ -380,13 +421,25 @@ async fn connect_handler(
             }
         };
         NetworkAuth::Enterprise { eap, phase2, identity, password, anonymous }
+    } else if matches!(&scanned_security, Some(s) if is_open_security(s)) {
+        // Scanned and genuinely open — no password needed.
+        NetworkAuth::Open
     } else {
         if form.psk.is_empty() {
             return bad("Enter the network password.");
         }
-        NetworkAuth::Personal { psk: form.psk }
+        // WPA3 → SAE; WPA2/unknown → WPA-PSK.
+        let sae = scanned_security
+            .as_deref()
+            .is_some_and(psk_uses_sae);
+        NetworkAuth::Psk { psk: form.psk, sae }
     };
-    tracing::info!(%ssid, enterprise = matches!(auth, NetworkAuth::Enterprise { .. }), "applying network");
+    tracing::info!(
+        %ssid,
+        security = scanned_security.as_deref().unwrap_or("(unscanned)"),
+        kind = auth.kind(),
+        "applying network"
+    );
 
     let result = apply_network(&ssid, &auth).await;
     match result {
@@ -463,8 +516,16 @@ async fn apply_network(ssid: &str, auth: &NetworkAuth) -> Result<()> {
         args.push(v.to_string());
     };
     match auth {
-        NetworkAuth::Personal { psk } => {
-            push("wifi-sec.key-mgmt", "wpa-psk");
+        NetworkAuth::Open => {
+            // No security block — see `bring_up_ap` for why key-mgmt
+            // none is avoided.
+        }
+        NetworkAuth::Psk { psk, sae } => {
+            // SAE = WPA3-Personal (the password goes in the same
+            // wifi-sec.psk field; NM negotiates the mandatory PMF).
+            // wpa-psk = WPA/WPA2. Forcing wpa-psk on a WPA3 network was
+            // the bug that produced ssid-not-found.
+            push("wifi-sec.key-mgmt", if *sae { "sae" } else { "wpa-psk" });
             push("wifi-sec.psk", psk);
         }
         NetworkAuth::Enterprise {
@@ -751,4 +812,30 @@ fn html_escape(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#x27;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wpa3_networks_use_sae() {
+        // WPA3-only and WPA2/WPA3 transition both support SAE.
+        assert!(psk_uses_sae("WPA3"));
+        assert!(psk_uses_sae("WPA2 WPA3"));
+        assert!(psk_uses_sae("wpa3"));
+        // Pure WPA2/WPA1 do not.
+        assert!(!psk_uses_sae("WPA2"));
+        assert!(!psk_uses_sae("WPA1 WPA2"));
+        assert!(!psk_uses_sae(""));
+    }
+
+    #[test]
+    fn open_security_detection() {
+        assert!(is_open_security(""));
+        assert!(is_open_security("  "));
+        assert!(is_open_security("--"));
+        assert!(!is_open_security("WPA2"));
+        assert!(!is_open_security("WPA3"));
+    }
 }
