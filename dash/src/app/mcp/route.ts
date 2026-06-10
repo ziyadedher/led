@@ -16,13 +16,22 @@ import { createClient } from "@supabase/supabase-js";
 import {
   DEFAULT_CLOCK_CONFIG,
   DEFAULT_FIRE_CONFIG,
+  DEFAULT_FLUID_CONFIG,
+  DEFAULT_FX_CONFIG,
   DEFAULT_LAVA_CONFIG,
   DEFAULT_LIFE_CONFIG,
+  DEFAULT_PHYSARUM_CONFIG,
   DEFAULT_PLASMA_CONFIG,
+  DEFAULT_PONG_CONFIG,
   DEFAULT_RAIN_CONFIG,
+  DEFAULT_RD_CONFIG,
+  DEFAULT_SAND_CONFIG,
   DEFAULT_SHAPES_CONFIG,
+  DEFAULT_SKY_CONFIG,
   DEFAULT_STARFIELD_CONFIG,
+  DEFAULT_SWARM_CONFIG,
   DEFAULT_TEST_CONFIG,
+  DEFAULT_WARP_CONFIG,
   MODES,
 } from "@/app/scenes/types";
 import type { Database } from "@/types/supabase";
@@ -242,6 +251,100 @@ const LavaConfig = z
   })
   .optional();
 
+const WarpConfig = z
+  .object({
+    palette: z
+      .enum(["Ember", "Phosphor", "Aurora", "Ocean", "Rainbow"])
+      .optional(),
+    speed: z.number().min(0.05).max(8).optional(),
+    scale: z.number().min(0.25).max(4).optional(),
+  })
+  .optional();
+
+const FxConfig = z
+  .object({
+    effect: z
+      .enum([
+        "Tunnel",
+        "Rotozoom",
+        "Twister",
+        "Copper",
+        "Moire",
+        "Kefrens",
+        "Julia",
+        "Chladni",
+        "Aurora",
+        "BlackHole",
+      ])
+      .optional(),
+    palette: z.enum(["Ember", "Phosphor", "Aurora", "Rainbow"]).optional(),
+    speed: z.number().min(0.05).max(8).optional(),
+  })
+  .optional();
+
+const SkyConfig = z
+  .object({
+    face: z.enum(["Moon", "Sun", "Terminator"]).optional(),
+    lat: z.number().min(-90).max(90).optional(),
+    lon: z.number().min(-180).max(180).optional(),
+    color: Rgb.optional(),
+  })
+  .optional();
+
+const PongConfig = z
+  .object({
+    color: Rgb.optional(),
+    speed: z.number().min(0.25).max(4).optional(),
+    format: z.enum(["H24", "H12"]).optional(),
+  })
+  .optional();
+
+const PhysarumConfig = z
+  .object({
+    color: Rgb.optional(),
+    agents: z.number().int().min(200).max(8000).optional(),
+    decay: z.number().min(0.8).max(0.99).optional(),
+    speed: z.number().min(0.1).max(4).optional(),
+  })
+  .optional();
+
+const RdConfig = z
+  .object({
+    color: Rgb.optional(),
+    feed: z.number().min(0.01).max(0.12).optional(),
+    kill: z.number().min(0.04).max(0.08).optional(),
+    drift: z.boolean().optional(),
+    speed: z.number().min(0.1).max(4).optional(),
+  })
+  .optional();
+
+const FluidConfig = z
+  .object({
+    color_a: Rgb.optional(),
+    color_b: Rgb.optional(),
+    swirl: z.number().min(0.2).max(4).optional(),
+    speed: z.number().min(0.1).max(4).optional(),
+  })
+  .optional();
+
+const SandConfig = z
+  .object({
+    color: Rgb.optional(),
+    rainbow: z.boolean().optional(),
+    pour_rate: z.number().min(0.1).max(4).optional(),
+    reset_minutes: z.number().int().min(0).max(1440).optional(),
+  })
+  .optional();
+
+const SwarmConfig = z
+  .object({
+    color: Rgb.optional(),
+    count: z.number().int().min(10).max(200).optional(),
+    trail: z.number().min(0.5).max(0.98).optional(),
+    speed: z.number().min(0.1).max(4).optional(),
+  })
+  .optional();
+
 /* ─── handler ─────────────────────────────────────────────────────── */
 
 const handler = createMcpHandler(
@@ -437,6 +540,99 @@ const handler = createMcpHandler(
             },
             defaults: DEFAULT_LAVA_CONFIG,
           },
+          warp: {
+            description: "Domain-warped noise flow — slow organic drift.",
+            schema: {
+              palette: "'Ember' | 'Phosphor' | 'Aurora' | 'Ocean' | 'Rainbow'",
+              speed: "0.05-8 animation rate",
+              scale: "0.25-4 feature size (higher = larger)",
+            },
+            defaults: DEFAULT_WARP_CONFIG,
+          },
+          fx: {
+            description: "Demoscene effect pack — one effect at a time.",
+            schema: {
+              effect:
+                "'Tunnel' | 'Rotozoom' | 'Twister' | 'Copper' | 'Moire' | 'Kefrens' | 'Julia' | 'Chladni' | 'Aurora' | 'BlackHole'",
+              palette: "'Ember' | 'Phosphor' | 'Aurora' | 'Rainbow'",
+              speed: "0.05-8 animation rate",
+            },
+            defaults: DEFAULT_FX_CONFIG,
+          },
+          sky: {
+            description:
+              "Astronomy face: live moon phase, sun position, or day/night terminator for a given location.",
+            schema: {
+              face: "'Moon' | 'Sun' | 'Terminator'",
+              lat: "-90..90 latitude in degrees",
+              lon: "-180..180 longitude in degrees",
+              color: "{ r, g, b } 0-255",
+            },
+            defaults: DEFAULT_SKY_CONFIG,
+          },
+          pong: {
+            description:
+              "Pong clock — two paddles rally and the score is the time.",
+            schema: {
+              color: "{ r, g, b } 0-255",
+              speed: "0.25-4 ball/rally rate",
+              format: "'H24' | 'H12'",
+            },
+            defaults: DEFAULT_PONG_CONFIG,
+          },
+          physarum: {
+            description: "Slime-mold simulation — emergent vein networks.",
+            schema: {
+              color: "{ r, g, b } 0-255",
+              agents: "integer 200-8000 concurrent agents",
+              decay: "0.8-0.99 trail decay (higher = longer-lived veins)",
+              speed: "0.1-4 sim rate",
+            },
+            defaults: DEFAULT_PHYSARUM_CONFIG,
+          },
+          rd: {
+            description:
+              "Gray-Scott reaction-diffusion — coral/fingerprint patterns.",
+            schema: {
+              color: "{ r, g, b } 0-255",
+              feed: "0.01-0.12 feed rate (with kill, selects the pattern regime)",
+              kill: "0.04-0.08 kill rate",
+              drift: "boolean — slowly wander the feed/kill parameters",
+              speed: "0.1-4 sim rate",
+            },
+            defaults: DEFAULT_RD_CONFIG,
+          },
+          fluid: {
+            description: "Two dyes advected in a stable-fluids velocity field.",
+            schema: {
+              color_a: "{ r, g, b } first dye color",
+              color_b: "{ r, g, b } second dye color",
+              swirl: "0.2-4 vorticity strength",
+              speed: "0.1-4 sim rate",
+            },
+            defaults: DEFAULT_FLUID_CONFIG,
+          },
+          sand: {
+            description: "Falling-sand hourglass — grains pour and pile.",
+            schema: {
+              color: "{ r, g, b } grain color (ignored when rainbow=true)",
+              rainbow: "boolean — hue-cycle the pouring grains",
+              pour_rate: "0.1-4 grains-per-step multiplier",
+              reset_minutes:
+                "integer 0-1440; hourglass fill window in minutes (0 = continuous fill/drain loop)",
+            },
+            defaults: DEFAULT_SAND_CONFIG,
+          },
+          swarm: {
+            description: "Boids flock with decaying light trails.",
+            schema: {
+              color: "{ r, g, b } 0-255",
+              count: "integer 10-200 boids",
+              trail: "0.5-0.98 trail persistence (higher = longer trails)",
+              speed: "0.1-4 flight rate",
+            },
+            defaults: DEFAULT_SWARM_CONFIG,
+          },
           image: {
             description:
               "Static 64×64 bitmap. Switch from the dashboard — bitmap uploads aren't supported over MCP.",
@@ -540,20 +736,29 @@ const handler = createMcpHandler(
       {
         title: "Switch panel mode",
         description:
-          "Switch a panel to a new mode. Valid modes via MCP: text, clock, life, shapes, plasma, fire, rain, starfield, lava, test (image/gif/paint require a bitmap upload from the dashboard). Pass mode_config matching the mode's schema (see list_modes); omitted fields fall back to mode defaults.",
+          "Switch a panel to a new mode. Valid modes via MCP: text, clock, pong, sky, life, shapes, plasma, warp, fire, rain, starfield, lava, fx, physarum, rd, fluid, sand, swarm, test (image/gif/paint require a bitmap upload from the dashboard). Pass mode_config matching the mode's schema (see list_modes); omitted fields fall back to mode defaults.",
         inputSchema: {
           name: z.string().min(1).describe("Panel name."),
           mode: z
             .enum([
               "text",
               "clock",
+              "pong",
+              "sky",
               "life",
               "shapes",
               "plasma",
+              "warp",
               "fire",
               "rain",
               "starfield",
               "lava",
+              "fx",
+              "physarum",
+              "rd",
+              "fluid",
+              "sand",
+              "swarm",
               "test",
             ])
             .describe("Target mode."),
@@ -568,6 +773,17 @@ const handler = createMcpHandler(
             "Used only when mode='starfield'.",
           ),
           lava_config: LavaConfig.describe("Used only when mode='lava'."),
+          warp_config: WarpConfig.describe("Used only when mode='warp'."),
+          fx_config: FxConfig.describe("Used only when mode='fx'."),
+          sky_config: SkyConfig.describe("Used only when mode='sky'."),
+          pong_config: PongConfig.describe("Used only when mode='pong'."),
+          physarum_config: PhysarumConfig.describe(
+            "Used only when mode='physarum'.",
+          ),
+          rd_config: RdConfig.describe("Used only when mode='rd'."),
+          fluid_config: FluidConfig.describe("Used only when mode='fluid'."),
+          sand_config: SandConfig.describe("Used only when mode='sand'."),
+          swarm_config: SwarmConfig.describe("Used only when mode='swarm'."),
         },
         annotations: {
           readOnlyHint: false,
@@ -588,6 +804,15 @@ const handler = createMcpHandler(
         rain_config,
         starfield_config,
         lava_config,
+        warp_config,
+        fx_config,
+        sky_config,
+        pong_config,
+        physarum_config,
+        rd_config,
+        fluid_config,
+        sand_config,
+        swarm_config,
       }) => {
         const panel = await panelByName(name);
         if (!panel) return err(`No panel named '${name}'. Try list_panels.`);
@@ -614,6 +839,27 @@ const handler = createMcpHandler(
           };
         } else if (mode === "lava") {
           modeConfig = { ...DEFAULT_LAVA_CONFIG, ...(lava_config ?? {}) };
+        } else if (mode === "warp") {
+          modeConfig = { ...DEFAULT_WARP_CONFIG, ...(warp_config ?? {}) };
+        } else if (mode === "fx") {
+          modeConfig = { ...DEFAULT_FX_CONFIG, ...(fx_config ?? {}) };
+        } else if (mode === "sky") {
+          modeConfig = { ...DEFAULT_SKY_CONFIG, ...(sky_config ?? {}) };
+        } else if (mode === "pong") {
+          modeConfig = { ...DEFAULT_PONG_CONFIG, ...(pong_config ?? {}) };
+        } else if (mode === "physarum") {
+          modeConfig = {
+            ...DEFAULT_PHYSARUM_CONFIG,
+            ...(physarum_config ?? {}),
+          };
+        } else if (mode === "rd") {
+          modeConfig = { ...DEFAULT_RD_CONFIG, ...(rd_config ?? {}) };
+        } else if (mode === "fluid") {
+          modeConfig = { ...DEFAULT_FLUID_CONFIG, ...(fluid_config ?? {}) };
+        } else if (mode === "sand") {
+          modeConfig = { ...DEFAULT_SAND_CONFIG, ...(sand_config ?? {}) };
+        } else if (mode === "swarm") {
+          modeConfig = { ...DEFAULT_SWARM_CONFIG, ...(swarm_config ?? {}) };
         }
         // text: no config
 
@@ -946,7 +1192,7 @@ const handler = createMcpHandler(
     instructions: [
       "MCP server for ziyad's LED matrix fleet (4× 64×64 RGB panels driven by Pi Zero W).",
       "",
-      "Each panel renders one mode at a time: text (scrolling messages queued via send_message), clock, life (Game of Life), shapes (rotating 3D wireframes), plasma / fire / rain / starfield / lava (ambient procedural scenes), test (diagnostic patterns), or one of the bitmap modes (image/gif/paint) which can't be set via MCP.",
+      "Each panel renders one mode at a time: text (scrolling messages queued via send_message), clock, pong (pong clock), sky (moon/sun/terminator), shapes (rotating 3D wireframes), plasma / warp / fire / rain / starfield / lava / fx (ambient procedural scenes), life / physarum / rd / fluid / sand / swarm (living simulations), test (diagnostic patterns), or one of the bitmap modes (image/gif/paint) which can't be set via MCP.",
       "",
       "Conventions:",
       "- Address panels by `name` (e.g. 'floater', 'office'). Always call list_panels first to discover names.",
@@ -996,7 +1242,7 @@ export async function GET(): Promise<Response> {
     <li><code>list_messages</code> — text queue for a panel</li>
     <li><code>list_modes</code> — modes + config schemas</li>
     <li><code>send_message</code> — append text (panel must be in text mode)</li>
-    <li><code>set_mode</code> — text/clock/life/shapes/plasma/fire/rain/starfield/lava/test</li>
+    <li><code>set_mode</code> — text/clock/pong/sky/life/shapes/plasma/warp/fire/rain/starfield/lava/fx/physarum/rd/fluid/sand/swarm/test</li>
     <li><code>paint_pixels</code> — set 64×64 pixel art via sparse (x,y,r,g,b) list</li>
     <li><code>set_paused</code> — freeze/resume render loop</li>
     <li><code>set_off</code> — power-toggle: render fully black, mode + queue preserved</li>

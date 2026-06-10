@@ -20,10 +20,13 @@ use embedded_graphics::{
 use serde::{Deserialize, Serialize};
 
 pub mod frames;
+pub mod sims;
 
 pub use frames::{
-    boot, clock, fire, gif, image, lava, life, plasma, rain, setup, shapes, starfield, test, text,
+    boot, clock, fire, fluid, fx, gif, image, lava, life, physarum, plasma, pong, rain, rd, sand,
+    setup, shapes, sky, starfield, swarm, test, text, warp,
 };
+pub use sims::SimHost;
 pub use frames::text::{
     MarqueeOptions, RainbowOptions, Rgb, TextEntry, TextEntryColor, TextEntryOptions,
 };
@@ -91,6 +94,17 @@ pub enum Mode {
     Rain(rain::RainScene),
     Starfield(starfield::StarfieldScene),
     Lava(lava::LavaScene),
+    Warp(warp::WarpScene),
+    Fx(fx::FxScene),
+    Sky(sky::SkyScene),
+    Pong(pong::PongScene),
+    // Stateful sims — the payload is just config; per-frame state
+    // lives in the caller's SimHost (see `sims`).
+    Physarum(physarum::PhysarumConfig),
+    Rd(rd::RdConfig),
+    Fluid(fluid::FluidConfig),
+    Sand(sand::SandConfig),
+    Swarm(swarm::SwarmConfig),
     Boot(boot::BootScene),
     Setup(setup::SetupScene),
 }
@@ -109,11 +123,28 @@ pub struct Scene {
     pub panel: PanelState,
 }
 
-/// Render one frame onto `canvas`. `step` is a monotonically
-/// increasing tick counter that drives any animation. The Pi driver
-/// calls this once per vsync; the WASM simulator calls it once per
-/// requestAnimationFrame.
+/// Render one frame onto `canvas` without sim state — stateful sim
+/// modes render their initial frame. Convenience wrapper for callers
+/// (tests, tooling) that never show sims; the driver and the WASM
+/// simulator use [`render_with_sims`].
 pub fn render<D>(frame: &Scene, step: usize, canvas: &mut D) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb888> + OriginDimensions,
+{
+    let mut sims = SimHost::default();
+    render_with_sims(frame, step, &mut sims, canvas)
+}
+
+/// Render one frame onto `canvas`. `step` is the scene-animation
+/// counter (a nominal 60/s wall clock — see the driver's StepClock).
+/// `sims` carries the persistent state for simulation modes; keep one
+/// per render loop and pass it every frame.
+pub fn render_with_sims<D>(
+    frame: &Scene,
+    step: usize,
+    sims: &mut SimHost,
+    canvas: &mut D,
+) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888> + OriginDimensions,
 {
@@ -127,7 +158,7 @@ where
 
     let brightness = frame.panel.brightness.clamp(0.0, 1.0);
     if brightness >= 0.999 {
-        dispatch(frame, step, canvas)
+        dispatch(frame, step, sims, canvas)
     } else {
         // Render through a wrapper that scales every drawn pixel.
         // embedded-graphics' fill_*/clear default impls all route
@@ -137,11 +168,11 @@ where
             inner: canvas,
             scale: brightness,
         };
-        dispatch(frame, step, &mut dimmed)
+        dispatch(frame, step, sims, &mut dimmed)
     }
 }
 
-fn dispatch<D>(frame: &Scene, step: usize, canvas: &mut D) -> Result<(), D::Error>
+fn dispatch<D>(frame: &Scene, step: usize, sims: &mut SimHost, canvas: &mut D) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888> + OriginDimensions,
 {
@@ -158,6 +189,15 @@ where
         Mode::Rain(r) => rain::render(r, step, canvas)?,
         Mode::Starfield(s) => starfield::render(s, step, canvas)?,
         Mode::Lava(l) => lava::render(l, step, canvas)?,
+        Mode::Warp(w) => warp::render(w, step, canvas)?,
+        Mode::Fx(f) => fx::render(f, step, canvas)?,
+        Mode::Sky(s) => sky::render(s, step, canvas)?,
+        Mode::Pong(p) => pong::render(p, step, canvas)?,
+        Mode::Physarum(c) => physarum::render(sims.physarum(c, step), c, canvas)?,
+        Mode::Rd(c) => rd::render(sims.rd(c, step), c, canvas)?,
+        Mode::Fluid(c) => fluid::render(sims.fluid(c, step), c, canvas)?,
+        Mode::Sand(c) => sand::render(sims.sand(c, step), c, canvas)?,
+        Mode::Swarm(c) => swarm::render(sims.swarm(c, step), c, canvas)?,
         Mode::Boot(b) => boot::render(b, step, canvas)?,
         Mode::Setup(s) => setup::render(s, step, canvas)?,
     }

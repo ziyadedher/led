@@ -2,7 +2,7 @@
 //! [`Renderer::tick`] each rAF; tick returns RGBA bytes the JS side
 //! paints onto a 64×64 ImageData.
 
-use display_core::{Scene, render};
+use display_core::{render_with_sims, Scene, SimHost};
 use embedded_graphics::{
     pixelcolor::Rgb888, prelude::*, draw_target::DrawTarget, geometry::Size,
 };
@@ -27,6 +27,9 @@ pub struct Renderer {
     /// 144Hz displays — and identical to the physical panel.
     step_acc: f64,
     last_ms: Option<f64>,
+    /// Persistent state for simulation modes — the SAME display-core
+    /// code the Pi driver runs, so the preview needs no TS reimpl.
+    sims: SimHost,
 }
 
 #[wasm_bindgen]
@@ -42,6 +45,7 @@ impl Renderer {
             scene: Scene::default(),
             step_acc: 0.0,
             last_ms: None,
+            sims: SimHost::default(),
         }
     }
 
@@ -82,7 +86,8 @@ impl Renderer {
             height: self.height,
             pixels: &mut self.pixels,
         };
-        render(&self.scene, step, &mut target).map_err(|_| JsError::new("render error"))?;
+        render_with_sims(&self.scene, step, &mut self.sims, &mut target)
+            .map_err(|_| JsError::new("render error"))?;
         Ok(self.pixels.clone())
     }
 

@@ -736,3 +736,101 @@ fn ambient_scenes_survive_config_extremes() {
         render(&scene, 12345, &mut canvas).unwrap();
     }
 }
+
+/* ─── second-wave scenes ─────────────────────────────────────────── */
+
+#[test]
+fn warp_fx_pong_render_deterministically_and_animate() {
+    assert_ambient_invariants(Mode::Warp(display_core::warp::WarpScene::default()), "warp");
+    for effect in [
+        display_core::fx::FxEffect::Tunnel,
+        display_core::fx::FxEffect::Rotozoom,
+        display_core::fx::FxEffect::Twister,
+        display_core::fx::FxEffect::Copper,
+        display_core::fx::FxEffect::Moire,
+        display_core::fx::FxEffect::Kefrens,
+        display_core::fx::FxEffect::Julia,
+        display_core::fx::FxEffect::Chladni,
+        display_core::fx::FxEffect::Aurora,
+        display_core::fx::FxEffect::BlackHole,
+    ] {
+        assert_ambient_invariants(
+            Mode::Fx(display_core::fx::FxScene {
+                effect,
+                ..Default::default()
+            }),
+            "fx",
+        );
+    }
+    // Pong needs an injected time; mid-minute so the rally (not the
+    // miss sequence) is on screen.
+    let pong = display_core::pong::PongSceneConfig::default().into_frame(
+        display_core::pong::PongTime { hour: 10, minute: 25, second: 30 },
+    );
+    assert_ambient_invariants(Mode::Pong(pong), "pong");
+}
+
+#[test]
+fn sky_faces_render_deterministically() {
+    // Sky is near-static by design (only subtle step shimmer), so it
+    // gets the lit + deterministic checks without the animation one.
+    for face in [
+        display_core::sky::SkyFace::Moon,
+        display_core::sky::SkyFace::Sun,
+        display_core::sky::SkyFace::Terminator,
+    ] {
+        let scene = scene_with(Mode::Sky(
+            display_core::sky::SkySceneConfig {
+                face,
+                lat: 43.7,
+                lon: -79.4,
+                ..Default::default()
+            }
+            .into_frame(display_core::sky::SkyTime {
+                year: 2026,
+                month: 6,
+                day: 9,
+                hour: 20,
+                minute: 0,
+            }),
+        ));
+        let mut a = MockCanvas::new(W, H);
+        render(&scene, 7, &mut a).unwrap();
+        assert!(a.lit_count() > 0, "sky face renders nothing");
+        let mut b = MockCanvas::new(W, H);
+        render(&scene, 7, &mut b).unwrap();
+        assert_eq!(a.pixels, b.pixels, "sky must render deterministically");
+    }
+}
+
+#[test]
+fn sims_evolve_with_a_persistent_host() {
+    use display_core::{render_with_sims, SimHost};
+    let modes: Vec<(Mode, &str)> = vec![
+        (Mode::Physarum(display_core::physarum::PhysarumConfig::default()), "physarum"),
+        (Mode::Rd(display_core::rd::RdConfig::default()), "rd"),
+        (Mode::Fluid(display_core::fluid::FluidConfig::default()), "fluid"),
+        (Mode::Sand(display_core::sand::SandConfig::default()), "sand"),
+        (Mode::Swarm(display_core::swarm::SwarmConfig::default()), "swarm"),
+    ];
+    for (mode, label) in modes {
+        let scene = scene_with(mode);
+        let mut sims = SimHost::default();
+        // Warm up ~4s of sim time in bounded chunks (the host clamps
+        // per-frame elapsed steps).
+        let mut canvas = MockCanvas::new(W, H);
+        for i in 0..24 {
+            render_with_sims(&scene, i * 10, &mut sims, &mut canvas).unwrap();
+        }
+        let warm = canvas.pixels.clone();
+        assert!(
+            canvas.lit_count() > 0,
+            "{label}: warmed sim renders nothing"
+        );
+        // A few more seconds must visibly change the frame.
+        for i in 24..60 {
+            render_with_sims(&scene, i * 10, &mut sims, &mut canvas).unwrap();
+        }
+        assert_ne!(warm, canvas.pixels, "{label}: sim does not evolve");
+    }
+}
