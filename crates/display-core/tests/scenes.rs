@@ -628,3 +628,111 @@ fn test_patterns_all_render_nonempty() {
         );
     }
 }
+
+/* ─── stateless ambient scenes ───────────────────────────────────── */
+
+/// Shared invariants for the five stateless ambient scenes: the
+/// renderer lights pixels at all, is deterministic in (scene, step)
+/// — the property the driver/sim lockstep depends on — and actually
+/// animates (some pixel differs across a step gap).
+fn assert_ambient_invariants(mode: Mode, label: &str) {
+    let scene = scene_with(mode);
+
+    let mut a = MockCanvas::new(W, H);
+    render(&scene, 100, &mut a).unwrap();
+    assert!(a.lit_count() > 0, "{label}: default config renders nothing");
+
+    let mut b = MockCanvas::new(W, H);
+    render(&scene, 100, &mut b).unwrap();
+    assert_eq!(
+        a.pixels, b.pixels,
+        "{label}: same (scene, step) must render identical frames"
+    );
+
+    let mut c = MockCanvas::new(W, H);
+    render(&scene, 160, &mut c).unwrap();
+    assert_ne!(
+        a.pixels, c.pixels,
+        "{label}: scene must animate across a 60-step gap"
+    );
+}
+
+#[test]
+fn plasma_renders_deterministically_and_animates() {
+    assert_ambient_invariants(
+        Mode::Plasma(display_core::plasma::PlasmaScene::default()),
+        "plasma",
+    );
+}
+
+#[test]
+fn fire_renders_deterministically_and_animates() {
+    assert_ambient_invariants(
+        Mode::Fire(display_core::fire::FireScene::default()),
+        "fire",
+    );
+}
+
+#[test]
+fn rain_renders_deterministically_and_animates() {
+    assert_ambient_invariants(
+        Mode::Rain(display_core::rain::RainScene::default()),
+        "rain",
+    );
+}
+
+#[test]
+fn starfield_renders_deterministically_and_animates() {
+    assert_ambient_invariants(
+        Mode::Starfield(display_core::starfield::StarfieldScene::default()),
+        "starfield",
+    );
+}
+
+#[test]
+fn lava_renders_deterministically_and_animates() {
+    assert_ambient_invariants(
+        Mode::Lava(display_core::lava::LavaScene::default()),
+        "lava",
+    );
+}
+
+#[test]
+fn ambient_scenes_survive_config_extremes() {
+    // Clamps live in the renderers; pathological persisted configs
+    // must not panic or render garbage that crashes draw_iter.
+    let extremes: Vec<Mode> = vec![
+        Mode::Plasma(display_core::plasma::PlasmaScene {
+            speed: 1000.0,
+            scale: 0.0001,
+            ..Default::default()
+        }),
+        Mode::Fire(display_core::fire::FireScene {
+            intensity: -5.0,
+            wind: 99.0,
+            ..Default::default()
+        }),
+        Mode::Rain(display_core::rain::RainScene {
+            density: 2.0,
+            speed: -1.0,
+            tail: 0,
+            ..Default::default()
+        }),
+        Mode::Starfield(display_core::starfield::StarfieldScene {
+            warp: 0.0,
+            density: 0,
+            ..Default::default()
+        }),
+        Mode::Lava(display_core::lava::LavaScene {
+            blob_count: 0,
+            speed: f32::NAN,
+            goo: -1.0,
+            ..Default::default()
+        }),
+    ];
+    for mode in extremes {
+        let scene = scene_with(mode);
+        let mut canvas = MockCanvas::new(W, H);
+        render(&scene, 12345, &mut canvas).unwrap();
+    }
+}

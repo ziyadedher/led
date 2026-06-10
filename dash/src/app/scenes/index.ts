@@ -16,20 +16,30 @@ import {
   clockSceneFromConfig,
   parseClockConfig,
 } from "./clock";
+import { FireComposer, parseFireConfig } from "./fire";
 import { GifComposer, parseGifConfig } from "./gif";
 import { ImageComposer, parseImageConfig } from "./image";
+import { LavaComposer, parseLavaConfig } from "./lava";
 import { LifeComposer, parseLifeConfig } from "./life";
 import { PaintComposer, parsePaintConfig, type PaintSceneConfig } from "./paint";
+import { parsePlasmaConfig, PlasmaComposer } from "./plasma";
+import { parseRainConfig, RainComposer } from "./rain";
 import { parseShapesConfig, ShapesComposer } from "./shapes";
+import { parseStarfieldConfig, StarfieldComposer } from "./starfield";
 import { parseTestConfig, TestComposer } from "./test";
 import type {
   ClockSceneConfig,
+  FireSceneConfig,
   GifSceneConfig,
   ImageSceneConfig,
+  LavaSceneConfig,
   LifeSceneConfig,
   LifeScene,
   Mode,
+  PlasmaSceneConfig,
+  RainSceneConfig,
   ShapesSceneConfig,
+  StarfieldSceneConfig,
   TestSceneConfig,
   TextEntry,
 } from "./types";
@@ -175,6 +185,38 @@ export const SCENES: Record<PanelMode, SceneRegistration> = {
     parseShapesConfig,
     (config) => ({ Shapes: config }),
     ShapesComposer,
+  ),
+
+  // Stateless ambient scenes — scene == config, passed straight
+  // through to the renderer; `step` drives all motion on both sides.
+  plasma: scene<PlasmaSceneConfig>(
+    parsePlasmaConfig,
+    (config) => ({ Plasma: config }),
+    PlasmaComposer,
+  ),
+
+  fire: scene<FireSceneConfig>(
+    parseFireConfig,
+    (config) => ({ Fire: config }),
+    FireComposer,
+  ),
+
+  rain: scene<RainSceneConfig>(
+    parseRainConfig,
+    (config) => ({ Rain: config }),
+    RainComposer,
+  ),
+
+  starfield: scene<StarfieldSceneConfig>(
+    parseStarfieldConfig,
+    (config) => ({ Starfield: config }),
+    StarfieldComposer,
+  ),
+
+  lava: scene<LavaSceneConfig>(
+    parseLavaConfig,
+    (config) => ({ Lava: config }),
+    LavaComposer,
   ),
 
   test: scene<TestSceneConfig>(

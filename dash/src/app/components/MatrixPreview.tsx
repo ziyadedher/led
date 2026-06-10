@@ -322,7 +322,12 @@ export function MatrixPreview({
       : "Clock" in mode ||
         "Life" in mode ||
         "Gif" in mode ||
-        "Shapes" in mode;
+        "Shapes" in mode ||
+        "Plasma" in mode ||
+        "Fire" in mode ||
+        "Rain" in mode ||
+        "Starfield" in mode ||
+        "Lava" in mode;
 
   // The loop only needs to run when something can actually change on
   // screen. When the panel is offline/paused/off or the scene is
@@ -743,6 +748,14 @@ function structuralKey(frame: Scene): string {
     return `${p}|G|${g.width}x${g.height}|${g.speed}|f${g.frames.length}`;
   }
   if ("Test" in mode) return `${p}|X|${mode.Test.pattern}`;
+  // Stateless ambient scenes: the whole config IS the render input
+  // (motion comes from the WASM-side step counter), so a JSON dump of
+  // the few scalars is both cheap and complete.
+  if ("Plasma" in mode) return `${p}|P|${JSON.stringify(mode.Plasma)}`;
+  if ("Fire" in mode) return `${p}|F|${JSON.stringify(mode.Fire)}`;
+  if ("Rain" in mode) return `${p}|R|${JSON.stringify(mode.Rain)}`;
+  if ("Starfield" in mode) return `${p}|*|${JSON.stringify(mode.Starfield)}`;
+  if ("Lava" in mode) return `${p}|V|${JSON.stringify(mode.Lava)}`;
   if ("Boot" in mode) {
     const c = mode.Boot.color;
     return `${p}|B|${c.r},${c.g},${c.b}`;

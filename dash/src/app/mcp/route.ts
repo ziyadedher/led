@@ -15,8 +15,13 @@ import { createClient } from "@supabase/supabase-js";
 
 import {
   DEFAULT_CLOCK_CONFIG,
+  DEFAULT_FIRE_CONFIG,
+  DEFAULT_LAVA_CONFIG,
   DEFAULT_LIFE_CONFIG,
+  DEFAULT_PLASMA_CONFIG,
+  DEFAULT_RAIN_CONFIG,
   DEFAULT_SHAPES_CONFIG,
+  DEFAULT_STARFIELD_CONFIG,
   DEFAULT_TEST_CONFIG,
   MODES,
 } from "@/app/scenes/types";
@@ -191,6 +196,52 @@ const TestConfig = z
   })
   .optional();
 
+const PlasmaConfig = z
+  .object({
+    palette: z.enum(["Ember", "Phosphor", "Aurora", "Rainbow"]).optional(),
+    speed: z.number().min(0.05).max(8).optional(),
+    scale: z.number().min(0.25).max(4).optional(),
+  })
+  .optional();
+
+const FireConfig = z
+  .object({
+    palette: z.enum(["Classic", "Gas", "Phosphor"]).optional(),
+    intensity: z.number().min(0).max(1).optional(),
+    wind: z.number().min(-1).max(1).optional(),
+    embers: z.boolean().optional(),
+  })
+  .optional();
+
+const RainConfig = z
+  .object({
+    color: Rgb.optional(),
+    density: z.number().min(0).max(1).optional(),
+    speed: z.number().min(0.1).max(4).optional(),
+    tail: z.number().int().min(2).max(48).optional(),
+  })
+  .optional();
+
+const StarfieldConfig = z
+  .object({
+    color: Rgb.optional(),
+    warp: z.number().min(0.1).max(8).optional(),
+    density: z.number().int().min(8).max(256).optional(),
+    thermal: z.boolean().optional(),
+    twinkle: z.boolean().optional(),
+  })
+  .optional();
+
+const LavaConfig = z
+  .object({
+    color: Rgb.optional(),
+    glow: Rgb.optional(),
+    blob_count: z.number().int().min(2).max(8).optional(),
+    speed: z.number().min(0.05).max(4).optional(),
+    goo: z.number().min(0).max(1).optional(),
+  })
+  .optional();
+
 /* ─── handler ─────────────────────────────────────────────────────── */
 
 const handler = createMcpHandler(
@@ -335,6 +386,57 @@ const handler = createMcpHandler(
             schema: { pattern: "'ColorBars' | 'Gradient' | 'Checkerboard'" },
             defaults: DEFAULT_TEST_CONFIG,
           },
+          plasma: {
+            description: "Demoscene plasma — drifting sine fields.",
+            schema: {
+              palette: "'Ember' | 'Phosphor' | 'Aurora' | 'Rainbow'",
+              speed: "0.05-8 animation rate",
+              scale: "0.25-4 blob size (higher = larger)",
+            },
+            defaults: DEFAULT_PLASMA_CONFIG,
+          },
+          fire: {
+            description: "Procedural flame with palette presets.",
+            schema: {
+              palette: "'Classic' | 'Gas' | 'Phosphor'",
+              intensity: "0-1 flame height",
+              wind: "-1..1 lateral lean",
+              embers: "boolean — detached sparks above the tips",
+            },
+            defaults: DEFAULT_FIRE_CONFIG,
+          },
+          rain: {
+            description: "Digital rain — falling streams with decaying tails.",
+            schema: {
+              color: "{ r, g, b } 0-255",
+              density: "0-1 fraction of active columns",
+              speed: "0.1-4 fall rate",
+              tail: "integer 2-48 tail length in pixels",
+            },
+            defaults: DEFAULT_RAIN_CONFIG,
+          },
+          starfield: {
+            description: "Perspective starfield flying toward the viewer.",
+            schema: {
+              color: "{ r, g, b } 0-255 (ignored when thermal=true)",
+              warp: "0.1-8 flight speed (streaks above ~3)",
+              density: "integer 8-256 concurrent stars",
+              thermal: "boolean — speed-mapped blue→white→orange",
+              twinkle: "boolean — per-star shimmer at low warp",
+            },
+            defaults: DEFAULT_STARFIELD_CONFIG,
+          },
+          lava: {
+            description: "Lava lamp — slow metaballs over a background glow.",
+            schema: {
+              color: "{ r, g, b } blob core color",
+              glow: "{ r, g, b } background fluid color",
+              blob_count: "integer 2-8",
+              speed: "0.05-4 drift rate",
+              goo: "0-1 edge softness (0 crisp, 1 nebula)",
+            },
+            defaults: DEFAULT_LAVA_CONFIG,
+          },
           image: {
             description:
               "Static 64×64 bitmap. Switch from the dashboard — bitmap uploads aren't supported over MCP.",
@@ -438,16 +540,34 @@ const handler = createMcpHandler(
       {
         title: "Switch panel mode",
         description:
-          "Switch a panel to a new mode. Valid modes via MCP: text, clock, life, shapes, test (image/gif/paint require a bitmap upload from the dashboard). Pass mode_config matching the mode's schema (see list_modes); omitted fields fall back to mode defaults.",
+          "Switch a panel to a new mode. Valid modes via MCP: text, clock, life, shapes, plasma, fire, rain, starfield, lava, test (image/gif/paint require a bitmap upload from the dashboard). Pass mode_config matching the mode's schema (see list_modes); omitted fields fall back to mode defaults.",
         inputSchema: {
           name: z.string().min(1).describe("Panel name."),
           mode: z
-            .enum(["text", "clock", "life", "shapes", "test"])
+            .enum([
+              "text",
+              "clock",
+              "life",
+              "shapes",
+              "plasma",
+              "fire",
+              "rain",
+              "starfield",
+              "lava",
+              "test",
+            ])
             .describe("Target mode."),
           clock_config: ClockConfig.describe("Used only when mode='clock'."),
           life_config: LifeConfig.describe("Used only when mode='life'."),
           shapes_config: ShapesConfig.describe("Used only when mode='shapes'."),
           test_config: TestConfig.describe("Used only when mode='test'."),
+          plasma_config: PlasmaConfig.describe("Used only when mode='plasma'."),
+          fire_config: FireConfig.describe("Used only when mode='fire'."),
+          rain_config: RainConfig.describe("Used only when mode='rain'."),
+          starfield_config: StarfieldConfig.describe(
+            "Used only when mode='starfield'.",
+          ),
+          lava_config: LavaConfig.describe("Used only when mode='lava'."),
         },
         annotations: {
           readOnlyHint: false,
@@ -456,7 +576,19 @@ const handler = createMcpHandler(
           openWorldHint: false,
         },
       },
-      async ({ name, mode, clock_config, life_config, shapes_config, test_config }) => {
+      async ({
+        name,
+        mode,
+        clock_config,
+        life_config,
+        shapes_config,
+        test_config,
+        plasma_config,
+        fire_config,
+        rain_config,
+        starfield_config,
+        lava_config,
+      }) => {
         const panel = await panelByName(name);
         if (!panel) return err(`No panel named '${name}'. Try list_panels.`);
 
@@ -469,6 +601,19 @@ const handler = createMcpHandler(
           modeConfig = { ...DEFAULT_SHAPES_CONFIG, ...(shapes_config ?? {}) };
         } else if (mode === "test") {
           modeConfig = { ...DEFAULT_TEST_CONFIG, ...(test_config ?? {}) };
+        } else if (mode === "plasma") {
+          modeConfig = { ...DEFAULT_PLASMA_CONFIG, ...(plasma_config ?? {}) };
+        } else if (mode === "fire") {
+          modeConfig = { ...DEFAULT_FIRE_CONFIG, ...(fire_config ?? {}) };
+        } else if (mode === "rain") {
+          modeConfig = { ...DEFAULT_RAIN_CONFIG, ...(rain_config ?? {}) };
+        } else if (mode === "starfield") {
+          modeConfig = {
+            ...DEFAULT_STARFIELD_CONFIG,
+            ...(starfield_config ?? {}),
+          };
+        } else if (mode === "lava") {
+          modeConfig = { ...DEFAULT_LAVA_CONFIG, ...(lava_config ?? {}) };
         }
         // text: no config
 
@@ -801,7 +946,7 @@ const handler = createMcpHandler(
     instructions: [
       "MCP server for ziyad's LED matrix fleet (4× 64×64 RGB panels driven by Pi Zero W).",
       "",
-      "Each panel renders one mode at a time: text (scrolling messages queued via send_message), clock, life (Game of Life), shapes (rotating 3D wireframes), test (diagnostic patterns), or one of the bitmap modes (image/gif/paint) which can't be set via MCP.",
+      "Each panel renders one mode at a time: text (scrolling messages queued via send_message), clock, life (Game of Life), shapes (rotating 3D wireframes), plasma / fire / rain / starfield / lava (ambient procedural scenes), test (diagnostic patterns), or one of the bitmap modes (image/gif/paint) which can't be set via MCP.",
       "",
       "Conventions:",
       "- Address panels by `name` (e.g. 'floater', 'office'). Always call list_panels first to discover names.",
@@ -851,7 +996,7 @@ export async function GET(): Promise<Response> {
     <li><code>list_messages</code> — text queue for a panel</li>
     <li><code>list_modes</code> — modes + config schemas</li>
     <li><code>send_message</code> — append text (panel must be in text mode)</li>
-    <li><code>set_mode</code> — text/clock/life/shapes/test</li>
+    <li><code>set_mode</code> — text/clock/life/shapes/plasma/fire/rain/starfield/lava/test</li>
     <li><code>paint_pixels</code> — set 64×64 pixel art via sparse (x,y,r,g,b) list</li>
     <li><code>set_paused</code> — freeze/resume render loop</li>
     <li><code>set_off</code> — power-toggle: render fully black, mode + queue preserved</li>

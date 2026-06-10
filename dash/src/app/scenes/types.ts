@@ -34,6 +34,11 @@ export type Mode =
   | { Gif: GifScene }
   | { Shapes: ShapesScene }
   | { Test: TestScene }
+  | { Plasma: PlasmaScene }
+  | { Fire: FireScene }
+  | { Rain: RainScene }
+  | { Starfield: StarfieldScene }
+  | { Lava: LavaScene }
   // Driver-only frames the dash never constructs but the type
   // includes for completeness with display_core::Mode. The simulator
   // would render them correctly if it ever received one.
@@ -302,6 +307,162 @@ export const TEST_PATTERNS: readonly TestPatternId[] = [
   "Checkerboard",
 ];
 
+/* ── stateless ambient scenes ─────────────────────────────────────
+ * Scene == config for all five: they're pure functions of
+ * (config, step) on both sides of the wire, so the dash stores the
+ * same struct it renders. Each mirrors its Rust twin in
+ * `display_core::frames::<mode>` — field names and defaults must
+ * stay in lockstep. */
+
+export type PlasmaPalette = "Ember" | "Phosphor" | "Aurora" | "Rainbow";
+
+export type PlasmaScene = {
+  palette: PlasmaPalette;
+  /** Animation rate; driver clamps to [0.05, 8]. */
+  speed: number;
+  /** Spatial scale — higher = larger blobs; driver clamps [0.25, 4]. */
+  scale: number;
+};
+
+export type PlasmaSceneConfig = PlasmaScene;
+
+export const PLASMA_PALETTES: readonly PlasmaPalette[] = [
+  "Ember",
+  "Phosphor",
+  "Aurora",
+  "Rainbow",
+];
+
+export const DEFAULT_PLASMA_CONFIG: PlasmaSceneConfig = {
+  palette: "Ember",
+  speed: 1,
+  scale: 1,
+};
+
+/** Fresh copy of the plasma defaults — see `defaultClockConfig`. */
+export function defaultPlasmaConfig(): PlasmaSceneConfig {
+  return { ...DEFAULT_PLASMA_CONFIG };
+}
+
+export type FirePalette = "Classic" | "Gas" | "Phosphor";
+
+export type FireScene = {
+  palette: FirePalette;
+  /** Flame height / seed temperature in [0, 1]. */
+  intensity: number;
+  /** Lateral bias in [-1, 1]; negative leans left. */
+  wind: number;
+  /** Occasional detached sparks above the flame tips. */
+  embers: boolean;
+};
+
+export type FireSceneConfig = FireScene;
+
+export const FIRE_PALETTES: readonly FirePalette[] = [
+  "Classic",
+  "Gas",
+  "Phosphor",
+];
+
+export const DEFAULT_FIRE_CONFIG: FireSceneConfig = {
+  palette: "Classic",
+  intensity: 0.8,
+  wind: 0,
+  embers: true,
+};
+
+/** Fresh copy of the fire defaults — see `defaultClockConfig`. */
+export function defaultFireConfig(): FireSceneConfig {
+  return { ...DEFAULT_FIRE_CONFIG };
+}
+
+export type RainScene = {
+  color: { r: number; g: number; b: number };
+  /** Fraction of columns carrying an active stream, in [0, 1]. */
+  density: number;
+  /** Fall rate; driver clamps to [0.1, 4]. */
+  speed: number;
+  /** Tail length in pixels; driver clamps to [2, 48]. */
+  tail: number;
+};
+
+export type RainSceneConfig = RainScene;
+
+export const DEFAULT_RAIN_CONFIG: RainSceneConfig = {
+  color: { r: 0x5d, g: 0xff, b: 0xa9 },
+  density: 0.5,
+  speed: 1,
+  tail: 14,
+};
+
+/** Fresh copy of the rain defaults — see `defaultClockConfig`. */
+export function defaultRainConfig(): RainSceneConfig {
+  return { ...DEFAULT_RAIN_CONFIG, color: { ...DEFAULT_RAIN_CONFIG.color } };
+}
+
+export type StarfieldScene = {
+  /** Star color when `thermal` is off. */
+  color: { r: number; g: number; b: number };
+  /** Flight speed; above ~3 stars streak. Driver clamps [0.1, 8]. */
+  warp: number;
+  /** Concurrent stars; driver clamps [8, 256]. */
+  density: number;
+  /** Map approach speed to color (blue → white → orange). */
+  thermal: boolean;
+  /** Subtle per-star shimmer at low warp. */
+  twinkle: boolean;
+};
+
+export type StarfieldSceneConfig = StarfieldScene;
+
+export const DEFAULT_STARFIELD_CONFIG: StarfieldSceneConfig = {
+  color: { r: 0xff, g: 0xff, b: 0xff },
+  warp: 1,
+  density: 80,
+  thermal: false,
+  twinkle: true,
+};
+
+/** Fresh copy of the starfield defaults — see `defaultClockConfig`. */
+export function defaultStarfieldConfig(): StarfieldSceneConfig {
+  return {
+    ...DEFAULT_STARFIELD_CONFIG,
+    color: { ...DEFAULT_STARFIELD_CONFIG.color },
+  };
+}
+
+export type LavaScene = {
+  /** Blob core color. */
+  color: { r: number; g: number; b: number };
+  /** Background glow color (the "lamp fluid"). */
+  glow: { r: number; g: number; b: number };
+  /** Concurrent blobs; driver clamps [2, 8]. */
+  blob_count: number;
+  /** Drift rate; driver clamps [0.05, 4]. */
+  speed: number;
+  /** Threshold softness [0, 1]: 0 = crisp blobs, 1 = nebula. */
+  goo: number;
+};
+
+export type LavaSceneConfig = LavaScene;
+
+export const DEFAULT_LAVA_CONFIG: LavaSceneConfig = {
+  color: { r: 0xff, g: 0x8a, b: 0x2c },
+  glow: { r: 0x1a, g: 0x04, b: 0x00 },
+  blob_count: 5,
+  speed: 1,
+  goo: 0.5,
+};
+
+/** Fresh copy of the lava defaults — see `defaultClockConfig`. */
+export function defaultLavaConfig(): LavaSceneConfig {
+  return {
+    ...DEFAULT_LAVA_CONFIG,
+    color: { ...DEFAULT_LAVA_CONFIG.color },
+    glow: { ...DEFAULT_LAVA_CONFIG.glow },
+  };
+}
+
 export type ModeMeta = {
   id: PanelMode;
   label: string;
@@ -316,5 +477,10 @@ export const MODES: ModeMeta[] = [
   { id: "paint", label: "paint", blurb: "pixel-grid editor" },
   { id: "shapes", label: "shapes", blurb: "rotating 3d wireframes" },
   { id: "life", label: "life", blurb: "ambient cellular automaton" },
+  { id: "plasma", label: "plasma", blurb: "drifting sine fields" },
+  { id: "fire", label: "fire", blurb: "procedural flame" },
+  { id: "rain", label: "rain", blurb: "digital rain streams" },
+  { id: "starfield", label: "starfield", blurb: "warp toward the glass" },
+  { id: "lava", label: "lava", blurb: "slow metaball lamp" },
   { id: "test", label: "test", blurb: "diagnostic patterns" },
 ];
