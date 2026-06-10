@@ -3,13 +3,16 @@
 /**
  * Visual chrome for every per-mode composer: corner-bracketed
  * frame + heading bar with a `:: title` left tag and a tiny
- * uppercase status string on the right. Body slot owns its own
- * padding.
+ * uppercase status string on the right. The body slot gets the
+ * canonical `space-y-5 px-4 py-4` padding by default; composers
+ * that own their padding (e.g. an overlay that must cover the
+ * full body) opt out with `padded={false}`.
  */
 export function ComposerShell({
   title,
   status,
   ariaLabel,
+  padded = true,
   children,
 }: {
   /** Shown after `::` on the left side of the heading. */
@@ -17,6 +20,8 @@ export function ComposerShell({
   /** Right-aligned dim status text. */
   status?: string;
   ariaLabel?: string;
+  /** Set false when the body needs to manage its own padding. */
+  padded?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -33,14 +38,19 @@ export function ComposerShell({
         <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
           :: {title}
         </span>
+        {/* role=status so async transitions (transmitting → ready)
+         * are announced; the changes are otherwise visual-only. */}
         {status ? (
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
+          <span
+            role="status"
+            className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)"
+          >
             {status}
           </span>
         ) : null}
       </header>
 
-      {children}
+      {padded ? <div className="space-y-5 px-4 py-4">{children}</div> : children}
     </section>
   );
 }

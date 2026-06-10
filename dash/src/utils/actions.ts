@@ -3,6 +3,9 @@ import { useEffect, useId, useState } from "react";
 import useSWR, { mutate as globalMutate, useSWRConfig } from "swr";
 
 import { Database } from "@/types/supabase";
+import { rememberModeConfig } from "@/utils/modeConfigCache";
+
+type PanelRow = Database["public"]["Tables"]["panels"]["Row"];
 
 type TextEntryOptions = {
   color:
@@ -138,7 +141,21 @@ export const useRealtimeRevalidation = (): RealtimeStatus => {
           const panelId =
             (payload.new as { panel_id?: string })?.panel_id ??
             (payload.old as { panel_id?: string })?.panel_id;
-          if (panelId) mutate(`/entries/${panelId}`);
+          if (panelId) {
+            mutate(`/entries/${panelId}`);
+          } else {
+            // DELETE events only carry the primary key under the default
+            // replica identity (and RLS strips the rest even with
+            // REPLICA IDENTITY FULL), so we can't tell which panel's
+            // queue changed — invalidate every entries cache rather
+            // than silently going stale until the 60s backstop poll.
+            void mutate(
+              (key) =>
+                typeof key === "string" &&
+                key.startsWith("/entries/") &&
+                !key.startsWith("/entries/scroll/"),
+            );
+          }
         },
       )
       .subscribe((s) => {
@@ -173,6 +190,58 @@ export type PanelMode =
   | "shapes"
   | "test";
 
+/**
+ * Optimistically patch one panel row in the `/panels` SWR cache while
+ * the write round-trips, rolling back if it throws. This gives the
+ * transport buttons / mode tiles / brightness fader the same instant
+ * feel the entries pipeline already has — without it, a tap only takes
+ * effect after the write AND a revalidation (up to 15s when the
+ * realtime channel is down), which reads as a dead button.
+ *
+ * Mutations are serialized through a module-level chain: SWR's
+ * overlapping-mutation semantics make the first mutation skip its
+ * cache commit and let the second commit from a snapshot that
+ * predates the first's patch — i.e. quick pause-then-off taps would
+ * drop the pause from the cache until the realtime echo. One write at
+ * a time sidesteps that class entirely (these are sub-second row
+ * UPDATEs; queueing is imperceptible).
+ */
+let panelWriteChain: Promise<unknown> = Promise.resolve();
+
+const patchPanelOptimistic = (
+  panelId: string,
+  patch: Partial<PanelRow>,
+  write: () => Promise<void>,
+): Promise<void> => {
+  // Leave an unpopulated cache alone — committing a fabricated []
+  // would render "no panels registered" until the next revalidation.
+  const apply = (cur?: PanelRow[]) =>
+    cur ? cur.map((p) => (p.id === panelId ? { ...p, ...patch } : p)) : cur;
+  const run = async () => {
+    await globalMutate(
+      "/panels",
+      async (cur?: PanelRow[]) => {
+        await write();
+        return apply(cur);
+      },
+      {
+        // Patch the DISPLAYED data, not the committed snapshot — the
+        // displayed value carries any still-pending optimistic state.
+        optimisticData: (cur?: PanelRow[], displayed?: PanelRow[]) =>
+          apply(displayed ?? cur) ?? [],
+        rollbackOnError: true,
+        // The realtime echo revalidates with the authoritative row.
+        revalidate: false,
+      },
+    );
+  };
+  const result = panelWriteChain.then(run, run);
+  // The chain itself must never reject, or one failed write would
+  // poison every later mutation.
+  panelWriteChain = result.catch(() => {});
+  return result;
+};
+
 export const panels = {
   get: {
     call: async () => {
@@ -193,54 +262,134 @@ export const panels = {
       mode: PanelMode,
       modeConfig: Record<string, unknown>,
     ) => {
+      const last_updated = new Date().toISOString();
+      // Write-through cache of the last config actually written per
+      // panel:mode, so ModeSwitcher restores the freshest value (the
+      // SWR snapshot lags by debounce + RTT + echo). Stamped with the
+      // same timestamp the row gets, so the cache's newest-wins
+      // arbitration agrees with last_updated.
+      rememberModeConfig(panelId, mode, modeConfig, Date.parse(last_updated));
+      await patchPanelOptimistic(
+        panelId,
+        {
+          mode,
+          mode_config:
+            modeConfig as Database["public"]["Tables"]["panels"]["Row"]["mode_config"],
+          last_updated,
+        },
+        async () => {
+          await supabase
+            .from("panels")
+            .update({
+              mode,
+              mode_config:
+                modeConfig as Database["public"]["Tables"]["panels"]["Update"]["mode_config"],
+              last_updated,
+            })
+            .eq("id", panelId)
+            .throwOnError();
+        },
+      );
+    },
+  },
+
+  /**
+   * Update ONLY mode_config — and only while the panel is still in
+   * `mode`. Used by the debounced composer-config path: a late flush
+   * after the user has already switched modes becomes a silent no-op
+   * (zero-row UPDATE) instead of yanking the panel back to the old
+   * mode, which is exactly what `setMode` from a stale closure did.
+   */
+  setModeConfig: {
+    call: async (
+      panelId: string,
+      mode: PanelMode,
+      modeConfig: Record<string, unknown>,
+    ) => {
+      const last_updated = new Date().toISOString();
+      rememberModeConfig(panelId, mode, modeConfig, Date.parse(last_updated));
       await supabase
         .from("panels")
         .update({
-          mode,
-          mode_config: modeConfig as Database["public"]["Tables"]["panels"]["Update"]["mode_config"],
-          last_updated: new Date().toISOString(),
+          mode_config:
+            modeConfig as Database["public"]["Tables"]["panels"]["Update"]["mode_config"],
+          last_updated,
         })
         .eq("id", panelId)
+        .eq("mode", mode)
         .throwOnError();
+      // Patch the cache only after the guarded write succeeds — we
+      // can't know client-side whether the mode guard matched. An
+      // unpopulated cache is left alone (don't fabricate a fleet).
+      void globalMutate(
+        "/panels",
+        (cur?: PanelRow[]) =>
+          cur
+            ? cur.map((p) =>
+                p.id === panelId && p.mode === mode
+                  ? {
+                      ...p,
+                      mode_config:
+                        modeConfig as Database["public"]["Tables"]["panels"]["Row"]["mode_config"],
+                      last_updated,
+                    }
+                  : p,
+              )
+            : cur,
+        { revalidate: false },
+      );
     },
   },
 
   setPaused: {
     call: async (panelId: string, isPaused: boolean) => {
-      await supabase
-        .from("panels")
-        .update({
-          is_paused: isPaused,
-          last_updated: new Date().toISOString(),
-        })
-        .eq("id", panelId)
-        .throwOnError();
+      const last_updated = new Date().toISOString();
+      await patchPanelOptimistic(
+        panelId,
+        { is_paused: isPaused, last_updated },
+        async () => {
+          await supabase
+            .from("panels")
+            .update({ is_paused: isPaused, last_updated })
+            .eq("id", panelId)
+            .throwOnError();
+        },
+      );
     },
   },
 
   setOff: {
     call: async (panelId: string, isOff: boolean) => {
-      await supabase
-        .from("panels")
-        .update({
-          is_off: isOff,
-          last_updated: new Date().toISOString(),
-        })
-        .eq("id", panelId)
-        .throwOnError();
+      const last_updated = new Date().toISOString();
+      await patchPanelOptimistic(
+        panelId,
+        { is_off: isOff, last_updated },
+        async () => {
+          await supabase
+            .from("panels")
+            .update({ is_off: isOff, last_updated })
+            .eq("id", panelId)
+            .throwOnError();
+        },
+      );
     },
   },
 
   setBrightness: {
     call: async (panelId: string, brightness: number) => {
-      await supabase
-        .from("panels")
-        .update({
-          brightness: Math.max(0, Math.min(1, brightness)),
-          last_updated: new Date().toISOString(),
-        })
-        .eq("id", panelId)
-        .throwOnError();
+      const clamped = Math.max(0, Math.min(1, brightness));
+      const last_updated = new Date().toISOString();
+      await patchPanelOptimistic(
+        panelId,
+        { brightness: clamped, last_updated },
+        async () => {
+          await supabase
+            .from("panels")
+            .update({ brightness: clamped, last_updated })
+            .eq("id", panelId)
+            .throwOnError();
+        },
+      );
     },
   },
 };
@@ -264,11 +413,16 @@ export const entries = {
   add: {
     call: async (panelId: string, entry: TextEntry) => {
       const key = entriesKey(panelId);
+      // Client-generated id: the optimistic row carries the REAL id the
+      // insert will persist, so a drag-reorder that settles while the
+      // add is still in flight sends valid uuids (a fake placeholder id
+      // used to fail the whole reorder against the uuid PK).
+      const id = crypto.randomUUID();
       // The driver renders entries in ascending `order`; lowest order
       // shows at the top. min(existing)-1 is atomic (no row shifting)
       // and self-heals when a reorder rewrites everyone to 0..N-1.
       const optimisticRow: TextEntryItem = {
-        id: `optimistic-${Date.now()}`,
+        id,
         panel_id: panelId,
         created_at: new Date().toISOString(),
         order: Number.NEGATIVE_INFINITY,
@@ -284,7 +438,7 @@ export const entries = {
           await Promise.all([
             supabase
               .from("entries")
-              .insert({ panel_id: panelId, data: entry, order: minOrder - 1 })
+              .insert({ id, panel_id: panelId, data: entry, order: minOrder - 1 })
               .throwOnError(),
             updatePanelLastUpdated(panelId),
           ]);

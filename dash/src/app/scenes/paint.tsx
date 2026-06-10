@@ -5,8 +5,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { parseImageConfig } from "./image";
 import { type ImageSceneConfig } from "./types";
 
+import { CheckRow } from "@/app/components/CheckRow";
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
+import { FOCUS_RING } from "@/app/components/ui";
+import { useRovingRadio } from "@/app/components/useRovingRadio";
 import { panels } from "@/utils/actions";
 import { LED_ORANGE, parseRgb, type Rgb } from "@/utils/color";
 
@@ -64,8 +67,11 @@ export function PaintComposer({
   // unless we're mid-stroke or the new payload is exactly what we
   // just sent (compared byte-for-byte).
   useEffect(() => {
-    const next = bitmapFrom(config);
-    if (!next) return;
+    // A blank/non-64×64 config means "nothing painted" — render it as
+    // an empty canvas rather than leaving stale artwork up (e.g. the
+    // server was cleared from another tab).
+    const next =
+      bitmapFrom(config) ?? new Uint8ClampedArray(PANEL_W * PANEL_H * 4);
     if (strokeInFlightRef.current) return;
     if (lastPushedRef.current && bytesEqual(next, lastPushedRef.current)) return;
     setBitmap(next);
@@ -177,6 +183,25 @@ export function PaintComposer({
     commit(next);
   };
 
+  // Clear wipes the live panel in one tap and sits right next to redo
+  // — too easy to fat-finger. First tap arms ("sure?"), second commits;
+  // auto-disarm so a forgotten confirm isn't a landmine. Undo still
+  // works after a clear (clear runs through beginStroke as usual).
+  const [clearArmed, setClearArmed] = useState(false);
+  useEffect(() => {
+    if (!clearArmed) return;
+    const timer = setTimeout(() => setClearArmed(false), 3000);
+    return () => clearTimeout(timer);
+  }, [clearArmed]);
+  const handleClearTap = () => {
+    if (!clearArmed) {
+      setClearArmed(true);
+      return;
+    }
+    setClearArmed(false);
+    clear();
+  };
+
   // Single-cell stroke (keyboard paint) — runs the full begin→step→
   // commit cycle so it shares undo/persist with pointer strokes.
   const paintCell = (x: number, y: number) => {
@@ -195,74 +220,78 @@ export function PaintComposer({
 
   return (
     <ComposerShell title="paint" status="64×64 pixel editor" ariaLabel="Paint configuration">
-      <div className="space-y-4 px-4 py-4">
-        {/* Tool row */}
-        <div className="flex flex-wrap items-center gap-2">
-          <ToolGroup
-            tool={tool}
-            onChange={(t) => {
-              setTool(t);
-              if (t === "brush") rememberColor(color);
-            }}
-          />
-          <span aria-hidden className="flex-1" />
-          <SmallButton onClick={undo} disabled={undoLen === 0}>
-            undo
-          </SmallButton>
-          <SmallButton onClick={redo} disabled={redoLen === 0}>
-            redo
-          </SmallButton>
-          <SmallButton onClick={clear} variant="danger">
-            clear
-          </SmallButton>
-        </div>
-
-        {/* Canvas */}
-        <PaintCanvas
-          bitmap={bitmap}
-          grid={grid}
-          onStrokeBegin={beginStroke}
-          onStrokeStep={(working, x, y) => {
-            handlePixel(working, x, y);
-            // Persisting only on stroke-end — Supabase write rate
-            // limit + driver ConfigCache invalidation make per-pixel
-            // writes a thrash trap. Mid-stroke we just bump local
-            // state for the paint-trail feedback.
-            setBitmap(new Uint8ClampedArray(working));
+      {/* Tool row */}
+      <div className="flex flex-wrap items-center gap-2">
+        <ToolGroup
+          tool={tool}
+          onChange={(t) => {
+            setTool(t);
+            if (t === "brush") rememberColor(color);
           }}
-          onStrokeEnd={(working) => commit(working)}
-          onPaintCell={paintCell}
         />
-
-        {/* Grid + recent colours */}
-        <div className="flex items-center justify-between gap-3">
-          <label className="flex cursor-pointer items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-text-muted)">
-            <input
-              type="checkbox"
-              checked={grid}
-              onChange={(e) => setGrid(e.target.checked)}
-              className="h-3 w-3 rounded-[1px] border-(--color-border-strong) bg-(--color-bg) text-(--color-accent) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-accent) focus-visible:ring-offset-1 focus-visible:ring-offset-(--color-bg)"
-            />
-            grid
-          </label>
-          <div className="flex flex-wrap items-center gap-1">
-            {recentColors.map((c, i) => (
-              <button
-                key={`${c.r}-${c.g}-${c.b}-${i}`}
-                type="button"
-                onClick={() => changeColor(c)}
-                className="h-4 w-4 border border-(--color-border) hover:border-(--color-text) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-accent)"
-                style={{ background: `rgb(${c.r},${c.g},${c.b})` }}
-                aria-label={`Pick rgb(${c.r},${c.g},${c.b})`}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="border-t border-dashed border-(--color-hairline)" />
-
-        <SolidColorPicker value={color} onChange={changeColor} />
+        <span aria-hidden className="flex-1" />
+        <SmallButton onClick={undo} disabled={undoLen === 0}>
+          undo
+        </SmallButton>
+        <SmallButton onClick={redo} disabled={redoLen === 0}>
+          redo
+        </SmallButton>
+        <SmallButton
+          onClick={handleClearTap}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setClearArmed(false);
+          }}
+          variant="danger"
+          armed={clearArmed}
+        >
+          {clearArmed ? "sure?" : "clear"}
+        </SmallButton>
       </div>
+
+      {/* Canvas */}
+      <PaintCanvas
+        bitmap={bitmap}
+        grid={grid}
+        onStrokeBegin={beginStroke}
+        onStrokeStep={(working, x, y) => {
+          handlePixel(working, x, y);
+          // Persisting only on stroke-end — Supabase write rate
+          // limit + driver ConfigCache invalidation make per-pixel
+          // writes a thrash trap. Mid-stroke we just bump local
+          // state for the paint-trail feedback.
+          setBitmap(new Uint8ClampedArray(working));
+        }}
+        onStrokeEnd={(working) => commit(working)}
+        onPaintCell={paintCell}
+      />
+
+      {/* Grid + recent colours */}
+      <div className="flex items-center justify-between gap-3">
+        <CheckRow sigil={false} label="grid" checked={grid} onChange={setGrid} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          {recentColors.map((c, i) => (
+            // 24×24 hit area around a 16px painted square — the bare
+            // 16px buttons guaranteed mis-taps on touch.
+            <button
+              key={`${c.r}-${c.g}-${c.b}-${i}`}
+              type="button"
+              onClick={() => changeColor(c)}
+              className={`group flex h-6 w-6 items-center justify-center ${FOCUS_RING}`}
+              aria-label={`Pick rgb(${c.r},${c.g},${c.b})`}
+            >
+              <span
+                aria-hidden
+                className="block h-4 w-4 border border-(--color-border) transition group-hover:border-(--color-text)"
+                style={{ background: `rgb(${c.r},${c.g},${c.b})` }}
+              />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="border-t border-dashed border-(--color-hairline)" />
+
+      <SolidColorPicker value={color} onChange={changeColor} />
     </ComposerShell>
   );
 }
@@ -277,6 +306,17 @@ function bytesEqual(a: Uint8ClampedArray, b: Uint8ClampedArray): boolean {
 }
 
 /* ─── canvas ──────────────────────────────────────────────────────── */
+
+// Canvas 2D can't consume CSS custom properties directly, so resolve
+// the surface token once and cache the string — the palette is static,
+// and a getComputedStyle on every repaint would be wasted layout work.
+let cachedSurfaceColor: string | null = null;
+function canvasSurfaceColor(canvas: HTMLCanvasElement): string {
+  cachedSurfaceColor ??=
+    getComputedStyle(canvas).getPropertyValue("--color-surface").trim() ||
+    "#0f0f12";
+  return cachedSurfaceColor;
+}
 
 function PaintCanvas({
   bitmap,
@@ -302,6 +342,11 @@ function PaintCanvas({
   // Keyboard cursor position. Arrows move it; Enter/Space paint the
   // cell under it. Rendered as a highlighted outline so it's visible.
   const [cursor, setCursor] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Non-visual echo of the keyboard model: the cursor overlay is the
+  // only feedback otherwise, so a screen reader hears nothing. null
+  // until the first keyboard interaction keeps the live region quiet
+  // on mount.
+  const [lastAction, setLastAction] = useState<"move" | "paint" | null>(null);
 
   // Repaint canvas whenever the bitmap (or cursor/grid) changes. Cell
   // size derived from the canvas's actual rendered width to stay crisp.
@@ -317,7 +362,7 @@ function PaintCanvas({
       ctx.imageSmoothingEnabled = false;
 
       // Background — checkered, dim.
-      ctx.fillStyle = "#0d0d11";
+      ctx.fillStyle = canvasSurfaceColor(canvas);
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Pixels.
@@ -383,6 +428,10 @@ function PaintCanvas({
   };
 
   const handleDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    // Primary button only — a right-click stroke whose pointerup gets
+    // eaten by the context menu would leave strokeInFlightRef stuck
+    // and block server sync forever.
+    if (!e.isPrimary || e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     const working = onStrokeBegin();
     workingRef.current = working;
@@ -409,11 +458,32 @@ function PaintCanvas({
     lastCellRef.current = { x, y };
   };
 
-  const handleUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    e.currentTarget.releasePointerCapture(e.pointerId);
-    if (workingRef.current) onStrokeEnd(workingRef.current);
+  // Shared stroke finalizer: refs are nulled before onStrokeEnd so a
+  // re-entrant capture-loss event can't double-commit.
+  const finishStroke = () => {
+    const working = workingRef.current;
     workingRef.current = null;
     lastCellRef.current = null;
+    if (working) onStrokeEnd(working);
+  };
+
+  const handleUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    // Capture may already be gone (pointercancel, or a down we never
+    // captured) — releasing then throws.
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    finishStroke();
+  };
+
+  // Safety net for every capture-loss path that skips pointerup —
+  // context menu, tab switch, pointercancel. Capture is already gone
+  // here, so we must NOT touch releasePointerCapture; just finalize.
+  // Idempotent after a normal up (workingRef is already null). This
+  // guarantees strokeInFlightRef clears no matter how the stroke dies,
+  // so server sync can never be blocked permanently.
+  const handleLostCapture = () => {
+    finishStroke();
   };
 
   // Keyboard model: arrows move the cursor (clamped to the grid),
@@ -423,26 +493,37 @@ function PaintCanvas({
       case "ArrowLeft":
         e.preventDefault();
         setCursor((c) => ({ ...c, x: Math.max(0, c.x - 1) }));
+        setLastAction("move");
         break;
       case "ArrowRight":
         e.preventDefault();
         setCursor((c) => ({ ...c, x: Math.min(PANEL_W - 1, c.x + 1) }));
+        setLastAction("move");
         break;
       case "ArrowUp":
         e.preventDefault();
         setCursor((c) => ({ ...c, y: Math.max(0, c.y - 1) }));
+        setLastAction("move");
         break;
       case "ArrowDown":
         e.preventDefault();
         setCursor((c) => ({ ...c, y: Math.min(PANEL_H - 1, c.y + 1) }));
+        setLastAction("move");
         break;
       case "Enter":
       case " ":
         e.preventDefault();
         onPaintCell(cursor.x, cursor.y);
+        setLastAction("paint");
         break;
     }
   };
+
+  // 1-based for human ears; the grid itself is 0-indexed internally.
+  const announcement =
+    lastAction === null
+      ? ""
+      : `${lastAction === "paint" ? "painted " : ""}row ${cursor.y + 1}, column ${cursor.x + 1}`;
 
   // Cursor outline as a CSS overlay so it doesn't fight the canvas's
   // own repaint cycle. Position is a percentage of the grid.
@@ -459,7 +540,7 @@ function PaintCanvas({
       aria-label="Paint canvas — arrow keys move the cursor, Enter or Space paints"
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      className="relative mx-auto aspect-square w-full max-w-[384px] border border-(--color-border) bg-(--color-bg) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-accent)"
+      className={`relative mx-auto aspect-square w-full max-w-[384px] border border-(--color-border) bg-(--color-bg) ${FOCUS_RING}`}
     >
       <canvas
         ref={canvasRef}
@@ -467,6 +548,7 @@ function PaintCanvas({
         onPointerMove={handleMove}
         onPointerUp={handleUp}
         onPointerCancel={handleUp}
+        onLostPointerCapture={handleLostCapture}
         className="block h-full w-full touch-none cursor-crosshair"
         aria-hidden
       />
@@ -475,11 +557,18 @@ function PaintCanvas({
         className="pointer-events-none absolute border border-(--color-accent) shadow-[0_0_4px_var(--color-accent)]"
         style={cursorStyle}
       />
+      {/* Spoken echo of the keyboard model — cursor moves and paints
+       * otherwise produce zero non-visual output. */}
+      <span role="status" className="sr-only">
+        {announcement}
+      </span>
     </div>
   );
 }
 
 /* ─── tool group ──────────────────────────────────────────────────── */
+
+const TOOL_IDS = ["brush", "fill", "eraser", "eyedrop"] as const;
 
 function ToolGroup({
   tool,
@@ -494,22 +583,27 @@ function ToolGroup({
     { id: "eraser", glyph: "▢", label: "erase" },
     { id: "eyedrop", glyph: "◉", label: "pick" },
   ];
+  // Roving tabindex so the radiogroup honors the radio contract:
+  // arrows move + select, one Tab stop for the whole group.
+  const radio = useRovingRadio(TOOL_IDS, tool, onChange);
   return (
-    <div role="radiogroup" aria-label="Tool" className="flex items-center gap-px border border-(--color-border)">
-      {tools.map((t) => {
+    <div
+      role="radiogroup"
+      aria-label="Tool"
+      onKeyDown={radio.onKeyDown}
+      className="flex items-center gap-px border border-(--color-border)"
+    >
+      {tools.map((t, i) => {
         const active = t.id === tool;
         return (
           <button
             key={t.id}
-            type="button"
-            role="radio"
-            onClick={() => onChange(t.id)}
+            {...radio.itemProps(t.id, i)}
             title={t.label}
             aria-label={t.label}
-            aria-checked={active}
             className={[
               "flex h-7 items-center gap-1.5 px-2 font-mono text-[10px] uppercase tracking-[0.25em] transition-colors",
-              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-accent) focus-visible:ring-inset",
+              `${FOCUS_RING} focus-visible:ring-inset`,
               active
                 ? "bg-(--color-accent)/15 text-(--color-accent)"
                 : "text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
@@ -528,25 +622,33 @@ function ToolGroup({
 
 function SmallButton({
   onClick,
+  onKeyDown,
   disabled,
   variant,
+  armed,
   children,
 }: {
   onClick: () => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
   variant?: "danger";
+  /** Armed confirm state — full danger fill (clear's "sure?" step). */
+  armed?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      onKeyDown={onKeyDown}
       disabled={disabled}
       className={[
         "border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.25em] transition-colors disabled:cursor-not-allowed disabled:opacity-40",
-        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-accent)",
+        FOCUS_RING,
         variant === "danger"
-          ? "border-(--color-danger)/40 text-(--color-danger)/80 hover:bg-(--color-danger)/10 hover:text-(--color-danger)"
+          ? armed
+            ? "border-(--color-danger)/50 bg-(--color-danger)/10 text-(--color-danger) hover:bg-(--color-danger)/20"
+            : "border-(--color-danger)/40 text-(--color-danger)/80 hover:bg-(--color-danger)/10 hover:text-(--color-danger)"
           : "border-(--color-border) text-(--color-text-muted) hover:border-(--color-border-strong) hover:text-(--color-text)",
       ].join(" ")}
     >

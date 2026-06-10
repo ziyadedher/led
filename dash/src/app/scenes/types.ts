@@ -57,7 +57,12 @@ export type WireColor =
 
 export type TextScene = {
   entries: TextEntry[];
-  scroll: number;
+  /**
+   * Vertical scroll offset in pixels. The dash-side builder leaves
+   * this undefined so MatrixPreview can fill in the live panel scroll
+   * before serializing for WASM (the Rust side has #[serde(default)]).
+   */
+  scroll?: number;
 };
 
 export type ClockScene = {

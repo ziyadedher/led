@@ -11,9 +11,11 @@ import {
 } from "react";
 
 import { PanelContext } from "@/app/context";
+import { EmptyState } from "@/app/components/ui";
 import type { Mode, WireColor } from "@/app/scenes/types";
 import { entries as entriesActions } from "@/utils/actions";
 import { LED_ORANGE } from "@/utils/color";
+import { useReducedMotion } from "@/utils/useReducedMotion";
 
 const ROWS = 64;
 const COLS = 64;
@@ -148,6 +150,34 @@ class GlowCache {
     octx.fillRect(0, 0, size, size);
     return off;
   }
+}
+
+/**
+ * The simulator's outer chrome — square bezel + vignette. Exported so
+ * the page's no-panels placeholder shares the exact frame instead of
+ * hand-copying it (and drifting, as the old rounded copy did).
+ * Accepts a ref so MatrixPreview can keep its ResizeObserver sizing
+ * against the same element that carries the padding.
+ */
+export function MatrixFrame({
+  ref,
+  children,
+}: {
+  ref?: React.Ref<HTMLDivElement>;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      ref={ref}
+      className="relative overflow-hidden border border-(--color-border) bg-black p-3 shadow-2xl shadow-black/60"
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_55%,rgba(0,0,0,0.65))]"
+      />
+      {children}
+    </div>
+  );
 }
 
 /**
@@ -297,7 +327,12 @@ export function MatrixPreview({
   // The loop only needs to run when something can actually change on
   // screen. When the panel is offline/paused/off or the scene is
   // static, we render a single frame and idle until state changes.
-  const shouldAnimate = !offline && !isPaused && !isOff && isAnimatedMode;
+  // prefers-reduced-motion folds in here because the CSS reduce rules
+  // can't reach a rAF/WASM loop — the idle path still paints one
+  // static frame per scene change, just no sustained animation.
+  const reducedMotion = useReducedMotion();
+  const shouldAnimate =
+    !offline && !isPaused && !isOff && isAnimatedMode && !reducedMotion;
 
   // Dedupe scene pushes without stringifying the whole frame on every
   // rebuild: a loaded gif scene is ~720KB and clock rebuilds at 1Hz.
@@ -309,6 +344,10 @@ export function MatrixPreview({
   // Bumped only when the scene the renderer holds actually changed, so
   // an idle (static-mode) loop knows to repaint exactly once.
   const [sceneVersion, setSceneVersion] = useState(0);
+  // Set when the renderer threw on a pushed scene (serde rejects shapes
+  // the dash's cheap parsing lets through, e.g. a corrupted bitmap with
+  // out-of-range channel values). Cleared by the next successful push.
+  const [sceneRejected, setSceneRejected] = useState(false);
   useEffect(() => {
     const renderer = rendererRef.current;
     // Don't record the dedupe key until we actually have a renderer to
@@ -320,8 +359,19 @@ export function MatrixPreview({
     const m = frame.mode;
     // Bitmap modes carry huge arrays the structural key can't cheaply
     // summarize; track the array reference so reference-stable SWR churn
-    // skips the stringify. Non-bitmap modes leave this null.
-    const bitmap = "Image" in m ? m.Image.bitmap : "Gif" in m ? m.Gif.frames : null;
+    // skips the stringify. Life is in this set too: its cell count is
+    // constant across generations, so the key alone would dedupe every
+    // generation after the first and freeze the preview on the seed —
+    // the cells array reference is what changes when the lattice
+    // advances. Non-bitmap modes leave this null.
+    const bitmap =
+      "Image" in m
+        ? m.Image.bitmap
+        : "Gif" in m
+          ? m.Gif.frames
+          : "Life" in m
+            ? m.Life.cells
+            : null;
 
     // Fast path: structural key unchanged AND (for bitmap modes) the
     // payload array is reference-identical → nothing the renderer cares
@@ -336,9 +386,26 @@ export function MatrixPreview({
     // Only stringify when something actually changed — for a 720KB gif
     // this now happens on real updates, not on every SWR refresh.
     const json = JSON.stringify(frame);
+    // setSceneJson deserializes in Rust and throws on shape mismatches
+    // — uncaught, that escapes the effect into the route error boundary
+    // and retry just re-pushes and crashes again. Contain it here, and
+    // record the dedupe refs only on success: marking a rejected scene
+    // as pushed would also suppress the retry once the renderer exists
+    // for a corrected scene with the same structural key.
+    try {
+      renderer.setSceneJson(json);
+    } catch (err) {
+      console.error("MatrixPreview: renderer rejected scene", err);
+      // Mirrors an external outcome (the WASM renderer threw), not
+      // state derivable during render — the lint heuristic is a false
+      // positive here.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSceneRejected(true);
+      return;
+    }
     lastKeyRef.current = key;
     lastBitmapRef.current = bitmap;
-    renderer.setSceneJson(json);
+    setSceneRejected(false);
     // Wake an idled loop so it repaints this new scene exactly once.
     setSceneVersion((v) => v + 1);
   }, [frame, rendererReady]);
@@ -587,6 +654,8 @@ export function MatrixPreview({
     if (offline) return "LED matrix simulator — panel offline, no heartbeat.";
     if (loadFailed)
       return "LED matrix simulator — preview unavailable, the renderer could not load.";
+    if (sceneRejected)
+      return "LED matrix simulator — scene rejected, mode config failed validation.";
     const modeName = (Object.keys(mode)[0] ?? "unknown").toLowerCase();
     const state = isOff ? "off" : isPaused ? "paused" : "live";
     if (matrixIdle) return `LED matrix simulator — ${modeName} mode, idle.`;
@@ -594,14 +663,7 @@ export function MatrixPreview({
   };
 
   return (
-    <div
-      ref={wrapperRef}
-      className="relative overflow-hidden rounded-2xl border border-(--color-border) bg-black p-3 shadow-2xl shadow-black/60"
-    >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_55%,rgba(0,0,0,0.65))]"
-      />
+    <MatrixFrame ref={wrapperRef}>
       <canvas
         ref={canvasRef}
         role="img"
@@ -609,29 +671,34 @@ export function MatrixPreview({
         className="relative mx-auto block"
       />
       {offline ? (
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/40 font-mono uppercase tracking-[0.3em] backdrop-blur-[1px]">
-          <span className="text-[11px] text-(--color-danger)">
-            panel offline
-          </span>
-          <span className="text-[9px] text-(--color-text-faint)">
-            no heartbeat
-          </span>
-        </div>
+        <EmptyState
+          variant="overlay"
+          tone="danger"
+          title="panel offline"
+          detail="no heartbeat"
+        />
       ) : loadFailed ? (
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/40 font-mono uppercase tracking-[0.3em] backdrop-blur-[1px]">
-          <span className="text-[11px] text-(--color-text-dim)">
-            preview unavailable
-          </span>
-          <span className="text-[9px] text-(--color-text-faint)">
-            renderer failed to load
-          </span>
-        </div>
+        <EmptyState
+          variant="overlay"
+          title="preview unavailable"
+          detail="renderer failed to load"
+        />
+      ) : sceneRejected ? (
+        <EmptyState
+          variant="overlay"
+          title="scene rejected"
+          detail="mode config failed validation"
+        />
       ) : matrixIdle ? (
+        // Not an error state — it sits over a live-looking unlit grid,
+        // so no scrim/blur. Hand-rolled rather than fighting the overlay
+        // variant's bg/blur with override classes whose winner depends
+        // on stylesheet order, not class order.
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
           matrix idle
         </div>
       ) : null}
-    </div>
+    </MatrixFrame>
   );
 }
 

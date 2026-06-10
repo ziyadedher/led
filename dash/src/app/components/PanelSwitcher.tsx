@@ -3,7 +3,16 @@
 import { PowerIcon } from "@heroicons/react/24/outline";
 import { useMemo, useRef } from "react";
 
+import {
+  Alert,
+  EmptyState,
+  FOCUS_RING,
+  Lamp,
+  type LampTone,
+  PixelValue,
+} from "@/app/components/ui";
 import { panels } from "@/utils/actions";
+import { pad } from "@/utils/format";
 import { isOffline, relativeTime } from "@/utils/offline";
 import { useNow } from "@/utils/useNow";
 
@@ -151,27 +160,25 @@ export function PanelSwitcher({
         <span className="uppercase tracking-[0.3em] text-(--color-text-dim)">
           :: target
         </span>
-        <span
-          className="text-(--color-text-faint) tabular-nums"
-          style={{ fontFamily: "var(--font-pixel)", fontSize: 13 }}
-        >
-          {list.length.toString().padStart(2, "0")}
-        </span>
+        <PixelValue size="sm" className="text-(--color-text-faint)">
+          {pad(list.length)}
+        </PixelValue>
       </div>
 
-      {error ? (
-        <div className="border border-(--color-danger)/40 bg-(--color-danger)/5 px-2 py-1.5 text-[10px] text-(--color-danger)">
-          err: panel index unreachable
-        </div>
-      ) : null}
+      {error ? <Alert>err: panel index unreachable</Alert> : null}
 
       {!error && list.length === 0 ? (
-        <div className="border border-dashed border-(--color-border) px-2 py-3 text-center text-[10px] text-(--color-text-dim)">
-          no panels registered
-        </div>
+        <EmptyState title="no panels registered" variant="dashed" />
       ) : null}
 
-      <div role="tablist" aria-label="Panel" className="flex flex-col gap-px">
+      {/* Vertical rail on lg+; below lg the page reorders the switcher
+        * above the simulator, so collapse to a horizontal strip of
+        * chips that scrolls on phones. */}
+      <div
+        role="tablist"
+        aria-label="Panel"
+        className="flex flex-row gap-px overflow-x-auto lg:flex-col"
+      >
         {list.map((p, i) => {
           const active = p.id === panelId;
           const versionState = versionStates[i];
@@ -196,19 +203,24 @@ export function PanelSwitcher({
             ? `${p.name} — offline, ${heartbeatLabel}`
             : `${p.name} — ${state}, ${versionClause(p.driver_version, versionState)}`;
 
-          // Status indicator: phosphor lamp for live-active, dim for
-          // off, amber for paused, danger for offline, dim for
+          // Status lamp: accent pulse for live-active, faint for off,
+          // amber for paused, danger for offline, dimmed phosphor for
           // inactive-online. Offline takes priority (truth check),
           // then off (user explicitly killed it), then paused.
-          const lamp = offline
-            ? { class: "bg-(--color-danger)", glow: "var(--color-danger)" }
+          const lamp: {
+            tone: LampTone;
+            pulse?: boolean;
+            glow?: boolean;
+            className?: string;
+          } = offline
+            ? { tone: "danger" }
             : p.is_off
-              ? { class: "bg-(--color-text-faint)", glow: "transparent" }
+              ? { tone: "faint", glow: false }
               : p.is_paused
-                ? { class: "bg-(--color-amber)", glow: "var(--color-amber)" }
+                ? { tone: "amber" }
                 : active
-                  ? { class: "bg-(--color-accent)", glow: "var(--color-accent)" }
-                  : { class: "bg-(--color-phosphor)/40", glow: "transparent" };
+                  ? { tone: "accent", pulse: true }
+                  : { tone: "phosphor", glow: false, className: "opacity-40" };
 
           return (
             <button
@@ -226,7 +238,10 @@ export function PanelSwitcher({
               onKeyDown={(e) => onKeyDown(e, i)}
               onClick={() => onChange(p.id)}
               className={[
-                "group relative flex flex-col gap-0.5 border-l-2 px-2 py-1.5 text-left transition-colors",
+                "group relative flex shrink-0 flex-col gap-0.5 border-l-2 px-2 py-1.5 text-left transition-colors",
+                "min-w-32 lg:min-w-0",
+                FOCUS_RING,
+                "focus-visible:ring-inset",
                 active
                   ? offline
                     ? "border-(--color-danger) bg-(--color-danger)/10 text-(--color-danger)"
@@ -237,41 +252,28 @@ export function PanelSwitcher({
             >
               <span className="flex items-center gap-2">
                 {/* Channel index — tape-deck preset */}
-                <span
-                  aria-hidden
-                  className="shrink-0 text-(--color-text-faint) tabular-nums"
-                  style={{
-                    fontFamily: "var(--font-pixel)",
-                    fontSize: 12,
-                    lineHeight: 1,
-                  }}
+                <PixelValue
+                  size="sm"
+                  className="shrink-0 text-(--color-text-faint)"
                 >
-                  {(i + 1).toString().padStart(2, "0")}
-                </span>
+                  {pad(i + 1)}
+                </PixelValue>
 
                 {/* Status lamp */}
-                <span
-                  aria-hidden
-                  className={[
-                    "h-1.5 w-1.5 shrink-0 rounded-[1px]",
-                    lamp.class,
-                    active && !offline && !p.is_paused && !p.is_off
-                      ? "animate-pulse"
-                      : "",
-                  ].join(" ")}
-                  style={{
-                    boxShadow:
-                      lamp.glow !== "transparent"
-                        ? `0 0 6px ${lamp.glow}`
-                        : "none",
-                  }}
+                <Lamp
+                  tone={lamp.tone}
+                  pulse={lamp.pulse}
+                  glow={lamp.glow}
+                  className={lamp.className}
                 />
 
-                {/* Panel name */}
+                {/* Panel name. Offline keeps full contrast — the
+                 * line-through + chip carry the signal; dimming on
+                 * top pushed the 11px text under AA. */}
                 <span
                   className={[
                     "min-w-0 flex-1 truncate lowercase tracking-wide",
-                    offline ? "line-through opacity-60" : "",
+                    offline ? "line-through" : "",
                   ].join(" ")}
                 >
                   {p.name}
@@ -289,7 +291,7 @@ export function PanelSwitcher({
                 {p.is_paused ? (
                   <span
                     aria-hidden
-                    className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-(--color-amber)/80"
+                    className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-(--color-amber)"
                   >
                     ❚❚
                   </span>
@@ -297,20 +299,29 @@ export function PanelSwitcher({
                 {offline ? (
                   <span
                     aria-hidden
-                    className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-(--color-danger)/80"
+                    className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-(--color-danger)"
                   >
                     offline
                   </span>
                 ) : null}
               </span>
 
-              {/* Secondary row — version + heartbeat (only when active
-               * or non-current to keep the list quiet by default) */}
+              {/* Secondary row — version + heartbeat (only when active,
+               * offline, or non-current to keep the list quiet by
+               * default). The heartbeat rides along for the active tab
+               * (touch users never see the title tooltip) and for any
+               * offline row, so a dead panel's staleness is visible
+               * without selecting it. Below lg the row only survives on
+               * the active chip — the horizontal strip stays compact. */}
               <VersionTag
                 version={p.driver_version}
                 state={versionState}
                 indent
-                show={active || versionState !== "current"}
+                show={active || offline || versionState !== "current"}
+                heartbeat={
+                  active || offline ? relativeTime(p.last_seen, now) : null
+                }
+                className={active ? "flex" : "hidden lg:flex"}
               />
             </button>
           );
@@ -325,19 +336,27 @@ function VersionTag({
   state,
   indent,
   show,
+  heartbeat,
+  className,
 }: {
   version: string | null;
   state: VersionState;
   indent: boolean;
   show: boolean;
+  /** Relative heartbeat ("12s ago") appended after the version. */
+  heartbeat?: string | null;
+  className?: string;
 }) {
   if (!show) return null;
+  // Full-strength tokens only — the alpha-modified variants this row
+  // used to carry (/80, /60) landed below AA at 9px on the dark
+  // surface.
   const tone: Record<VersionState, string> = {
     current: "text-(--color-text-faint)",
-    stale: "text-(--color-danger)/80",
-    dirty: "text-(--color-amber)/80",
-    legacy: "text-(--color-amber)/80",
-    unreported: "text-(--color-text-faint)/60",
+    stale: "text-(--color-danger)",
+    dirty: "text-(--color-amber)",
+    legacy: "text-(--color-amber)",
+    unreported: "text-(--color-text-faint)",
   };
   const label: Record<VersionState, string> = {
     current: "v",
@@ -350,15 +369,21 @@ function VersionTag({
   return (
     <span
       className={[
-        "flex items-baseline gap-1.5 font-mono text-[9px] uppercase tracking-[0.2em]",
+        "items-baseline gap-1.5 font-mono text-[9px] uppercase tracking-[0.2em]",
         indent ? "pl-7" : "",
         tone[state],
+        className ?? "flex",
       ].join(" ")}
     >
       <span>{label[state]}</span>
       <span className="truncate normal-case tabular-nums">
         {version ? version.slice(0, 12) : "no report"}
       </span>
+      {heartbeat ? (
+        <span className="shrink-0 normal-case text-(--color-text-faint) tabular-nums">
+          · {heartbeat}
+        </span>
+      ) : null}
     </span>
   );
 }

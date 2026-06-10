@@ -28,7 +28,7 @@ export function useComposerConfig<C>(
   delayMs = 250,
 ): [C, (next: C) => void, () => void] {
   const [draft, setDraft] = useSyncedFromProp<C>(`${panelId}:${mode}`, initial);
-  const [push, flush] = useDebouncedSetMode<C>(panelId, mode, delayMs);
+  const { push, flush } = useDebouncedSetMode<C>(panelId, mode, delayMs);
 
   const update = (next: C) => {
     setDraft(next);

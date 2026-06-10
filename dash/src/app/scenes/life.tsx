@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   DEFAULT_LIFE_CONFIG,
@@ -10,6 +10,7 @@ import {
 } from "./types";
 
 import { ComposerShell } from "@/app/components/ComposerShell";
+import { ControlRow } from "@/app/components/ControlRow";
 import { SegmentedToggle } from "@/app/components/SegmentedToggle";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
 import { parseRgb } from "@/utils/color";
@@ -75,45 +76,68 @@ export function useLifeScene(
   useEffect(() => {
     if (!enabled) return;
     let raf = 0;
-    const tick = () => {
-      framesRef.current += 1;
-      if (framesRef.current >= intervalRef.current) {
-        framesRef.current = 0;
-        setCells((prev) => {
-          const next = step(prev);
-          generationsRef.current += 1;
-          const pop = population(next);
-          recentPopRef.current = [...recentPopRef.current.slice(1), pop];
-          const stalled =
-            recentPopRef.current[0] !== 0 &&
-            recentPopRef.current.every((p) => p === pop);
-          if (
-            stalled ||
-            generationsRef.current >= RESEED_GENERATIONS ||
-            pop < 5
-          ) {
-            generationsRef.current = 0;
-            recentPopRef.current = [0, 0, 0, 0];
-            return seed();
-          }
-          return next;
-        });
-      }
+    let lastTs: number | null = null;
+    const stepOnce = () => {
+      setCells((prev) => {
+        const next = step(prev);
+        generationsRef.current += 1;
+        const pop = population(next);
+        recentPopRef.current = [...recentPopRef.current.slice(1), pop];
+        const stalled =
+          recentPopRef.current[0] !== 0 &&
+          recentPopRef.current.every((p) => p === pop);
+        if (
+          stalled ||
+          generationsRef.current >= RESEED_GENERATIONS ||
+          pop < 5
+        ) {
+          generationsRef.current = 0;
+          recentPopRef.current = [0, 0, 0, 0];
+          return seed();
+        }
+        return next;
+      });
     };
-    const loop = () => {
-      if (!document.hidden) tick();
+    // `step_interval_frames` is defined against the driver's ~60fps
+    // render loop, but rAF fires at the display's refresh rate — one
+    // logical frame per callback would run 2-2.4x too fast on a
+    // 120/144Hz screen. Accumulate wall-clock time as 60fps-equivalent
+    // frames instead. dt is clamped so a janky frame can't burst-step,
+    // and lastTs advances even while hidden so a hidden period doesn't
+    // accumulate into a catch-up sprint on return.
+    const loop = (ts: number) => {
+      if (lastTs !== null) {
+        const dt = Math.min(ts - lastTs, 100);
+        if (!document.hidden) {
+          framesRef.current += dt / (1000 / 60);
+          // Subtract instead of resetting to zero so the fractional
+          // remainder carries over — resetting would drift slow.
+          while (framesRef.current >= intervalRef.current) {
+            framesRef.current -= intervalRef.current;
+            stepOnce();
+          }
+        }
+      }
+      lastTs = ts;
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, [enabled]);
 
-  return {
-    color: config.color,
-    lattice_width: W,
-    lattice_height: H,
-    cells: Array.from(cells),
-  };
+  // The simulator dedupes scene pushes by cells-array reference; an
+  // unmemoized return would rebuild the array every render and either
+  // re-push constantly or — before this pair of fixes — freeze the
+  // preview.
+  return useMemo(
+    () => ({
+      color: config.color,
+      lattice_width: W,
+      lattice_height: H,
+      cells: Array.from(cells),
+    }),
+    [cells, config.color],
+  );
 }
 
 function seed(): Uint8Array {
@@ -179,31 +203,26 @@ export function LifeComposer({
 
   return (
     <ComposerShell title="life" status="conway · ambient" ariaLabel="Life configuration">
-      <div className="space-y-5 px-4 py-4">
-        <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-text-faint)">
-          live cells reseed automatically when the simulation stalls
-          or goes extinct.
-        </p>
-        <div className="flex items-center justify-between gap-3">
-          <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-            :: speed
-          </span>
-          <SegmentedToggle
-            ariaLabel="Simulation speed"
-            options={SPEED_PRESETS.map((p) => ({ id: p.id, label: p.label }))}
-            value={activePreset}
-            onChange={(id) => {
-              const preset = SPEED_PRESETS.find((p) => p.id === id);
-              if (preset)
-                update({ ...draft, step_interval_frames: preset.frames });
-            }}
-          />
-        </div>
-        <SolidColorPicker
-          value={draft.color}
-          onChange={(color) => update({ ...draft, color })}
+      <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-text-faint)">
+        live cells reseed automatically when the simulation stalls
+        or goes extinct.
+      </p>
+      <ControlRow label="speed">
+        <SegmentedToggle
+          ariaLabel="Simulation speed"
+          options={SPEED_PRESETS.map((p) => ({ id: p.id, label: p.label }))}
+          value={activePreset}
+          onChange={(id) => {
+            const preset = SPEED_PRESETS.find((p) => p.id === id);
+            if (preset)
+              update({ ...draft, step_interval_frames: preset.frames });
+          }}
         />
-      </div>
+      </ControlRow>
+      <SolidColorPicker
+        value={draft.color}
+        onChange={(color) => update({ ...draft, color })}
+      />
     </ComposerShell>
   );
 }

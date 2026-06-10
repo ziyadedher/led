@@ -1,6 +1,8 @@
 "use client";
 
+import { Lamp, PixelValue } from "@/app/components/ui";
 import { entries } from "@/utils/actions";
+import { pad } from "@/utils/format";
 import { isOffline, relativeTime } from "@/utils/offline";
 
 /**
@@ -17,6 +19,7 @@ export function StatusBar({
   panelMode,
   driverVersion,
   isPanelPaused,
+  isPanelOff,
   lastSeen,
   panelId,
   now,
@@ -25,6 +28,7 @@ export function StatusBar({
   panelMode: string | null;
   driverVersion: string | null;
   isPanelPaused: boolean;
+  isPanelOff: boolean;
   lastSeen: string | null;
   panelId: string;
   now: number;
@@ -34,28 +38,37 @@ export function StatusBar({
   const versionShort = driverVersion ? driverVersion.slice(0, 10) : "—";
 
   // Each state carries a non-color glyph in addition to its hue and
-  // the (optional) animated lamp, so paused/offline/transmitting stay
-  // distinguishable for color-blind users and when the lamp is off.
-  const beat = isPanelPaused
+  // the (optional) animated lamp, so off/paused/offline/transmitting
+  // stay distinguishable for color-blind users and when the lamp is
+  // off. Precedence mirrors the switcher lamps: offline (liveness
+  // truth-check) → off → paused → transmitting.
+  const beat = offline
     ? {
-        label: "paused",
-        glyph: "⏸",
-        tone: "text-(--color-amber)",
-        lampClass: "",
+        label: "offline",
+        glyph: "✕",
+        tone: "text-(--color-danger)",
+        lamp: false,
       }
-    : offline
+    : isPanelOff
       ? {
-          label: "offline",
-          glyph: "✕",
-          tone: "text-(--color-danger)",
-          lampClass: "",
+          label: "off",
+          glyph: "⏻",
+          tone: "text-(--color-text-faint)",
+          lamp: false,
         }
-      : {
-          label: "transmitting",
-          glyph: "●",
-          tone: "text-(--color-phosphor)",
-          lampClass: "animate-pulse bg-(--color-phosphor)",
-        };
+      : isPanelPaused
+        ? {
+            label: "paused",
+            glyph: "⏸",
+            tone: "text-(--color-amber)",
+            lamp: false,
+          }
+        : {
+            label: "transmitting",
+            glyph: "●",
+            tone: "text-(--color-phosphor)",
+            lamp: true,
+          };
 
   return (
     <footer
@@ -84,27 +97,20 @@ export function StatusBar({
             </span>
           }
           suffix={
-            beat.lampClass ? (
-              <span
-                aria-hidden
-                className={`ml-1.5 inline-block h-1.5 w-1.5 rounded-full ${beat.lampClass}`}
-              />
+            beat.lamp ? (
+              <Lamp tone="phosphor" pulse className="ml-1.5" />
             ) : null
           }
         />
-        {/* Tier 2: hide on small viewports */}
+        {/* Tier 2: hide on small viewports. The heartbeat stays at
+          * all sizes — on phones it's the only liveness readout. */}
         <Cell
           label="queue"
           value={pad(queueDepth)}
           className="hidden md:flex"
           mono
         />
-        <Cell
-          label="last seen"
-          value={relativeTime(lastSeen, now)}
-          className="hidden md:flex"
-          muted
-        />
+        <Cell label="last seen" value={relativeTime(lastSeen, now)} muted />
         <Cell
           label="driver"
           value={versionShort}
@@ -161,29 +167,24 @@ function Cell({
       </span>
       <span
         className={[
-          "flex items-center min-w-0 truncate leading-none tabular-nums",
+          "flex min-w-0 items-center truncate leading-none",
           accent
             ? "text-(--color-accent) uppercase"
             : muted
               ? "text-(--color-text-muted)"
               : valueClass ?? "text-(--color-text)",
         ].join(" ")}
-        style={
-          mono || muted
-            ? {
-                fontFamily: "var(--font-mono)",
-                fontSize: 11,
-                letterSpacing: "0.05em",
-              }
-            : {
-                fontFamily: "var(--font-pixel)",
-                fontSize: 14,
-                letterSpacing: "0.02em",
-              }
-        }
       >
         {prefix}
-        <span className="truncate">{value}</span>
+        {mono || muted ? (
+          <span className="truncate font-mono text-[11px] tracking-[0.05em] tabular-nums">
+            {value}
+          </span>
+        ) : (
+          <PixelValue size="md" className="truncate tracking-[0.02em]">
+            {value}
+          </PixelValue>
+        )}
         {suffix}
       </span>
     </div>
@@ -193,8 +194,4 @@ function Cell({
 function useQueueDepth(panelId: string) {
   const { data } = entries.get.useSWR(panelId);
   return data?.entries.length ?? 0;
-}
-
-function pad(n: number) {
-  return String(n).padStart(2, "0");
 }

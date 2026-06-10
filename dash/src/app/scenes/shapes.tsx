@@ -9,8 +9,11 @@ import {
   type ShapesSceneConfig,
 } from "./types";
 
+import { CheckRow } from "@/app/components/CheckRow";
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { Fader } from "@/app/components/Fader";
+import { FOCUS_RING, MicroLabel } from "@/app/components/ui";
+import { useRovingRadio } from "@/app/components/useRovingRadio";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
 import { parseRgb } from "@/utils/color";
 import { useComposerConfig } from "@/utils/useComposerConfig";
@@ -23,6 +26,8 @@ const SHAPES: { id: ShapeKind; label: string; glyph: string; blurb: string }[] =
   { id: "Torus", label: "torus", glyph: "◯", blurb: "donut" },
   { id: "Hypercube", label: "tesseract", glyph: "◫", blurb: "4d cube" },
 ];
+
+const SHAPE_IDS = SHAPES.map((s) => s.id);
 
 const SPEED_PRESETS = [0.25, 0.5, 1, 2, 4, 8];
 
@@ -60,6 +65,9 @@ export function ShapesComposer({
     "shapes",
     config,
   );
+  const shapeRadio = useRovingRadio(SHAPE_IDS, draft.kind, (kind) =>
+    update({ ...draft, kind }),
+  );
 
   return (
     <ComposerShell
@@ -67,130 +75,112 @@ export function ShapesComposer({
       status="rotating wireframe"
       ariaLabel="Shapes configuration"
     >
-      <div className="space-y-6 px-4 pb-5 pt-5">
-        {/* Shape picker */}
-        <div>
-          <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-            :: shape
-          </div>
-          <div
-            role="radiogroup"
-            aria-label="Shape"
-            className="grid grid-cols-2 gap-px border border-(--color-border) bg-(--color-border) sm:grid-cols-3"
-          >
-            {SHAPES.map((s) => {
-              const active = s.id === draft.kind;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => update({ ...draft, kind: s.id })}
-                  title={s.blurb}
+      {/* Shape picker */}
+      <div>
+        <MicroLabel as="div" className="mb-3">
+          shape
+        </MicroLabel>
+        <div
+          role="radiogroup"
+          aria-label="Shape"
+          onKeyDown={shapeRadio.onKeyDown}
+          className="grid grid-cols-2 gap-px border border-(--color-border) bg-(--color-border) sm:grid-cols-3"
+        >
+          {SHAPES.map((s, i) => {
+            const active = s.id === draft.kind;
+            return (
+              <button
+                key={s.id}
+                {...shapeRadio.itemProps(s.id, i)}
+                title={s.blurb}
+                className={[
+                  "flex items-center gap-3 px-3 py-2.5 text-left transition-colors",
+                  FOCUS_RING,
+                  "focus-visible:ring-inset",
+                  active
+                    ? "bg-(--color-bg) text-(--color-accent)"
+                    : "bg-(--color-surface)/70 text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
+                ].join(" ")}
+              >
+                <span
+                  aria-hidden
                   className={[
-                    "flex items-center gap-3 px-3 py-2.5 text-left transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-accent) focus-visible:ring-inset",
+                    "flex h-7 w-7 shrink-0 items-center justify-center border font-pixel text-[18px] leading-none",
                     active
-                      ? "bg-(--color-bg) text-(--color-accent)"
-                      : "bg-(--color-surface)/70 text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
+                      ? "border-(--color-accent)/60 bg-(--color-accent)/10 text-(--color-accent)"
+                      : "border-(--color-border) bg-(--color-bg)/60 text-(--color-text-dim)",
                   ].join(" ")}
                 >
+                  {s.glyph}
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate font-mono text-[11px] uppercase tracking-[0.3em]">
+                    {s.label}
+                  </span>
                   <span
-                    aria-hidden
                     className={[
-                      "flex h-7 w-7 shrink-0 items-center justify-center border",
+                      "truncate font-mono text-[10px] tracking-wide",
                       active
-                        ? "border-(--color-accent)/60 bg-(--color-accent)/10 text-(--color-accent)"
-                        : "border-(--color-border) bg-(--color-bg)/60 text-(--color-text-dim)",
+                        ? "text-(--color-accent)"
+                        : "text-(--color-text-faint)",
                     ].join(" ")}
-                    style={{
-                      fontFamily: "var(--font-pixel)",
-                      fontSize: 18,
-                      lineHeight: 1,
-                    }}
                   >
-                    {s.glyph}
+                    {s.blurb}
                   </span>
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate font-mono text-[11px] uppercase tracking-[0.3em]">
-                      {s.label}
-                    </span>
-                    <span
-                      className={[
-                        "truncate font-mono text-[10px] tracking-wide",
-                        active
-                          ? "text-(--color-accent)"
-                          : "text-(--color-text-faint)",
-                      ].join(" ")}
-                    >
-                      {s.blurb}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                </span>
+              </button>
+            );
+          })}
         </div>
-
-        <div className="border-t border-dashed border-(--color-hairline)" />
-
-        {/* Speed */}
-        <Fader
-          label="// speed"
-          value={draft.speed}
-          min={SPEED_PRESETS[0]}
-          max={SPEED_PRESETS[SPEED_PRESETS.length - 1]}
-          step={0.05}
-          onChange={(speed) => update({ ...draft, speed })}
-          format={(v) => `${v.toFixed(2)}x`}
-          endpoints={["slow", "fast"]}
-          presets={SPEED_PRESETS}
-          presetLabel={(v) => `${v}x`}
-          ariaLabel="Rotation speed"
-        />
-
-        <div className="border-t border-dashed border-(--color-hairline)" />
-
-        {/* Face opacity — 0 = wireframe-only, 1 = fully filled. Edges
-         * are always drawn on top at full brightness regardless. */}
-        <Fader
-          label="// face opacity"
-          value={draft.opacity}
-          min={0}
-          max={1}
-          step={0.02}
-          onChange={(opacity) => update({ ...draft, opacity })}
-          format={(v) => `${Math.round(v * 100)}%`}
-          endpoints={["wire", "solid"]}
-          ariaLabel="Face opacity"
-        />
-
-        <label className="flex cursor-pointer items-center justify-between gap-3">
-          <span className="flex flex-col gap-0.5">
-            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-              :: depth shade
-            </span>
-            <span className="font-mono text-[9px] tracking-wide text-(--color-text-faint)">
-              dim back-of-shape edges
-            </span>
-          </span>
-          <input
-            type="checkbox"
-            checked={draft.depth_shade}
-            onChange={(e) => update({ ...draft, depth_shade: e.target.checked })}
-            className="h-3.5 w-3.5 rounded-[1px] border-(--color-border-strong) bg-(--color-bg) text-(--color-accent) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-accent) focus-visible:ring-offset-1 focus-visible:ring-offset-(--color-bg)"
-          />
-        </label>
-
-        <div className="border-t border-dashed border-(--color-hairline)" />
-
-        {/* Color */}
-        <SolidColorPicker
-          value={draft.color}
-          onChange={(color) => update({ ...draft, color })}
-        />
       </div>
+
+      <div className="border-t border-dashed border-(--color-hairline)" />
+
+      {/* Speed */}
+      <Fader
+        label="speed"
+        value={draft.speed}
+        min={SPEED_PRESETS[0]}
+        max={SPEED_PRESETS[SPEED_PRESETS.length - 1]}
+        step={0.05}
+        onChange={(speed) => update({ ...draft, speed })}
+        format={(v) => `${v.toFixed(2)}x`}
+        endpoints={["slow", "fast"]}
+        presets={SPEED_PRESETS}
+        presetLabel={(v) => `${v}x`}
+        ariaLabel="Rotation speed"
+      />
+
+      <div className="border-t border-dashed border-(--color-hairline)" />
+
+      {/* Face opacity — 0 = wireframe-only, 1 = fully filled. Edges
+       * are always drawn on top at full brightness regardless. */}
+      <Fader
+        label="face opacity"
+        value={draft.opacity}
+        min={0}
+        max={1}
+        step={0.02}
+        onChange={(opacity) => update({ ...draft, opacity })}
+        format={(v) => `${Math.round(v * 100)}%`}
+        endpoints={["wire", "solid"]}
+        ariaLabel="Face opacity"
+      />
+
+      <CheckRow
+        label="depth shade"
+        hint="dim back-of-shape edges"
+        checked={draft.depth_shade}
+        onChange={(depth_shade) => update({ ...draft, depth_shade })}
+      />
+
+      <div className="border-t border-dashed border-(--color-hairline)" />
+
+      {/* Color */}
+      <SolidColorPicker
+        value={draft.color}
+        onChange={(color) => update({ ...draft, color })}
+      />
     </ComposerShell>
   );
 }

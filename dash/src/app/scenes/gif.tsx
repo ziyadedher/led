@@ -1,7 +1,7 @@
 "use client";
 
 import { parseGIF, decompressFrames, type ParsedFrame } from "gifuct-js";
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import {
   defaultGifConfig,
@@ -11,8 +11,12 @@ import {
 
 import { ComposerShell } from "@/app/components/ComposerShell";
 import { Fader } from "@/app/components/Fader";
+import { UploadRow } from "@/app/components/UploadRow";
+import { Alert, PixelValue } from "@/app/components/ui";
 import { panels } from "@/utils/actions";
+import { pad } from "@/utils/format";
 import { useDebouncedSetMode } from "@/utils/useDebouncedSetMode";
+import { useSyncedFromProp } from "@/utils/useSyncedFromProp";
 
 const PANEL_W = 64;
 const PANEL_H = 64;
@@ -160,8 +164,9 @@ async function decodeGif(file: File): Promise<GifSceneConfig> {
     // Bulk-copy the RGBA Uint8ClampedArray; Array.from is far faster
     // than a per-byte assignment loop over ~16K elements per frame.
     const bitmap = Array.from(data);
-    // Per-frame delay: gifuct returns delay in 1/100s units.
-    const delay_ms = Math.max(MIN_DELAY_MS, (frame.delay ?? 10) * 10);
+    // Per-frame delay: gifuct already converts the GIF's 1/100s units
+    // to milliseconds (and substitutes 100ms for a missing delay).
+    const delay_ms = Math.max(MIN_DELAY_MS, frame.delay ?? 100);
     frames.push({ bitmap, delay_ms });
   }
 
@@ -186,36 +191,54 @@ export function GifComposer({
   panelId: string;
   config: GifSceneConfig;
 }) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
+  // "decode" is CPU-bound canvas work; "transmit" is the multi-second
+  // ~720KB Supabase write. Splitting the label keeps the long second
+  // phase from reading as a hung decode.
+  const [phase, setPhase] = useState<"decode" | "transmit" | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  // Local draft of the speed so the fader/readouts respond instantly:
+  // binding straight to `config.speed` lets the 1Hz page re-render
+  // yank the thumb back mid-drag until the realtime echo lands.
+  const [draftSpeed, setDraftSpeed] = useSyncedFromProp(
+    `${panelId}:gif`,
+    config.speed,
+  );
 
   // Speed slider goes through the debounced path so a drag doesn't
   // ship the entire (~720KB) frame payload to Supabase per
-  // intermediate value. File upload + flush stays a direct call —
-  // upload is a single user gesture that shouldn't queue.
-  const [pushSpeedDebounced, flushSpeed] =
-    useDebouncedSetMode<GifSceneConfig>(panelId, "gif");
+  // intermediate value. File upload stays a direct call — upload is
+  // a single user gesture that shouldn't queue.
+  const speedWriter = useDebouncedSetMode<GifSceneConfig>(panelId, "gif");
 
   const handleFile = async (file: File) => {
-    setBusy(true);
+    setPhase("decode");
     setErr(null);
     try {
-      // Cancel any pending speed write — the new file's
-      // decoded config supersedes it.
-      flushSpeed();
+      // Drop any staged speed write (the new file's decoded config
+      // supersedes it), then wait out any write already in flight —
+      // a slow speed write landing AFTER the upload's setMode would
+      // clobber the new gif with the old gif's frames.
+      speedWriter.cancel();
+      await speedWriter.settle();
       const next = await decodeGif(file);
+      setPhase("transmit");
       await panels.setMode.call(panelId, "gif", next);
+      // The decoded config resets speed to 1, but the draft's key
+      // (panelId:gif) doesn't change on upload — reset it manually so
+      // the fader doesn't keep showing the old gif's speed.
+      setDraftSpeed(1);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      setPhase(null);
     }
   };
 
   const setSpeed = (next: number) => {
     if (config.frames.length === 0) return;
-    pushSpeedDebounced({ ...config, speed: next });
+    setDraftSpeed(next);
+    speedWriter.push({ ...config, speed: next });
   };
 
   const hasFrames = config.frames.length > 0;
@@ -224,9 +247,10 @@ export function GifComposer({
     config.source_frame_count > config.frames.length;
 
   // Total looped duration for the diagnostic readout — accounts for
-  // the playback speed the user has dialed in.
+  // the playback speed the user has dialed in (draft, so the stat
+  // tracks the fader instead of lagging until the server echo).
   const totalMs = config.frames.reduce((acc, f) => acc + f.delay_ms, 0);
-  const effectiveLoopMs = totalMs / Math.max(0.05, config.speed);
+  const effectiveLoopMs = totalMs / Math.max(0.05, draftSpeed);
 
   return (
     <ComposerShell
@@ -234,93 +258,64 @@ export function GifComposer({
       status={`max ${MAX_FRAMES} frames · 64×64`}
       ariaLabel="GIF configuration"
     >
-      <div className="space-y-5 px-4 pb-5 pt-5">
-        <div>
-          <div className="mb-7 font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-            :: upload
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={busy}
-              className="border border-(--color-accent)/60 bg-(--color-accent)/10 px-4 py-2 font-mono text-xs uppercase tracking-[0.3em] text-(--color-accent) transition hover:bg-(--color-accent)/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {busy ? "decoding…" : "choose .gif"}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/gif"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void handleFile(file);
-                e.target.value = "";
-              }}
+      <UploadRow
+        accept="image/gif"
+        idleLabel="choose .gif"
+        busyLabel={phase === "transmit" ? "transmitting…" : "decoding…"}
+        busy={phase != null}
+        status={
+          hasFrames
+            ? `${config.source ?? "uploaded"} · ${config.width}×${config.height}`
+            : "no gif loaded"
+        }
+        onFile={(file) => void handleFile(file)}
+      />
+
+      {err ? <Alert>err: {err}</Alert> : null}
+
+      {hasFrames ? (
+        <>
+          <div className="border-t border-dashed border-(--color-hairline)" />
+
+          <Fader
+            label="speed"
+            value={draftSpeed}
+            min={SPEED_PRESETS[0]}
+            max={SPEED_PRESETS[SPEED_PRESETS.length - 1]}
+            step={0.05}
+            onChange={setSpeed}
+            format={(v) => `${v.toFixed(2)}x`}
+            endpoints={["slow", "fast"]}
+            presets={SPEED_PRESETS}
+            presetLabel={(v) => `${v}x`}
+            ariaLabel="GIF speed"
+          />
+
+          <div className="border-t border-dashed border-(--color-hairline)" />
+
+          <div className="grid grid-cols-2 gap-px border border-(--color-border) bg-(--color-border) sm:grid-cols-4">
+            <Stat label="frames" value={pad(config.frames.length, 2)} />
+            <Stat
+              label="loop"
+              value={`${(effectiveLoopMs / 1000).toFixed(2)}s`}
             />
-            {hasFrames ? (
-              <span className="truncate font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-text-faint)">
-                {config.source ?? "uploaded"} · {config.width}×{config.height}
-              </span>
-            ) : (
-              <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-text-faint)">
-                no gif loaded
-              </span>
-            )}
-          </div>
-        </div>
-
-        {err ? (
-          <div className="border border-(--color-danger)/40 bg-(--color-danger)/5 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-danger)">
-            err: {err}
-          </div>
-        ) : null}
-
-        {hasFrames ? (
-          <>
-            <div className="border-t border-dashed border-(--color-hairline)" />
-
-            <Fader
-              label="// speed"
-              value={config.speed}
-              min={SPEED_PRESETS[0]}
-              max={SPEED_PRESETS[SPEED_PRESETS.length - 1]}
-              step={0.05}
-              onChange={setSpeed}
-              format={(v) => `${v.toFixed(2)}x`}
-              endpoints={["slow", "fast"]}
-              presets={SPEED_PRESETS}
-              presetLabel={(v) => `${v}x`}
-              ariaLabel="GIF speed"
+            <Stat
+              label="speed"
+              value={`${draftSpeed.toFixed(2)}x`}
+              tone={draftSpeed === 1 ? undefined : "warn"}
             />
-
-            <div className="border-t border-dashed border-(--color-hairline)" />
-
-            <div className="grid grid-cols-2 gap-px border border-(--color-border) bg-(--color-border) sm:grid-cols-4">
-              <Stat label="frames" value={pad(config.frames.length, 2)} />
-              <Stat
-                label="loop"
-                value={`${(effectiveLoopMs / 1000).toFixed(2)}s`}
-              />
-              <Stat
-                label="speed"
-                value={`${config.speed.toFixed(2)}x`}
-                tone={config.speed === 1 ? undefined : "warn"}
-              />
-              <Stat
-                label="source"
-                value={
-                  trimmed
-                    ? `${config.frames.length}/${config.source_frame_count}`
-                    : "full"
-                }
-                tone={trimmed ? "warn" : "ok"}
-              />
-            </div>
-          </>
-        ) : null}
-      </div>
+            <Stat
+              label="source"
+              value={
+                trimmed
+                  ? `${config.frames.length}/${config.source_frame_count}`
+                  : "full"
+              }
+              tone={trimmed ? "warn" : "ok"}
+            />
+          </div>
+        </>
+      ) : null}
     </ComposerShell>
   );
 }
@@ -345,16 +340,9 @@ function Stat({
       <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-(--color-text-dim)">
         {label}
       </span>
-      <span
-        className={`tabular-nums ${valueClass}`}
-        style={{ fontFamily: "var(--font-pixel)", fontSize: 14 }}
-      >
+      <PixelValue size="md" className={valueClass}>
         {value}
-      </span>
+      </PixelValue>
     </div>
   );
-}
-
-function pad(n: number, width: number): string {
-  return String(n).padStart(width, "0");
 }
