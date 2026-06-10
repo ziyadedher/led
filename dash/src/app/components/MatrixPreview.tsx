@@ -193,6 +193,11 @@ export function MatrixPreview({
   // resolved would never reach the renderer and tick() would render
   // an empty default forever.
   const [rendererReady, setRendererReady] = useState(false);
+  // Set when the WASM module fails to load (browser without WebAssembly,
+  // a blocked/failed chunk fetch, etc). The renderer never comes up, so
+  // the canvas would otherwise sit on the unlit grid forever with no
+  // explanation — we show a "preview unavailable" overlay instead.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useLayoutEffect(() => {
     const wrap = wrapperRef.current;
@@ -211,14 +216,23 @@ export function MatrixPreview({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const mod = await import("wasm-sim");
-      const renderer = new mod.Renderer(COLS, ROWS);
-      if (cancelled) {
-        renderer.free();
-        return;
+      try {
+        const mod = await import("wasm-sim");
+        const renderer = new mod.Renderer(COLS, ROWS);
+        if (cancelled) {
+          renderer.free();
+          return;
+        }
+        rendererRef.current = renderer;
+        setRendererReady(true);
+      } catch (err) {
+        // No WASM (unsupported browser, blocked/failed chunk) — surface
+        // it via the overlay rather than leaving a silent unlit grid.
+        if (!cancelled) {
+          console.error("MatrixPreview: WASM renderer failed to load", err);
+          setLoadFailed(true);
+        }
       }
-      rendererRef.current = renderer;
-      setRendererReady(true);
     })();
     return () => {
       cancelled = true;
@@ -571,6 +585,8 @@ export function MatrixPreview({
 
   const describe = () => {
     if (offline) return "LED matrix simulator — panel offline, no heartbeat.";
+    if (loadFailed)
+      return "LED matrix simulator — preview unavailable, the renderer could not load.";
     const modeName = (Object.keys(mode)[0] ?? "unknown").toLowerCase();
     const state = isOff ? "off" : isPaused ? "paused" : "live";
     if (matrixIdle) return `LED matrix simulator — ${modeName} mode, idle.`;
@@ -599,6 +615,15 @@ export function MatrixPreview({
           </span>
           <span className="text-[9px] text-(--color-text-faint)">
             no heartbeat
+          </span>
+        </div>
+      ) : loadFailed ? (
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/40 font-mono uppercase tracking-[0.3em] backdrop-blur-[1px]">
+          <span className="text-[11px] text-(--color-text-dim)">
+            preview unavailable
+          </span>
+          <span className="text-[9px] text-(--color-text-faint)">
+            renderer failed to load
           </span>
         </div>
       ) : matrixIdle ? (

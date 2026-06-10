@@ -177,6 +177,21 @@ pub fn encode_frame(buf: &PixelBuffer, order: ColorOrder, out: &mut Vec<u32>) {
             prev = addr;
         }
     }
+
+    // Frame tail: park the panel blanked. `present()` DMAs one frame and
+    // blocks, then the render loop builds the next frame before the next
+    // xfer — so the PIO drains the FIFO and stalls on autopull during the
+    // gap, holding the final word's pin state (program.rs wraps to
+    // `out x, 1` and stalls there). The last loop word is addr 31's
+    // illuminate with OE active, which would leave rows 31 and 63 lit for
+    // the entire inter-frame gap and visibly over-brighten them (the
+    // "double-written" seam + bottom row). End on OE-disabled so the stall
+    // holds dark instead. The per-row anti-ghost blank moved *ahead* of
+    // each illuminate during the pipelining rework, which incidentally
+    // dropped the end-of-row blank that used to cover this — so it's
+    // restored here once, at the frame boundary, where it actually matters.
+    out.push(delay_header(BLANK_TICKS));
+    out.push(OE_DISABLED | addr_word(prev));
 }
 
 #[cfg(test)]
@@ -313,6 +328,27 @@ mod tests {
             let this_clock_addr = decode_addr(out[i * row_block + sample_offset]);
             assert_ne!(this_clock_addr, dwell_addr);
         }
+    }
+
+    #[test]
+    fn frame_ends_blanked_so_interframe_stall_holds_dark() {
+        // Between frames the PIO drains its FIFO and stalls on autopull,
+        // holding the last word's pins. If that word lights a row, the
+        // last-addressed rows (31 and 63) over-brighten for the whole gap.
+        // The stream must therefore end OE-disabled with no RGB asserted.
+        let mut out = Vec::new();
+        encode_frame(&solid(Rgb888::WHITE), ColorOrder::Rgb, &mut out);
+        let last = *out.last().expect("non-empty stream");
+        assert_ne!(
+            last & OE_DISABLED,
+            0,
+            "frame must end with OE disabled (panel blanked) so the inter-frame stall holds dark",
+        );
+        assert_eq!(
+            last & RGB_MASK,
+            0,
+            "frame must end with no RGB channel lit",
+        );
     }
 
     #[test]
