@@ -187,10 +187,14 @@ export default function Page() {
 
   // Build the Scene the simulator renders. Clock mode samples
   // `now` internally, so its memo needs to re-run each tick — but
-  // only for clock; otherwise we'd re-stringify the entire scene
+  // only for the time-injected modes (clock / sky / pong); otherwise
+  // we'd re-stringify the entire scene
   // (up to ~720KB for a fully-loaded gif) every second on the main
   // thread for nothing. Hide `now` behind a mode-gated dep.
-  const clockTick = activeMode === "clock" ? now : 0;
+  const clockTick =
+    activeMode === "clock" || activeMode === "sky" || activeMode === "pong"
+      ? now
+      : 0;
   const modeFrame = useMemo(
     () =>
       frame.buildFrame(activeConfig, {

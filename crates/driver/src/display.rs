@@ -9,11 +9,13 @@ use display_core::{
     gif::GifScene,
     image::ImageScene,
     life::{Lattice, LifeSceneConfig},
+    pong::{PongSceneConfig, PongTime},
     setup::SetupScene,
     shapes::ShapesScene,
+    sky::{SkySceneConfig, SkyTime},
     test::TestScene,
     text::TextScene,
-    Scene, Mode, PanelState,
+    Scene, Mode, PanelState, SimHost,
 };
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -147,6 +149,10 @@ pub async fn drive(
 
     let mut clock = StepClock::new();
     let mut life_state: Option<LifeState> = None;
+    // Persistent state for the simulation modes (physarum, rd, fluid,
+    // sand, swarm) — display-core owns the stepping; we just keep the
+    // host alive across frames.
+    let mut sims = SimHost::default();
     let mut config_cache = ConfigCache::default();
     // Most recent clock sample. Frozen while the panel is paused so
     // the displayed time doesn't advance even though render() is
@@ -179,7 +185,8 @@ pub async fn drive(
 
         // PixelBuffer's DrawTarget impl is Infallible — `render`
         // can't fail here, so unwrap is fine.
-        display_core::render(&frame, step, &mut buffer).expect("infallible draw target");
+        display_core::render_with_sims(&frame, step, &mut sims, &mut buffer)
+            .expect("infallible draw target");
 
         sink.present(&buffer)?;
         metrics
@@ -509,6 +516,79 @@ fn build_mode(
         "lava" => {
             *life_state = None;
             Mode::Lava(
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default(),
+            )
+        }
+        "warp" => {
+            *life_state = None;
+            Mode::Warp(
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default(),
+            )
+        }
+        "fx" => {
+            *life_state = None;
+            Mode::Fx(
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default(),
+            )
+        }
+        // Time-injected scenes (mirrors clock): config persisted,
+        // `now` sampled here each frame. Sky math is UTC-based; pong
+        // shows local wall-clock score.
+        "sky" => {
+            *life_state = None;
+            let config: SkySceneConfig =
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
+            let utc = chrono::Utc::now();
+            #[allow(clippy::cast_possible_truncation)]
+            let now = SkyTime {
+                year: chrono::Datelike::year(&utc),
+                month: chrono::Datelike::month(&utc) as u8,
+                day: chrono::Datelike::day(&utc) as u8,
+                hour: chrono::Timelike::hour(&utc) as u8,
+                minute: chrono::Timelike::minute(&utc) as u8,
+            };
+            Mode::Sky(config.into_frame(now))
+        }
+        "pong" => {
+            *life_state = None;
+            let config: PongSceneConfig =
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
+            let local = sample_time(None);
+            Mode::Pong(config.into_frame(PongTime {
+                hour: local.hour,
+                minute: local.minute,
+                second: local.second,
+            }))
+        }
+        // Stateful sims: payload is just the parsed config; the
+        // render path advances state via the SimHost.
+        "physarum" => {
+            *life_state = None;
+            Mode::Physarum(
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default(),
+            )
+        }
+        "rd" => {
+            *life_state = None;
+            Mode::Rd(
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default(),
+            )
+        }
+        "fluid" => {
+            *life_state = None;
+            Mode::Fluid(
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default(),
+            )
+        }
+        "sand" => {
+            *life_state = None;
+            Mode::Sand(
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default(),
+            )
+        }
+        "swarm" => {
+            *life_state = None;
+            Mode::Swarm(
                 serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default(),
             )
         }

@@ -17,23 +17,41 @@ import {
   parseClockConfig,
 } from "./clock";
 import { FireComposer, parseFireConfig } from "./fire";
+import { FluidComposer, parseFluidConfig } from "./fluid";
+import { FxComposer, parseFxConfig } from "./fx";
 import { GifComposer, parseGifConfig } from "./gif";
 import { ImageComposer, parseImageConfig } from "./image";
 import { LavaComposer, parseLavaConfig } from "./lava";
 import { LifeComposer, parseLifeConfig } from "./life";
 import { PaintComposer, parsePaintConfig, type PaintSceneConfig } from "./paint";
+import { parsePhysarumConfig, PhysarumComposer } from "./physarum";
 import { parsePlasmaConfig, PlasmaComposer } from "./plasma";
+import { parsePongConfig, PongComposer, pongSceneFromConfig } from "./pong";
 import { parseRainConfig, RainComposer } from "./rain";
+import { parseRdConfig, RdComposer } from "./rd";
+import { parseSandConfig, SandComposer } from "./sand";
 import { parseShapesConfig, ShapesComposer } from "./shapes";
+import { parseSkyConfig, SkyComposer, skySceneFromConfig } from "./sky";
 import { parseStarfieldConfig, StarfieldComposer } from "./starfield";
+import { parseSwarmConfig, SwarmComposer } from "./swarm";
 import { parseTestConfig, TestComposer } from "./test";
+import { parseWarpConfig, WarpComposer } from "./warp";
 import type {
   ClockSceneConfig,
   FireSceneConfig,
   GifSceneConfig,
   ImageSceneConfig,
+  FluidSceneConfig,
+  FxSceneConfig,
   LavaSceneConfig,
   LifeSceneConfig,
+  PhysarumSceneConfig,
+  PongSceneConfig,
+  RdSceneConfig,
+  SandSceneConfig,
+  SkySceneConfig,
+  SwarmSceneConfig,
+  WarpSceneConfig,
   LifeScene,
   Mode,
   PlasmaSceneConfig,
@@ -217,6 +235,64 @@ export const SCENES: Record<PanelMode, SceneRegistration> = {
     parseLavaConfig,
     (config) => ({ Lava: config }),
     LavaComposer,
+  ),
+
+  warp: scene<WarpSceneConfig>(
+    parseWarpConfig,
+    (config) => ({ Warp: config }),
+    WarpComposer,
+  ),
+
+  fx: scene<FxSceneConfig>(
+    parseFxConfig,
+    (config) => ({ Fx: config }),
+    FxComposer,
+  ),
+
+  // Time-injected scenes — buildFrame samples the wall clock, like
+  // clock; page.tsx's minute-gated memo dep keeps them fresh.
+  sky: scene<SkySceneConfig>(
+    parseSkyConfig,
+    (config) => ({ Sky: skySceneFromConfig(config) }),
+    SkyComposer,
+  ),
+
+  pong: scene<PongSceneConfig>(
+    parsePongConfig,
+    (config) => ({ Pong: pongSceneFromConfig(config) }),
+    PongComposer,
+  ),
+
+  // Stateful sims — the wire payload is config only; the WASM
+  // renderer (and the driver) hold the evolving state in a SimHost.
+  physarum: scene<PhysarumSceneConfig>(
+    parsePhysarumConfig,
+    (config) => ({ Physarum: config }),
+    PhysarumComposer,
+  ),
+
+  rd: scene<RdSceneConfig>(
+    parseRdConfig,
+    (config) => ({ Rd: config }),
+    RdComposer,
+  ),
+
+  fluid: scene<FluidSceneConfig>(
+    parseFluidConfig,
+    (config) => ({ Fluid: config }),
+    FluidComposer,
+  ),
+
+  sand: scene<SandSceneConfig>(
+    parseSandConfig,
+    (config) => ({ Sand: config }),
+    SandComposer,
+  ),
+
+  swarm: scene<SwarmSceneConfig>(
+    parseSwarmConfig,
+    (config) => ({ Swarm: config }),
+    SwarmComposer,
   ),
 
   test: scene<TestSceneConfig>(

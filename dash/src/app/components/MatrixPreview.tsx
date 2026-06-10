@@ -327,7 +327,19 @@ export function MatrixPreview({
         "Fire" in mode ||
         "Rain" in mode ||
         "Starfield" in mode ||
-        "Lava" in mode;
+        "Lava" in mode ||
+        "Warp" in mode ||
+        "Fx" in mode ||
+        "Pong" in mode ||
+        // Sims animate WASM-side from SimHost state, so the loop must
+        // run even though the pushed scene (config) never changes.
+        "Physarum" in mode ||
+        "Rd" in mode ||
+        "Fluid" in mode ||
+        "Sand" in mode ||
+        "Swarm" in mode;
+  // Sky is near-static: its injected `now` bumps the structural key
+  // once a minute and the idle path repaints — no rAF loop needed.
 
   // The loop only needs to run when something can actually change on
   // screen. When the panel is offline/paused/off or the scene is
@@ -759,6 +771,15 @@ function structuralKey(frame: Scene): string {
   if ("Rain" in mode) return `${p}|R|${JSON.stringify(mode.Rain)}`;
   if ("Starfield" in mode) return `${p}|*|${JSON.stringify(mode.Starfield)}`;
   if ("Lava" in mode) return `${p}|V|${JSON.stringify(mode.Lava)}`;
+  if ("Warp" in mode) return `${p}|W|${JSON.stringify(mode.Warp)}`;
+  if ("Fx" in mode) return `${p}|E|${JSON.stringify(mode.Fx)}`;
+  if ("Sky" in mode) return `${p}|K|${JSON.stringify(mode.Sky)}`;
+  if ("Pong" in mode) return `${p}|O|${JSON.stringify(mode.Pong)}`;
+  if ("Physarum" in mode) return `${p}|Y|${JSON.stringify(mode.Physarum)}`;
+  if ("Rd" in mode) return `${p}|D|${JSON.stringify(mode.Rd)}`;
+  if ("Fluid" in mode) return `${p}|Q|${JSON.stringify(mode.Fluid)}`;
+  if ("Sand" in mode) return `${p}|N|${JSON.stringify(mode.Sand)}`;
+  if ("Swarm" in mode) return `${p}|Z|${JSON.stringify(mode.Swarm)}`;
   if ("Boot" in mode) {
     const c = mode.Boot.color;
     return `${p}|B|${c.r},${c.g},${c.b}`;

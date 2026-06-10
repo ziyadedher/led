@@ -39,6 +39,15 @@ export type Mode =
   | { Rain: RainScene }
   | { Starfield: StarfieldScene }
   | { Lava: LavaScene }
+  | { Warp: WarpScene }
+  | { Fx: FxScene }
+  | { Sky: SkyScene }
+  | { Pong: PongScene }
+  | { Physarum: PhysarumSceneConfig }
+  | { Rd: RdSceneConfig }
+  | { Fluid: FluidSceneConfig }
+  | { Sand: SandSceneConfig }
+  | { Swarm: SwarmSceneConfig }
   // Driver-only frames the dash never constructs but the type
   // includes for completeness with display_core::Mode. The simulator
   // would render them correctly if it ever received one.
@@ -463,24 +472,146 @@ export function defaultLavaConfig(): LavaSceneConfig {
   };
 }
 
+
+/* ── second-wave scenes ───────────────────────────────────────────
+ * Same lockstep rule as the first wave: every field/default mirrors
+ * the Rust twin in display_core::frames::<mode>. The sim modes
+ * (physarum/rd/fluid/sand/swarm) carry CONFIG only — their state
+ * lives in display-core's SimHost on both the driver and inside the
+ * WASM preview, so the dash never simulates them in TS. */
+
+type RgbV = { r: number; g: number; b: number };
+
+export type WarpPalette = "Ember" | "Phosphor" | "Aurora" | "Ocean" | "Rainbow";
+export const WARP_PALETTES: readonly WarpPalette[] = ["Ember", "Phosphor", "Aurora", "Ocean", "Rainbow"];
+export type WarpScene = { palette: WarpPalette; speed: number; scale: number };
+export type WarpSceneConfig = WarpScene;
+export const DEFAULT_WARP_CONFIG: WarpSceneConfig = { palette: "Ember", speed: 1, scale: 1 };
+export function defaultWarpConfig(): WarpSceneConfig { return { ...DEFAULT_WARP_CONFIG }; }
+
+export type FxEffect =
+  | "Tunnel" | "Rotozoom" | "Twister" | "Copper" | "Moire"
+  | "Kefrens" | "Julia" | "Chladni" | "Aurora" | "BlackHole";
+export const FX_EFFECTS: readonly FxEffect[] = [
+  "Tunnel", "Rotozoom", "Twister", "Copper", "Moire",
+  "Kefrens", "Julia", "Chladni", "Aurora", "BlackHole",
+];
+export type FxPalette = "Ember" | "Phosphor" | "Aurora" | "Rainbow";
+export const FX_PALETTES: readonly FxPalette[] = ["Ember", "Phosphor", "Aurora", "Rainbow"];
+export type FxScene = { effect: FxEffect; palette: FxPalette; speed: number };
+export type FxSceneConfig = FxScene;
+export const DEFAULT_FX_CONFIG: FxSceneConfig = { effect: "Tunnel", palette: "Ember", speed: 1 };
+export function defaultFxConfig(): FxSceneConfig { return { ...DEFAULT_FX_CONFIG }; }
+
+export type SkyFace = "Moon" | "Sun" | "Terminator";
+export const SKY_FACES: readonly SkyFace[] = ["Moon", "Sun", "Terminator"];
+/** UTC sample injected by buildFrame each minute-tick. */
+export type SkyTime = { year: number; month: number; day: number; hour: number; minute: number };
+export type SkySceneConfig = { face: SkyFace; lat: number; lon: number; color: RgbV };
+export type SkyScene = SkySceneConfig & { now: SkyTime };
+export const DEFAULT_SKY_CONFIG: SkySceneConfig = {
+  face: "Moon", lat: 0, lon: 0, color: { r: 0xff, g: 0xe0, b: 0xb0 },
+};
+export function defaultSkyConfig(): SkySceneConfig {
+  return { ...DEFAULT_SKY_CONFIG, color: { ...DEFAULT_SKY_CONFIG.color } };
+}
+
+export type PongFormat = "H24" | "H12";
+export type PongSceneConfig = { color: RgbV; speed: number; format: PongFormat };
+export type PongScene = PongSceneConfig & {
+  now: { hour: number; minute: number; second: number };
+};
+export const DEFAULT_PONG_CONFIG: PongSceneConfig = {
+  color: { r: 0xe6, g: 0xe6, b: 0xea }, speed: 1, format: "H24",
+};
+export function defaultPongConfig(): PongSceneConfig {
+  return { ...DEFAULT_PONG_CONFIG, color: { ...DEFAULT_PONG_CONFIG.color } };
+}
+
+export type PhysarumSceneConfig = { color: RgbV; agents: number; decay: number; speed: number };
+export const DEFAULT_PHYSARUM_CONFIG: PhysarumSceneConfig = {
+  color: { r: 0x5d, g: 0xff, b: 0xa9 }, agents: 3000, decay: 0.94, speed: 1,
+};
+export function defaultPhysarumConfig(): PhysarumSceneConfig {
+  return { ...DEFAULT_PHYSARUM_CONFIG, color: { ...DEFAULT_PHYSARUM_CONFIG.color } };
+}
+
+export type RdSceneConfig = { color: RgbV; feed: number; kill: number; drift: boolean; speed: number };
+export const DEFAULT_RD_CONFIG: RdSceneConfig = {
+  color: { r: 0x4d, g: 0xe0, b: 0xe0 }, feed: 0.0545, kill: 0.062, drift: true, speed: 1,
+};
+export function defaultRdConfig(): RdSceneConfig {
+  return { ...DEFAULT_RD_CONFIG, color: { ...DEFAULT_RD_CONFIG.color } };
+}
+
+export type FluidSceneConfig = { color_a: RgbV; color_b: RgbV; swirl: number; speed: number };
+export const DEFAULT_FLUID_CONFIG: FluidSceneConfig = {
+  color_a: { r: 0xff, g: 0x8a, b: 0x2c }, color_b: { r: 0x4d, g: 0xa3, b: 0xff }, swirl: 1, speed: 1,
+};
+export function defaultFluidConfig(): FluidSceneConfig {
+  return {
+    ...DEFAULT_FLUID_CONFIG,
+    color_a: { ...DEFAULT_FLUID_CONFIG.color_a },
+    color_b: { ...DEFAULT_FLUID_CONFIG.color_b },
+  };
+}
+
+export type SandSceneConfig = { color: RgbV; rainbow: boolean; pour_rate: number; reset_minutes: number };
+export const DEFAULT_SAND_CONFIG: SandSceneConfig = {
+  color: { r: 0xff, g: 0x8a, b: 0x2c }, rainbow: true, pour_rate: 1, reset_minutes: 0,
+};
+export function defaultSandConfig(): SandSceneConfig {
+  return { ...DEFAULT_SAND_CONFIG, color: { ...DEFAULT_SAND_CONFIG.color } };
+}
+
+export type SwarmSceneConfig = { color: RgbV; count: number; trail: number; speed: number };
+export const DEFAULT_SWARM_CONFIG: SwarmSceneConfig = {
+  color: { r: 0x4d, g: 0xa3, b: 0xff }, count: 60, trail: 0.9, speed: 1,
+};
+export function defaultSwarmConfig(): SwarmSceneConfig {
+  return { ...DEFAULT_SWARM_CONFIG, color: { ...DEFAULT_SWARM_CONFIG.color } };
+}
+
+/** Mode-switcher grouping. The flat tile grid stopped scaling past
+ * a dozen modes; tiles render per-category in the switcher. */
+export type ModeCategory = "signal" | "canvas" | "ambient" | "lab" | "diag";
+
+export const MODE_CATEGORIES: { id: ModeCategory; label: string; blurb: string }[] = [
+  { id: "signal", label: "signal", blurb: "words & time" },
+  { id: "canvas", label: "canvas", blurb: "your pixels" },
+  { id: "ambient", label: "ambient", blurb: "procedural motion" },
+  { id: "lab", label: "lab", blurb: "living simulations" },
+  { id: "diag", label: "diag", blurb: "panel health" },
+];
+
 export type ModeMeta = {
   id: PanelMode;
   label: string;
   blurb: string;
+  category: ModeCategory;
 };
 
 export const MODES: ModeMeta[] = [
-  { id: "text", label: "text", blurb: "scrolling text payloads" },
-  { id: "clock", label: "clock", blurb: "current local time" },
-  { id: "image", label: "image", blurb: "static 64×64 bitmap" },
-  { id: "gif", label: "gif", blurb: "animated frame loop" },
-  { id: "paint", label: "paint", blurb: "pixel-grid editor" },
-  { id: "shapes", label: "shapes", blurb: "rotating 3d wireframes" },
-  { id: "life", label: "life", blurb: "ambient cellular automaton" },
-  { id: "plasma", label: "plasma", blurb: "drifting sine fields" },
-  { id: "fire", label: "fire", blurb: "procedural flame" },
-  { id: "rain", label: "rain", blurb: "digital rain streams" },
-  { id: "starfield", label: "starfield", blurb: "warp toward the glass" },
-  { id: "lava", label: "lava", blurb: "slow metaball lamp" },
-  { id: "test", label: "test", blurb: "diagnostic patterns" },
+  { id: "text", label: "text", blurb: "scrolling text payloads", category: "signal" },
+  { id: "clock", label: "clock", blurb: "current local time", category: "signal" },
+  { id: "pong", label: "pong clock", blurb: "the score is the time", category: "signal" },
+  { id: "sky", label: "sky", blurb: "moon · sun · terminator", category: "signal" },
+  { id: "image", label: "image", blurb: "static 64×64 bitmap", category: "canvas" },
+  { id: "gif", label: "gif", blurb: "animated frame loop", category: "canvas" },
+  { id: "paint", label: "paint", blurb: "pixel-grid editor", category: "canvas" },
+  { id: "plasma", label: "plasma", blurb: "drifting sine fields", category: "ambient" },
+  { id: "warp", label: "warp", blurb: "domain-warped noise flow", category: "ambient" },
+  { id: "fire", label: "fire", blurb: "procedural flame", category: "ambient" },
+  { id: "rain", label: "rain", blurb: "digital rain streams", category: "ambient" },
+  { id: "starfield", label: "starfield", blurb: "warp toward the glass", category: "ambient" },
+  { id: "lava", label: "lava", blurb: "slow metaball lamp", category: "ambient" },
+  { id: "fx", label: "fx", blurb: "demoscene effect pack", category: "ambient" },
+  { id: "shapes", label: "shapes", blurb: "rotating 3d wireframes", category: "ambient" },
+  { id: "life", label: "life", blurb: "ambient cellular automaton", category: "lab" },
+  { id: "physarum", label: "physarum", blurb: "slime-mold vein networks", category: "lab" },
+  { id: "rd", label: "reaction", blurb: "gray-scott diffusion", category: "lab" },
+  { id: "fluid", label: "fluid", blurb: "dye in a stable-fluids field", category: "lab" },
+  { id: "sand", label: "sand", blurb: "falling grains · hourglass", category: "lab" },
+  { id: "swarm", label: "swarm", blurb: "boids with light trails", category: "lab" },
+  { id: "test", label: "test", blurb: "diagnostic patterns", category: "diag" },
 ];

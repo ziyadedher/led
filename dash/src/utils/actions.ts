@@ -193,6 +193,15 @@ export type PanelMode =
   | "rain"
   | "starfield"
   | "lava"
+  | "warp"
+  | "fx"
+  | "sky"
+  | "pong"
+  | "physarum"
+  | "rd"
+  | "fluid"
+  | "sand"
+  | "swarm"
   | "test";
 
 /**
