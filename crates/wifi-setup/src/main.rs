@@ -557,6 +557,18 @@ async fn apply_network(ssid: &str, auth: &NetworkAuth) -> Result<()> {
 
     nmcli(args).await.context("nmcli connection add")?;
 
+    // WPA3-SAE: force hash-to-element (H2E) on the supplicant before we
+    // bring the connection up. The onboard Broadcom firmware only does
+    // legacy hunt-and-peck SAE, which WiFi-6 / enterprise WPA3 APs reject
+    // with status_code=16; sae_pwe=2 offers both methods. NetworkManager
+    // exposes no property for this, so we poke the running supplicant
+    // directly. The led-sae-h2e.service oneshot does the same at every
+    // boot to keep it set across reboots; this call makes a *fresh*
+    // portal onboarding work without waiting on that timing.
+    if matches!(auth, NetworkAuth::Psk { sae: true, .. }) {
+        set_sae_h2e().await;
+    }
+
     nmcli(["connection", "up", "led-wifi"])
         .await
         .context("nmcli connection up")?;
@@ -774,6 +786,25 @@ where
         return Err(anyhow!("nmcli failed: {}", stderr.trim()));
     }
     Ok(())
+}
+
+/// Enable WPA3-SAE hash-to-element (`sae_pwe=2`) on the running
+/// wpa_supplicant. Best-effort: a failure just leaves the supplicant on
+/// its hunt-and-peck default, so non-H2E WPA3 networks still work. See
+/// `service/led-sae-h2e.sh` for the full rationale.
+async fn set_sae_h2e() {
+    match Command::new("wpa_cli")
+        .args(["-i", "wlan0", "set", "sae_pwe", "2"])
+        .output()
+        .await
+    {
+        Ok(out) if out.status.success() => tracing::info!("set sae_pwe=2 (WPA3 H2E)"),
+        Ok(out) => tracing::warn!(
+            stderr = %String::from_utf8_lossy(&out.stderr).trim(),
+            "wpa_cli set sae_pwe failed",
+        ),
+        Err(err) => tracing::warn!(%err, "could not spawn wpa_cli to set sae_pwe"),
+    }
 }
 
 async fn nmcli_value<I, S>(args: I) -> Result<String>
