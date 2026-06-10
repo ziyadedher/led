@@ -137,9 +137,11 @@ sudo install -D -m 0644 "$cfg_tmp"                                   "$root_mnt/
 sudo install -D -m 0755 "target/$ARCH/release/led-driver"             "$root_mnt/usr/local/bin/led-driver"
 sudo install -D -m 0755 "target/$ARCH/release/led-wifi-setup"         "$root_mnt/usr/local/bin/led-wifi-setup"
 sudo install -D -m 0755 service/led-tailscale-init                    "$root_mnt/usr/local/bin/led-tailscale-init"
+sudo install -D -m 0755 service/led-sae-h2e.sh                        "$root_mnt/usr/local/bin/led-sae-h2e.sh"
 sudo install -D -m 0644 service/led-driver.service                    "$root_mnt/etc/systemd/system/led-driver.service"
 sudo install -D -m 0644 service/led-wifi-setup.service                "$root_mnt/etc/systemd/system/led-wifi-setup.service"
 sudo install -D -m 0644 service/led-tailscale-init.service            "$root_mnt/etc/systemd/system/led-tailscale-init.service"
+sudo install -D -m 0644 service/led-sae-h2e.service                   "$root_mnt/etc/systemd/system/led-sae-h2e.service"
 sudo install -D -m 0644 service/alsa-blacklist.conf                   "$root_mnt/etc/modprobe.d/led-alsa-blacklist.conf"
 sudo install -D -m 0644 service/captive-dnsmasq.conf                  "$root_mnt/etc/NetworkManager/dnsmasq-shared.d/captive-portal.conf"
 sudo install -D -m 0644 service/disable-ipv6.conf                     "$root_mnt/etc/sysctl.d/99-led-disable-ipv6.conf"
@@ -190,7 +192,7 @@ trap cleanup EXIT
 # follow where each unit's source lives: ours under /etc/systemd/system,
 # systemd-shipped under /lib/systemd/system.
 sudo install -d -m 0755 "$root_mnt/etc/systemd/system/multi-user.target.wants"
-for unit in led-driver.service led-wifi-setup.service led-tailscale-init.service; do
+for unit in led-driver.service led-wifi-setup.service led-tailscale-init.service led-sae-h2e.service; do
     sudo ln -sf "/etc/systemd/system/$unit" \
         "$root_mnt/etc/systemd/system/multi-user.target.wants/$unit"
 done

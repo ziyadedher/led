@@ -1,0 +1,15 @@
+[Unit]
+Description=Force WPA3-SAE hash-to-element (H2E) on onboard Broadcom wifi
+Documentation=https://github.com/ziyadedher/led
+# wlan0 only exists in the supplicant once NM brings the radio up, so we
+# order after both and let the script poll for the interface.
+After=wpa_supplicant.service NetworkManager.service
+Wants=wpa_supplicant.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/led-sae-h2e.sh
+
+[Install]
+WantedBy=multi-user.target
