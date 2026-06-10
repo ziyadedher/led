@@ -4,7 +4,7 @@ export const memory: WebAssembly.Memory;
 export const __wbg_renderer_free: (a: number, b: number) => void;
 export const renderer_new: (a: number, b: number) => number;
 export const renderer_setSceneJson: (a: number, b: number, c: number) => [number, number];
-export const renderer_tick: (a: number) => [number, number, number, number];
+export const renderer_tick: (a: number, b: number) => [number, number, number, number];
 export const init: () => void;
 export const __wbindgen_free: (a: number, b: number, c: number) => void;
 export const __wbindgen_malloc: (a: number, b: number) => number;

@@ -29,6 +29,9 @@ const SHAPES: ShapeKind[] = [
 const STEPS = [0, 15, 30, 45, 60, 90, 120, 180];
 const UPSCALE = 6;
 const PANEL = 64;
+// One logical scene step (the renderer runs a nominal 60 steps/s).
+// Slight overshoot so floating-point floor never lands a step short.
+const STEP_MS = (1000 / 60) * 1.001;
 
 function statsOf(buf: Uint8Array): Stats {
   let lit = 0;
@@ -96,7 +99,9 @@ export default function DebugShapesPage() {
           const r2 = new mod.Renderer(PANEL, PANEL);
           r2.setSceneJson(JSON.stringify(scene));
           let buf: Uint8Array = new Uint8Array(0);
-          for (let i = 0; i <= step; i++) buf = r2.tick();
+          // tick() derives steps from the passed clock (60/s); feed
+          // synthetic timestamps one logical period apart to step exactly.
+          for (let i = 0; i <= step; i++) buf = r2.tick(i * STEP_MS);
           r2.free();
           return buf;
         },
@@ -125,7 +130,7 @@ export default function DebugShapesPage() {
         const r2 = new mod.Renderer(PANEL, PANEL);
         r2.setSceneJson(JSON.stringify(scene));
         let buf: Uint8Array = new Uint8Array(0);
-        for (let i = 0; i <= s; i++) buf = r2.tick();
+        for (let i = 0; i <= s; i++) buf = r2.tick(i * STEP_MS);
         r2.free();
         newStats[s] = statsOf(buf);
         const c = canvasRefs.current[s];
@@ -153,9 +158,9 @@ export default function DebugShapesPage() {
         }),
       );
       let n = 0;
-      const tick = () => {
+      const tick = (now: number) => {
         if (cancelled) return;
-        const buf = r.tick();
+        const buf = r.tick(now);
         n++;
         const c = liveRef.current;
         if (c) blit(c, buf);
@@ -299,7 +304,7 @@ type ShapeCfg = {
 
 type WasmRenderer = {
   setSceneJson(json: string): void;
-  tick(): Uint8Array;
+  tick(nowMs: number): Uint8Array;
   free(): void;
 };
 

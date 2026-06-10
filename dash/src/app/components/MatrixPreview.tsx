@@ -475,7 +475,10 @@ export function MatrixPreview({
       // frame would just animate ghosts.
       if (!offline) {
         try {
-          pixels = renderer?.tick() ?? null;
+          // The renderer derives its animation step from this clock
+          // (same timebase as rAF timestamps), so the preview runs at
+          // the panel's real-time speed on any display refresh rate.
+          pixels = renderer?.tick(performance.now()) ?? null;
         } catch {
           // Renderer not yet initialized or transient error — fall
           // through to drawing the unlit grid.
@@ -769,6 +772,6 @@ function structuralKey(frame: Scene): string {
 // into the component file.
 type WasmRenderer = {
   setSceneJson(json: string): void;
-  tick(): Uint8Array;
+  tick(nowMs: number): Uint8Array;
   free(): void;
 };
