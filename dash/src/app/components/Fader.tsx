@@ -1,5 +1,7 @@
 "use client";
 
+import { FOCUS_RING, MicroLabel, PixelValue } from "./ui";
+
 /**
  * Shared labeled slider. Replaces the hand-rolled `pct` slider +
  * preset-chip rows duplicated across shapes / gif / life. The native
@@ -7,9 +9,10 @@
  * thumb takes focus) so this is keyboard-operable for free; the
  * `.fader` class (globals.css) draws the LED-orange filled track.
  *
- * `presets` renders snap chips below the slider. `format` controls the
- * right-aligned value readout; `endpoints` labels the slider extremes
- * (e.g. slow/fast, wire/solid).
+ * `label` is plain text — the `::` sigil is rendered here so callers
+ * can't drift the prefix. `presets` renders snap chips below the
+ * slider. `format` controls the right-aligned value readout;
+ * `endpoints` labels the slider extremes (e.g. slow/fast, wire/solid).
  */
 export function Fader({
   label,
@@ -45,15 +48,8 @@ export function Fader({
   return (
     <div className="space-y-2.5">
       <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-          {label}
-        </span>
-        <span
-          className="tabular-nums text-(--color-text)"
-          style={{ fontFamily: "var(--font-pixel)", fontSize: 14 }}
-        >
-          {format(value)}
-        </span>
+        <MicroLabel>{label}</MicroLabel>
+        <PixelValue className="text-(--color-text)">{format(value)}</PixelValue>
       </div>
 
       <div className="flex items-center gap-3">
@@ -90,8 +86,8 @@ export function Fader({
                 type="button"
                 onClick={() => onChange(p)}
                 className={[
-                  "border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.25em] transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-accent)",
+                  "border px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.25em] transition-colors",
+                  FOCUS_RING,
                   active
                     ? "border-(--color-accent) bg-(--color-accent)/15 text-(--color-accent)"
                     : "border-(--color-border) text-(--color-text-muted) hover:border-(--color-border-strong) hover:text-(--color-text)",

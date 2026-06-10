@@ -110,8 +110,9 @@ export const SCENES: Record<PanelMode, SceneRegistration> = {
         Text: {
           // EntriesList drives the stored entries; MatrixPreview folds
           // them in. The page only contributes the live preview.
+          // `scroll` is deliberately omitted so MatrixPreview can fill
+          // in the live panel scroll before handing the frame to WASM.
           entries: previewEntry ? [previewEntry] : [],
-          scroll: 0,
         },
       };
     },

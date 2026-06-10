@@ -3,7 +3,9 @@
 import { useMemo } from "react";
 
 import { LiveDot } from "@/app/components/LiveDot";
+import { PixelValue } from "@/app/components/ui";
 import { panels, type RealtimeStatus } from "@/utils/actions";
+import { pad } from "@/utils/format";
 import { isOffline } from "@/utils/offline";
 import { useNow } from "@/utils/useNow";
 
@@ -39,17 +41,19 @@ export function InstrumentHeader({
          * because the pixel font has different metrics from the mono
          * tag and would visually drift on baseline alignment. */}
         <div className="flex min-w-0 items-center gap-3">
+          {/* Wordmark — PixelValue carries the face/size; the span
+           * keeps only the CRT glow, which PixelValue doesn't own. */}
           <span
             aria-hidden
-            className="select-none leading-none text-(--color-accent)"
+            className="select-none"
             style={{
-              fontFamily: "var(--font-pixel)",
-              fontSize: 24,
               textShadow:
                 "0 0 12px var(--color-accent-fade), 0 0 4px color-mix(in oklch, var(--color-accent) 40%, transparent)",
             }}
           >
-            ziyad&apos;s leds
+            <PixelValue size="xl" className="text-(--color-accent)">
+              ziyad&apos;s leds
+            </PixelValue>
           </span>
         </div>
 
@@ -103,22 +107,11 @@ function Telemetry({
       <span className="font-mono text-[9px] leading-none uppercase tracking-[0.3em] text-(--color-text-faint)">
         {label}
       </span>
-      <span
-        className={`tabular-nums leading-none ${valueClass}`}
-        style={{
-          fontFamily: "var(--font-pixel)",
-          fontSize: 16,
-          letterSpacing: "0.02em",
-        }}
-      >
+      <PixelValue size="lg" className={`tracking-[0.02em] ${valueClass}`}>
         {value}
-      </span>
+      </PixelValue>
     </div>
   );
-}
-
-function pad(n: number) {
-  return String(n).padStart(2, "0");
 }
 
 function fleetStats(rows: PanelRow[], now: number) {

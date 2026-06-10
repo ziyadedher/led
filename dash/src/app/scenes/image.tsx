@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import {
   defaultImageConfig,
@@ -8,6 +8,8 @@ import {
 } from "./types";
 
 import { ComposerShell } from "@/app/components/ComposerShell";
+import { UploadRow } from "@/app/components/UploadRow";
+import { Alert } from "@/app/components/ui";
 import { panels } from "@/utils/actions";
 
 const PANEL_W = 64;
@@ -87,7 +89,6 @@ export function ImageComposer({
   panelId: string;
   config: ImageSceneConfig;
 }) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -108,49 +109,20 @@ export function ImageComposer({
 
   return (
     <ComposerShell title="image" status="static · 64×64 max" ariaLabel="Image configuration">
-      <div className="space-y-4 px-4 pb-5 pt-5">
-        <div>
-          <div className="mb-7 font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-            :: upload
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={busy}
-              className="border border-(--color-accent)/60 bg-(--color-accent)/10 px-4 py-2 font-mono text-xs uppercase tracking-[0.3em] text-(--color-accent) transition hover:bg-(--color-accent)/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {busy ? "loading…" : "choose file"}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void handleFile(file);
-                e.target.value = "";
-              }}
-            />
-            {hasImage ? (
-              <span className="truncate font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-text-faint)">
-                {config.source ?? "uploaded"} · {config.width}×{config.height}
-              </span>
-            ) : (
-              <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-text-faint)">
-                no image set
-              </span>
-            )}
-          </div>
-        </div>
+      <UploadRow
+        accept="image/*"
+        idleLabel="choose file"
+        busyLabel="loading…"
+        busy={busy}
+        status={
+          hasImage
+            ? `${config.source ?? "uploaded"} · ${config.width}×${config.height}`
+            : "no image set"
+        }
+        onFile={(file) => void handleFile(file)}
+      />
 
-        {err ? (
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-danger)">
-            err: {err}
-          </p>
-        ) : null}
-      </div>
+      {err ? <Alert>err: {err}</Alert> : null}
     </ComposerShell>
   );
 }

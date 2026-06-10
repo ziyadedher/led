@@ -96,7 +96,7 @@ export function SegmentedToggle<T extends string>({
               "px-3 py-1 font-mono text-[10px] uppercase tracking-[0.3em] transition-colors",
               "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-accent) focus-visible:ring-inset",
               active
-                ? "bg-(--color-accent) text-black"
+                ? "bg-(--color-accent) text-(--color-bg)"
                 : "text-(--color-text-muted) hover:bg-(--color-surface-2) hover:text-(--color-text)",
             ].join(" ")}
           >

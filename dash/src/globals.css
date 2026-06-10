@@ -88,8 +88,8 @@
   }
 }
 
-/* Bitmap CRT face for the matrix-frame numerals — tiny accent, not
- * worth a next/font import for two uses. */
+/* Bitmap CRT face for the pixel-font readouts (`font-pixel` /
+ * <PixelValue>) — numerals, glyph chips, and the header wordmark. */
 @font-face {
   font-family: "VT323";
   font-style: normal;
@@ -144,12 +144,18 @@ body::before {
 }
 
 /* Range-slider styling: pseudo-elements per browser are the one
- * thing that genuinely doesn't fit Tailwind utilities. */
+ * thing that genuinely doesn't fit Tailwind utilities.
+ *
+ * The input box is 28px tall so the touch target clears the WCAG
+ * floor — the 2px track + 14px thumb stay visually unchanged, the
+ * extra height is invisible hit area (grabbing a 14px thumb on a
+ * phone used to take several attempts). */
 .fader {
   appearance: none;
   -webkit-appearance: none;
   background: transparent;
   cursor: pointer;
+  height: 28px;
 }
 
 .fader::-webkit-slider-runnable-track {

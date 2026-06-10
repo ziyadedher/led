@@ -17,6 +17,7 @@ import {
 } from "./types";
 
 import { ComposerShell } from "@/app/components/ComposerShell";
+import { ControlRow } from "@/app/components/ControlRow";
 import { SegmentedToggle } from "@/app/components/SegmentedToggle";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
 import { parseRgb } from "@/utils/color";
@@ -105,76 +106,61 @@ export function ClockComposer({
   );
 
   return (
-    <ComposerShell title="clock" status="local time" ariaLabel="Clock configuration">
-      <div className="space-y-5 px-4 py-4">
-        <Row label="format">
-          <SegmentedToggle<"H12" | "H24">
-            ariaLabel="Time format"
-            options={[
-              { id: "H24", label: "24h" },
-              { id: "H12", label: "12h" },
-            ]}
-            value={draft.format}
-            onChange={(format) => update({ ...draft, format })}
-          />
-        </Row>
-
-        <Row label="seconds">
-          <SegmentedToggle
-            ariaLabel="Show seconds"
-            options={[
-              { id: "off", label: "off" },
-              { id: "on", label: "on" },
-            ]}
-            value={draft.show_seconds ? "on" : "off"}
-            onChange={(v) => update({ ...draft, show_seconds: v === "on" })}
-          />
-        </Row>
-
-        {draft.format === "H12" ? (
-          <Row label="meridiem">
-            <SegmentedToggle
-              ariaLabel="Show meridiem"
-              options={[
-                { id: "off", label: "hidden" },
-                { id: "on", label: "a/p" },
-              ]}
-              value={draft.show_meridiem ? "on" : "off"}
-              onChange={(v) => update({ ...draft, show_meridiem: v === "on" })}
-            />
-          </Row>
-        ) : null}
-
-        <Row label="timezone">
-          <TimezoneSelect
-            value={draft.timezone}
-            onChange={(timezone) => update({ ...draft, timezone })}
-          />
-        </Row>
-
-        <SolidColorPicker
-          value={draft.color}
-          onChange={(color) => update({ ...draft, color })}
+    <ComposerShell
+      title="clock"
+      status={draft.timezone ?? "local time"}
+      ariaLabel="Clock configuration"
+    >
+      <ControlRow label="format">
+        <SegmentedToggle<"H12" | "H24">
+          ariaLabel="Time format"
+          options={[
+            { id: "H24", label: "24h" },
+            { id: "H12", label: "12h" },
+          ]}
+          value={draft.format}
+          onChange={(format) => update({ ...draft, format })}
         />
-      </div>
-    </ComposerShell>
-  );
-}
+      </ControlRow>
 
-function Row({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-        :: {label}
-      </span>
-      <div className="flex items-center">{children}</div>
-    </div>
+      <ControlRow label="seconds">
+        <SegmentedToggle
+          ariaLabel="Show seconds"
+          options={[
+            { id: "off", label: "off" },
+            { id: "on", label: "on" },
+          ]}
+          value={draft.show_seconds ? "on" : "off"}
+          onChange={(v) => update({ ...draft, show_seconds: v === "on" })}
+        />
+      </ControlRow>
+
+      {draft.format === "H12" ? (
+        <ControlRow label="meridiem">
+          <SegmentedToggle
+            ariaLabel="Show meridiem"
+            options={[
+              { id: "off", label: "hidden" },
+              { id: "on", label: "a/p" },
+            ]}
+            value={draft.show_meridiem ? "on" : "off"}
+            onChange={(v) => update({ ...draft, show_meridiem: v === "on" })}
+          />
+        </ControlRow>
+      ) : null}
+
+      <ControlRow label="timezone">
+        <TimezoneSelect
+          value={draft.timezone}
+          onChange={(timezone) => update({ ...draft, timezone })}
+        />
+      </ControlRow>
+
+      <SolidColorPicker
+        value={draft.color}
+        onChange={(color) => update({ ...draft, color })}
+      />
+    </ComposerShell>
   );
 }
 
@@ -229,14 +215,14 @@ function TimezoneSelect({
           aria-label="Timezone"
           displayValue={() => display}
           onChange={(e) => setQuery(e.target.value)}
-          className="w-full border border-(--color-border) bg-(--color-surface-2) px-2 py-1 pr-6 font-mono text-[10px] tracking-[0.1em] text-(--color-text) focus:border-(--color-accent) focus:outline-none"
+          className="w-full border border-(--color-border) bg-(--color-surface-2) px-2 py-1 pr-6 font-mono text-[10px] text-(--color-text) focus:border-(--color-accent) focus:outline-none"
           spellCheck={false}
         />
         <ComboboxButton
           aria-label="Toggle timezone list"
           className="absolute inset-y-0 right-0 flex items-center px-1.5 text-(--color-text-faint) hover:text-(--color-text)"
         >
-          <span aria-hidden style={{ fontFamily: "var(--font-pixel)", fontSize: 10 }}>
+          <span aria-hidden className="font-pixel text-[10px]">
             ▾
           </span>
         </ComboboxButton>
@@ -251,7 +237,7 @@ function TimezoneSelect({
             <ComboboxOption
               key={tz}
               value={tz}
-              className="cursor-pointer px-2 py-1 font-mono text-[10px] tracking-[0.05em] text-(--color-text-muted) data-[focus]:bg-(--color-accent)/15 data-[focus]:text-(--color-accent) data-[selected]:text-(--color-accent)"
+              className="cursor-pointer px-2 py-1 font-mono text-[10px] text-(--color-text-muted) data-[focus]:bg-(--color-accent)/15 data-[focus]:text-(--color-accent) data-[selected]:text-(--color-accent)"
             >
               {tz}
             </ComboboxOption>

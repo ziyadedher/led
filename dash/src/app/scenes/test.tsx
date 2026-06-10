@@ -10,6 +10,8 @@ import {
 } from "./types";
 
 import { ComposerShell } from "@/app/components/ComposerShell";
+import { FOCUS_RING } from "@/app/components/ui";
+import { useRovingRadio } from "@/app/components/useRovingRadio";
 import { useComposerConfig } from "@/utils/useComposerConfig";
 
 const PATTERNS: { id: TestPatternId; label: string; blurb: string }[] = [
@@ -17,6 +19,8 @@ const PATTERNS: { id: TestPatternId; label: string; blurb: string }[] = [
   { id: "Gradient",     label: "gradient",      blurb: "horizontal R/G/B brightness ramps" },
   { id: "Checkerboard", label: "checkerboard",  blurb: "1×1 checker — surfaces moiré + row-driver shadows" },
 ];
+
+const PATTERN_IDS = PATTERNS.map((p) => p.id);
 
 export function parseTestConfig(raw: unknown): TestSceneConfig {
   if (!raw || typeof raw !== "object") return defaultTestConfig();
@@ -38,47 +42,50 @@ export function TestComposer({
     "test",
     config,
   );
+  const patternRadio = useRovingRadio(PATTERN_IDS, draft.pattern, (pattern) =>
+    update({ pattern }),
+  );
 
   return (
     <ComposerShell title="test" status="diagnostic patterns" ariaLabel="Test pattern configuration">
-      <div className="space-y-3 px-4 py-4">
-        <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-text-faint)">
-          static patterns for diagnosing dead pixels, geometry,
-          PWM linearity, moiré.
-        </p>
-        <div role="radiogroup" aria-label="Test pattern" className="space-y-1">
-          {PATTERNS.map((p) => {
-            const active = p.id === draft.pattern;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                onClick={() => update({ pattern: p.id })}
+      <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-text-faint)">
+        static patterns for diagnosing dead pixels, geometry,
+        PWM linearity, moiré.
+      </p>
+      <div
+        role="radiogroup"
+        aria-label="Test pattern"
+        onKeyDown={patternRadio.onKeyDown}
+        className="space-y-1"
+      >
+        {PATTERNS.map((p, i) => {
+          const active = p.id === draft.pattern;
+          return (
+            <button
+              key={p.id}
+              {...patternRadio.itemProps(p.id, i)}
+              className={[
+                "flex w-full items-baseline justify-between gap-3 border px-3 py-2 text-left transition",
+                FOCUS_RING,
+                active
+                  ? "border-(--color-accent) bg-(--color-accent)/10"
+                  : "border-(--color-border) hover:border-(--color-border-strong) hover:bg-(--color-surface-2)",
+              ].join(" ")}
+            >
+              <span
                 className={[
-                  "flex w-full items-baseline justify-between gap-3 border px-3 py-2 text-left transition",
-                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-accent)",
-                  active
-                    ? "border-(--color-accent) bg-(--color-accent)/10"
-                    : "border-(--color-border) hover:border-(--color-border-strong) hover:bg-(--color-surface-2)",
+                  "font-mono text-[11px] uppercase tracking-[0.25em]",
+                  active ? "text-(--color-accent)" : "text-(--color-text)",
                 ].join(" ")}
               >
-                <span
-                  className={[
-                    "font-mono text-[11px] uppercase tracking-[0.25em]",
-                    active ? "text-(--color-accent)" : "text-(--color-text)",
-                  ].join(" ")}
-                >
-                  {p.label}
-                </span>
-                <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-(--color-text-faint)">
-                  {p.blurb}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                {p.label}
+              </span>
+              <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-(--color-text-faint)">
+                {p.blurb}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </ComposerShell>
   );

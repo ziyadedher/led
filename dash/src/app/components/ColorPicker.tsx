@@ -3,8 +3,10 @@
 import { Switch } from "@headlessui/react";
 import { useState } from "react";
 
+import { CheckRow } from "@/app/components/CheckRow";
 import { Fader } from "@/app/components/Fader";
 import { SolidColorPicker } from "@/app/components/SolidColorPicker";
+import { FOCUS_RING, MicroLabel } from "@/app/components/ui";
 import { LED_ORANGE } from "@/utils/color";
 
 export type ColorState =
@@ -58,32 +60,37 @@ export function ColorPicker({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-(--color-text-dim)">
-          {"// color"}
-        </span>
+        <MicroLabel>color</MicroLabel>
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-(--color-text-faint)">
           <span className={value.mode === "rgb" ? "text-(--color-text)" : ""}>
             rgb
           </span>
+          {/* The button is the 24×36 hit box; the painted track inside
+           * stays slim so the toggle doesn't visually bloat. */}
           <Switch
             checked={value.mode === "rainbow"}
             onChange={(on) => onChange(on ? lastRainbow : lastRgb)}
-            className={[
-              "relative inline-flex h-4 w-7 items-center rounded-sm border transition",
-              value.mode === "rainbow"
-                ? "border-(--color-accent) bg-(--color-accent)/15"
-                : "border-(--color-border-strong) bg-(--color-surface-2)",
-            ].join(" ")}
+            className={`relative inline-flex h-6 w-9 items-center ${FOCUS_RING}`}
           >
             <span className="sr-only">Rainbow mode</span>
             <span
+              aria-hidden
               className={[
-                "inline-block h-2.5 w-2.5 rounded-[1px] transition-transform",
+                "inline-flex h-5 w-9 items-center rounded-sm border transition",
                 value.mode === "rainbow"
-                  ? "translate-x-3.5 bg-(--color-accent) shadow-[0_0_6px_var(--color-accent)]"
-                  : "translate-x-0.5 bg-(--color-text-dim)",
+                  ? "border-(--color-accent) bg-(--color-accent)/15"
+                  : "border-(--color-border-strong) bg-(--color-surface-2)",
               ].join(" ")}
-            />
+            >
+              <span
+                className={[
+                  "inline-block h-3.5 w-3.5 rounded-[1px] transition-transform",
+                  value.mode === "rainbow"
+                    ? "translate-x-[18px] bg-(--color-accent) shadow-[0_0_6px_var(--color-accent)]"
+                    : "translate-x-0.5 bg-(--color-text-dim)",
+                ].join(" ")}
+              />
+            </span>
           </Switch>
           <span
             className={value.mode === "rainbow" ? "text-(--color-accent)" : ""}
@@ -109,7 +116,7 @@ export function ColorPicker({
             }}
           />
           <Fader
-            label="// speed"
+            label="speed"
             value={value.speed}
             min={1}
             max={50}
@@ -119,17 +126,12 @@ export function ColorPicker({
             endpoints={["slow", "fast"]}
             ariaLabel="Rainbow speed"
           />
-          <label className="flex cursor-pointer items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-(--color-text-muted)">
-            <input
-              type="checkbox"
-              checked={value.perLetter}
-              onChange={(e) =>
-                commit({ ...value, perLetter: e.target.checked })
-              }
-              className="h-3 w-3 rounded-[1px] border-(--color-border-strong) bg-(--color-bg) text-(--color-accent) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-accent)"
-            />
-            per-letter phase
-          </label>
+          <CheckRow
+            sigil={false}
+            label="per-letter phase"
+            checked={value.perLetter}
+            onChange={(perLetter) => commit({ ...value, perLetter })}
+          />
         </div>
       )}
     </div>
