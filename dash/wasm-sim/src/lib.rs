@@ -20,7 +20,13 @@ pub struct Renderer {
     height: u32,
     pixels: Vec<u8>,
     scene: Scene,
-    step: usize,
+    /// Fractional scene steps accumulated from wall time. The scene
+    /// `step` unit is a nominal 60/s (mirroring the driver's
+    /// StepClock); deriving it from the rAF timestamp instead of
+    /// counting callbacks keeps animation speed identical on 60Hz and
+    /// 144Hz displays — and identical to the physical panel.
+    step_acc: f64,
+    last_ms: Option<f64>,
 }
 
 #[wasm_bindgen]
@@ -34,7 +40,8 @@ impl Renderer {
             height,
             pixels: vec![0; (width * height * 4) as usize],
             scene: Scene::default(),
-            step: 0,
+            step_acc: 0.0,
+            last_ms: None,
         }
     }
 
@@ -48,21 +55,34 @@ impl Renderer {
         Ok(())
     }
 
-    /// Render the current frame at the current step into the pixel
-    /// buffer, advance step (unless paused), and return the RGBA bytes.
-    /// JS wraps the result as a Uint8ClampedArray and feeds it to
-    /// ImageData. wasm-bindgen copies the bytes once on return — for
-    /// 64×64×4 = 16KiB at rAF that's negligible.
-    pub fn tick(&mut self) -> Result<Vec<u8>, JsError> {
+    /// Render the current frame into the pixel buffer and return the
+    /// RGBA bytes. `now_ms` is the caller's monotonic clock — pass the
+    /// requestAnimationFrame timestamp (or `performance.now()`); steps
+    /// advance from elapsed time unless the panel is paused/off, so
+    /// animations resume exactly where they froze. JS wraps the result
+    /// as a Uint8ClampedArray and feeds it to ImageData; wasm-bindgen
+    /// copies the bytes once on return — 16KiB at rAF is negligible.
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
+    pub fn tick(&mut self, now_ms: f64) -> Result<Vec<u8>, JsError> {
+        // Clamp gaps (hidden tab, debugger) so resuming doesn't
+        // fast-forward the scene; mirrors the driver's StepClock.
+        let dt = match self.last_ms {
+            Some(last) => (now_ms - last).clamp(0.0, 250.0),
+            None => 0.0,
+        };
+        self.last_ms = Some(now_ms);
+        if !self.scene.panel.is_paused && !self.scene.panel.is_off {
+            self.step_acc += dt * (60.0 / 1000.0);
+        }
+        let step = self.step_acc as usize;
+
         let mut target = PixelBuffer {
             width: self.width,
             height: self.height,
             pixels: &mut self.pixels,
         };
-        render(&self.scene, self.step, &mut target).map_err(|_| JsError::new("render error"))?;
-        if !self.scene.panel.is_paused {
-            self.step = self.step.wrapping_add(1);
-        }
+        render(&self.scene, step, &mut target).map_err(|_| JsError::new("render error"))?;
         Ok(self.pixels.clone())
     }
 

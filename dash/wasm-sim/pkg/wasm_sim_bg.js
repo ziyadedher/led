@@ -36,15 +36,18 @@ export class Renderer {
         }
     }
     /**
-     * Render the current frame at the current step into the pixel
-     * buffer, advance step (unless paused), and return the RGBA bytes.
-     * JS wraps the result as a Uint8ClampedArray and feeds it to
-     * ImageData. wasm-bindgen copies the bytes once on return — for
-     * 64×64×4 = 16KiB at rAF that's negligible.
+     * Render the current frame into the pixel buffer and return the
+     * RGBA bytes. `now_ms` is the caller's monotonic clock — pass the
+     * requestAnimationFrame timestamp (or `performance.now()`); steps
+     * advance from elapsed time unless the panel is paused/off, so
+     * animations resume exactly where they froze. JS wraps the result
+     * as a Uint8ClampedArray and feeds it to ImageData; wasm-bindgen
+     * copies the bytes once on return — 16KiB at rAF is negligible.
+     * @param {number} now_ms
      * @returns {Uint8Array}
      */
-    tick() {
-        const ret = wasm.renderer_tick(this.__wbg_ptr);
+    tick(now_ms) {
+        const ret = wasm.renderer_tick(this.__wbg_ptr, now_ms);
         if (ret[3]) {
             throw takeFromExternrefTable0(ret[2]);
         }

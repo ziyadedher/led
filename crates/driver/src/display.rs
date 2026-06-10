@@ -92,6 +92,50 @@ impl Default for Panel {
     }
 }
 
+/// Wall-clock source for the scene-animation `step`. display-core
+/// renderers are written against a nominal 60 steps/s (gif frame
+/// timing, marquee px/step, ambient-scene speeds), but the render
+/// loop itself runs at whatever rate the sink imposes — the Zero W's
+/// panel-refresh vsync, the Pi 5's DMA throughput — which varies with
+/// hardware and matrix config. Counting loop iterations made every
+/// animation's real-time speed processor-dependent; deriving `step`
+/// from elapsed wall time pins it to 60 logical steps per second on
+/// every backend. The loop itself stays free-running (on HUB75 the
+/// present call IS the panel refresh — throttling it would change
+/// brightness/flicker behavior).
+struct StepClock {
+    /// Fractional steps accumulated while unfrozen. f64 at 60/s is
+    /// exact far beyond any plausible uptime.
+    acc: f64,
+    last: Instant,
+}
+
+impl StepClock {
+    fn new() -> Self {
+        Self {
+            acc: 0.0,
+            last: Instant::now(),
+        }
+    }
+
+    /// Advance by elapsed wall time (unless `frozen`) and return the
+    /// current step. Freezing (pause / off) holds the accumulator so
+    /// animations resume exactly where they stopped.
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
+    fn tick(&mut self, frozen: bool) -> usize {
+        let now = Instant::now();
+        // Clamp pathological gaps (suspend, stalled sink) so a resume
+        // nudges forward instead of fast-forwarding the scene.
+        let dt = (now - self.last).as_secs_f64().min(0.25);
+        self.last = now;
+        if !frozen {
+            self.acc += dt * 60.0;
+        }
+        self.acc as usize
+    }
+}
+
 pub async fn drive(
     mut sink: Box<dyn MatrixSink>,
     state: Arc<RwLock<State>>,
@@ -101,7 +145,7 @@ pub async fn drive(
     let (width, height) = sink.dimensions();
     let mut buffer = PixelBuffer::new(width, height);
 
-    let mut step: usize = 0;
+    let mut clock = StepClock::new();
     let mut life_state: Option<LifeState> = None;
     let mut config_cache = ConfigCache::default();
     // Most recent clock sample. Frozen while the panel is paused so
@@ -113,7 +157,7 @@ pub async fn drive(
 
         // Hold the read lock only long enough to build the frame input;
         // cache covers the heavy parse path.
-        let (mode, panel_state) = {
+        let (mode, panel_state, step) = {
             let snapshot = state.read();
             let panel_state = PanelState {
                 is_paused: snapshot.panel.is_paused,
@@ -121,23 +165,21 @@ pub async fn drive(
                 flash: snapshot.panel.flash.clone(),
                 brightness: snapshot.panel.brightness,
             };
+            let step = clock.tick(panel_state.is_paused || panel_state.is_off);
             let mode = build_mode(
                 &snapshot,
+                step,
                 &mut life_state,
                 &mut config_cache,
                 &mut last_clock_now,
             );
-            (mode, panel_state)
+            (mode, panel_state, step)
         };
         let frame = Scene { mode, panel: panel_state };
 
         // PixelBuffer's DrawTarget impl is Infallible — `render`
         // can't fail here, so unwrap is fine.
         display_core::render(&frame, step, &mut buffer).expect("infallible draw target");
-
-        if !frame.panel.is_paused && !frame.panel.is_off {
-            step += 1;
-        }
 
         sink.present(&buffer)?;
         metrics
@@ -178,8 +220,11 @@ fn read_setup_marker() -> Option<SetupScene> {
 /// switches away from life mode.
 struct LifeState {
     lattice: Lattice,
-    /// Frames since the last lattice step.
-    frames_since_step: u32,
+    /// Scene step at which the lattice last advanced. Generation
+    /// pacing is measured in (wall-clock-derived) steps, not loop
+    /// iterations — the loop runs at the sink's refresh rate, which
+    /// varies by hardware.
+    last_step: usize,
     /// Generations since last reseed.
     generations: u32,
     /// Last few populations — used to detect a stalled simulation
@@ -221,10 +266,13 @@ fn sample_time(timezone: Option<&str>) -> ClockTime {
 }
 
 impl LifeState {
-    fn new(width: u8, height: u8) -> Self {
+    fn new(width: u8, height: u8, step: usize) -> Self {
         let mut s = Self {
             lattice: Lattice::new(width, height),
-            frames_since_step: 0,
+            // Anchor to the current step so a panel that switches into
+            // life mode after days of uptime doesn't try to "catch up"
+            // millions of generations.
+            last_step: step,
             generations: 0,
             recent_populations: [0; 4],
         };
@@ -339,6 +387,7 @@ impl ConfigCache {
 /// panel doesn't black out.
 fn build_mode(
     snapshot: &State,
+    step: usize,
     life_state: &mut Option<LifeState>,
     config_cache: &mut ConfigCache,
     last_clock_now: &mut Option<ClockTime>,
@@ -375,11 +424,13 @@ fn build_mode(
         "life" => {
             let config: LifeSceneConfig =
                 serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default();
-            let interval = config.step_interval_frames.max(1);
-            let s = life_state.get_or_insert_with(|| LifeState::new(64, 64));
-            s.frames_since_step += 1;
-            if s.frames_since_step >= interval {
-                s.frames_since_step = 0;
+            let interval = (config.step_interval_frames.max(1)) as usize;
+            let s = life_state.get_or_insert_with(|| LifeState::new(64, 64, step));
+            // Advance one generation per elapsed interval of scene
+            // steps. StepClock clamps per-frame elapsed time, so this
+            // catch-up loop is bounded (~15 steps worst case).
+            while step.saturating_sub(s.last_step) >= interval {
+                s.last_step += interval;
                 s.advance();
             }
             Mode::Life(config.into_frame(&s.lattice))
