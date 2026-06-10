@@ -428,6 +428,39 @@ fn build_mode(
                 _ => unreachable!("cache returns the variant we asked for"),
             }
         }
+        // Stateless ambient scenes — pure functions of (config, step).
+        // Configs are a handful of scalars, so per-frame parse (like
+        // clock) is cheaper than threading them through ConfigCache.
+        "plasma" => {
+            *life_state = None;
+            Mode::Plasma(
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default(),
+            )
+        }
+        "fire" => {
+            *life_state = None;
+            Mode::Fire(
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default(),
+            )
+        }
+        "rain" => {
+            *life_state = None;
+            Mode::Rain(
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default(),
+            )
+        }
+        "starfield" => {
+            *life_state = None;
+            Mode::Starfield(
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default(),
+            )
+        }
+        "lava" => {
+            *life_state = None;
+            Mode::Lava(
+                serde_json::from_value(snapshot.panel.mode_config.clone()).unwrap_or_default(),
+            )
+        }
         _ => {
             *life_state = None;
             Mode::Text(TextScene {

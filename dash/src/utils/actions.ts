@@ -188,6 +188,11 @@ export type PanelMode =
   | "paint"
   | "gif"
   | "shapes"
+  | "plasma"
+  | "fire"
+  | "rain"
+  | "starfield"
+  | "lava"
   | "test";
 
 /**

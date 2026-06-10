@@ -21,7 +21,9 @@ use serde::{Deserialize, Serialize};
 
 pub mod frames;
 
-pub use frames::{boot, clock, gif, image, life, setup, shapes, test, text};
+pub use frames::{
+    boot, clock, fire, gif, image, lava, life, plasma, rain, setup, shapes, starfield, test, text,
+};
 pub use frames::text::{
     MarqueeOptions, RainbowOptions, Rgb, TextEntry, TextEntryColor, TextEntryOptions,
 };
@@ -84,6 +86,11 @@ pub enum Mode {
     Gif(Arc<gif::GifScene>),
     Shapes(shapes::ShapesScene),
     Test(test::TestScene),
+    Plasma(plasma::PlasmaScene),
+    Fire(fire::FireScene),
+    Rain(rain::RainScene),
+    Starfield(starfield::StarfieldScene),
+    Lava(lava::LavaScene),
     Boot(boot::BootScene),
     Setup(setup::SetupScene),
 }
@@ -146,6 +153,11 @@ where
         Mode::Gif(g) => gif::render(g.as_ref(), step, canvas)?,
         Mode::Shapes(s) => shapes::render(s, step, canvas)?,
         Mode::Test(t) => test::render(t, canvas)?,
+        Mode::Plasma(p) => plasma::render(p, step, canvas)?,
+        Mode::Fire(f) => fire::render(f, step, canvas)?,
+        Mode::Rain(r) => rain::render(r, step, canvas)?,
+        Mode::Starfield(s) => starfield::render(s, step, canvas)?,
+        Mode::Lava(l) => lava::render(l, step, canvas)?,
         Mode::Boot(b) => boot::render(b, step, canvas)?,
         Mode::Setup(s) => setup::render(s, step, canvas)?,
     }

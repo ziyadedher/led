@@ -3,12 +3,17 @@
 import {
   Bars3BottomLeftIcon,
   BeakerIcon,
+  ChevronDoubleDownIcon,
   ClockIcon,
   CubeTransparentIcon,
   FilmIcon,
+  FireIcon,
+  LightBulbIcon,
   PaintBrushIcon,
   PhotoIcon,
   SparklesIcon,
+  StarIcon,
+  SunIcon,
 } from "@heroicons/react/24/outline";
 import { useRef, useState } from "react";
 
@@ -235,5 +240,10 @@ const MODE_ICONS: Record<
   paint: PaintBrushIcon,
   shapes: CubeTransparentIcon,
   life: SparklesIcon,
+  plasma: SunIcon,
+  fire: FireIcon,
+  rain: ChevronDoubleDownIcon,
+  starfield: StarIcon,
+  lava: LightBulbIcon,
   test: BeakerIcon,
 };
