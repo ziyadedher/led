@@ -11,6 +11,7 @@ pub mod config;
 pub mod display;
 pub mod model;
 pub mod realtime;
+pub mod sched;
 pub mod sink;
 pub mod state;
 pub mod telemetry;

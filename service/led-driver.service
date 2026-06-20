@@ -15,17 +15,23 @@ Restart=always
 RestartSec=2s
 User=root
 
-# rpi-led-panel drives HUB75 via tight CPU + DMA loops, so preemption
-# mid-frame shows up as visible flicker. We *want* SCHED_FIFO here,
-# but on the Zero W's single core, FIFO=99 with no budget cap starved
-# PID 1 systemd to the point that it couldn't pet the BCM2835 hardware
-# watchdog (1-min timeout) and the kernel rebooted before multi-user
-# was ever reached — see the led-delta forensics on 2026-04-28 (20
-# boots in 100 minutes, none reached multi-user.target). Until we wire
-# up CPUQuota + LimitRTPRIO + a tuned kernel.sched_rt_runtime_us, we
-# stick with nice/io preference only. Visible flicker may regress on
-# the Pi Zero W; the fix path is to add bounded RT later, not to
-# reinstate unbounded FIFO.
+# Realtime scheduling is set per-thread inside the driver — only the
+# `led-render` OS thread bumps itself to SCHED_FIFO+50, while the
+# tokio runtime workers, OTel exporter, reqwest pool, and
+# tracing-appender stay SCHED_OTHER. This is the shape that works on
+# the Zero W's single core: a process-wide CPUSchedulingPolicy=fifo
+# (incl. the "bounded" form with CPUQuota+sched_rt_runtime_us) starves
+# PID 1 systemd long enough to miss the BCM2835 hardware watchdog
+# (1-min timeout) and the kernel reboots before multi-user.target —
+# see led-delta forensics 2026-04-28 and led-alpha 2026-04-29.
+#
+# We just need to give the driver permission to do the per-thread
+# bump itself: RTPRIO so it can call sched_setscheduler(SCHED_FIFO,
+# 50), and MEMLOCK so the render thread can mlockall() to keep its
+# hot path resident. Without these the calls EPERM/ENOMEM and the
+# driver logs a warning and continues at SCHED_OTHER.
+LimitRTPRIO=50
+LimitMEMLOCK=infinity
 Nice=-20
 IOSchedulingClass=realtime
 IOSchedulingPriority=0

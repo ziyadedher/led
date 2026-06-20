@@ -4,6 +4,7 @@
 
 use std::{path::PathBuf, sync::Arc};
 
+use anyhow::Context;
 use clap::Parser;
 use parking_lot::RwLock;
 use tokio::task::JoinSet;
@@ -11,6 +12,7 @@ use tokio::task::JoinSet;
 use led_driver::{
     config,
     display::drive,
+    sched,
     sink::{MatrixSink, TerminalMatrixSink},
     state::{self, State},
     telemetry,
@@ -86,8 +88,49 @@ async fn main() -> anyhow::Result<()> {
     let state = Arc::new(RwLock::new(State::default()));
 
     tracing::info!("Spawning tasks...");
-    let mut tasks = JoinSet::new();
-    tasks.spawn(drive(sink, state.clone(), metrics.clone()));
+    let mut tasks: JoinSet<anyhow::Result<()>> = JoinSet::new();
+
+    // Render loop runs on a dedicated OS thread, NOT a tokio worker.
+    // This is a single-thread-FIFO design: the renderer alone bumps
+    // itself to SCHED_FIFO/locked memory; tokio workers + OTel +
+    // reqwest all stay SCHED_OTHER so PID 1 systemd keeps getting
+    // scheduled and the BCM2835 hardware watchdog keeps getting pet.
+    let render_state = state.clone();
+    let render_metrics = metrics.clone();
+    let render_thread = std::thread::Builder::new()
+        .name("led-render".into())
+        .spawn(move || -> anyhow::Result<()> {
+            // Promote SELF (this thread) to FIFO. Soft-fail: dev box,
+            // qemu, or a missing LimitRTPRIO/CAP_SYS_NICE cause EPERM
+            // here — better to render a flickery panel than to refuse
+            // to start.
+            if let Err(err) = sched::promote_current_thread_to_fifo(50) {
+                tracing::warn!(
+                    %err,
+                    "render thread: SCHED_FIFO promotion failed; flicker may regress. \
+                     Check LimitRTPRIO=50 in led-driver.service or that the binary has CAP_SYS_NICE."
+                );
+            }
+            if let Err(err) = sched::lock_all_memory() {
+                tracing::warn!(
+                    %err,
+                    "render thread: mlockall failed; page faults may cause flicker. \
+                     Check LimitMEMLOCK=infinity in led-driver.service."
+                );
+            }
+            drive(sink, render_state, render_metrics)
+        })
+        .context("spawn led-render thread")?;
+
+    // Bridge the std::thread into the JoinSet via the blocking pool so
+    // a renderer error/panic still surfaces in `join_next` and tears
+    // the process down (Restart=always brings us back).
+    tasks.spawn_blocking(move || {
+        render_thread
+            .join()
+            .map_err(|panic| anyhow::anyhow!("led-render thread panicked: {panic:?}"))?
+    });
+
     tasks.spawn(async move {
         state::sync(
             config.id,
