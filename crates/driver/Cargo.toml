@@ -38,7 +38,7 @@ opentelemetry-otlp = { version = "0.30", default-features = false, features = [
 opentelemetry-semantic-conventions = { version = "0.30", features = [
     "semconv_experimental",
 ] }
-opentelemetry_sdk = { version = "0.30", features = [
+opentelemetry_sdk = { version = "0.32", features = [
     "rt-tokio",
     "metrics",
     "logs",
