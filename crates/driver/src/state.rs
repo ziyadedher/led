@@ -166,6 +166,36 @@ async fn maybe_download(
 ) -> anyhow::Result<Option<State>> {
     tracing::debug!("Downloading state...");
     let now = Instant::now();
+
+    // Cheap freshness probe first. Every heartbeat write to
+    // `panels.last_seen` fires a realtime nudge, and the full row can
+    // carry megabytes of `mode_config` (gif/image frames as JSON
+    // arrays). Pulling `*` on every nudge burned ~7 GB/day of Supabase
+    // egress for a single gif panel; this keeps the steady state to a
+    // ~100-byte response and only pulls the full row when it changed.
+    #[derive(Deserialize)]
+    struct LastUpdated {
+        last_updated: String,
+    }
+    let probe: Vec<LastUpdated> = serde_json::from_str(
+        &client
+            .from("panels")
+            .select("last_updated")
+            .eq("id", panel_id)
+            .execute()
+            .await?
+            .text()
+            .await?,
+    )?;
+    let probe = probe
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("No panel found"))?;
+    if probe.last_updated == last_updated {
+        tracing::debug!("State is up to date, skipping download");
+        return Ok(None);
+    }
+
     tracing::debug!("Downloading panel information...");
     let panels: Vec<Panel> = serde_json::from_str(
         &client
