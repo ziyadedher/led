@@ -34,10 +34,11 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 
 const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const getPanel = async (id: string) => {
+// Only the one column: the full row can be megabytes of mode_config.
+const getPanelScroll = async (id: string) => {
   const { data } = await supabase
     .from("panels")
-    .select("*")
+    .select("scroll")
     .eq("id", id)
     .maybeSingle()
     .throwOnError();
@@ -122,6 +123,42 @@ export const useRealtimeRevalidation = (): RealtimeStatus => {
         "postgres_changes",
         { event: "*", schema: "public", table: "panels" },
         (payload) => {
+          // Driver heartbeats rewrite `last_seen` every 30s per panel.
+          // A full `/panels` refetch pulls every row's `mode_config`
+          // (megabytes for gif/image panels), so for an UPDATE that
+          // didn't move `last_updated` just splice the small columns
+          // into the cache. Realtime still ships those: oversized rows
+          // only drop fields over 64 bytes.
+          if (payload.eventType === "UPDATE") {
+            const row = payload.new as Partial<PanelRow>;
+            let heartbeatOnly = false;
+            void mutate(
+              "/panels",
+              (cur?: PanelRow[]) => {
+                const prev = cur?.find((p) => p.id === row.id);
+                if (!prev || !row.last_updated || prev.last_updated !== row.last_updated) {
+                  return cur;
+                }
+                heartbeatOnly = true;
+                return cur!.map((p) =>
+                  p.id === row.id
+                    ? {
+                        ...p,
+                        last_seen: row.last_seen ?? p.last_seen,
+                        driver_version: row.driver_version ?? p.driver_version,
+                      }
+                    : p,
+                );
+              },
+              { revalidate: false },
+            ).then(() => {
+              if (!heartbeatOnly) {
+                mutate("/panels");
+                if (row.id) mutate(`/entries/scroll/${row.id}`);
+              }
+            });
+            return;
+          }
           mutate("/panels");
           const id =
             (payload.new as { id?: string })?.id ??
@@ -545,7 +582,7 @@ export const entries = {
   scroll: {
     get: {
       call: async (panelId: string) => ({
-        scroll: (await getPanel(panelId)).scroll,
+        scroll: (await getPanelScroll(panelId)).scroll,
       }),
       useSWR: (panelId: string) =>
         useSWRFactory(panelId ? `/entries/scroll/${panelId}` : null, () =>
