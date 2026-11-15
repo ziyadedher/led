@@ -128,8 +128,13 @@ async fn try_get_panel_id(panel_name: &str, client: &Postgrest) -> anyhow::Resul
 
 async fn touch_last_seen(panel_id: &str, client: &Postgrest) -> anyhow::Result<()> {
     let body = serde_json::json!({ "last_seen": chrono::Utc::now().to_rfc3339() }).to_string();
+    // postgrest-rs sends `Prefer: return=representation` on every
+    // update, so without a narrow `select` PostgREST echoes the whole
+    // row back. In gif mode that row is multi-MB, and this runs every
+    // 30s: ~10 GB/day of Supabase egress for a timestamp write.
     let response = client
         .from("panels")
+        .select("id")
         .eq("id", panel_id)
         .update(body)
         .execute()
@@ -145,8 +150,10 @@ async fn touch_last_seen(panel_id: &str, client: &Postgrest) -> anyhow::Result<(
 async fn report_driver_version(panel_id: &str, client: &Postgrest) -> anyhow::Result<()> {
     tracing::info!(version = crate::DRIVER_VERSION, "Reporting driver version");
     let body = serde_json::json!({ "driver_version": crate::DRIVER_VERSION }).to_string();
+    // Narrow select: see `touch_last_seen`.
     let response = client
         .from("panels")
+        .select("id")
         .eq("id", panel_id)
         .update(body)
         .execute()
