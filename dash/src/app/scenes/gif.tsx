@@ -10,22 +10,38 @@ import {
 } from "./types";
 
 import { ComposerShell } from "@/app/components/ComposerShell";
+import {
+  AdjustCropButton,
+  CropEditor,
+  type CropSource,
+} from "@/app/components/CropEditor";
 import { Fader } from "@/app/components/Fader";
 import { UploadRow } from "@/app/components/UploadRow";
 import { Alert, PixelValue } from "@/app/components/ui";
 import { panels } from "@/utils/actions";
+import {
+  PANEL_H,
+  PANEL_W,
+  centeredBounds,
+  drawCrop,
+  makePanelCanvas,
+  sliceBounds,
+  type CropTransform,
+} from "@/utils/crop";
 import { pad } from "@/utils/format";
 import { useDebouncedSetMode } from "@/utils/useDebouncedSetMode";
 import { useSyncedFromProp } from "@/utils/useSyncedFromProp";
 
-const PANEL_W = 64;
-const PANEL_H = 64;
 // Cap frame count: each frame is ~16KB of RGBA bytes and the whole
 // payload is JSON-stringified into mode_config, so Supabase write
 // latency climbs roughly linearly with frame count past this point.
 const MAX_FRAMES = 60;
 // Defensive floor — some gifs ship 0ms delays.
 const MIN_DELAY_MS = 20;
+// Composited frames are kept in memory while the crop editor is open;
+// cap their long side so a 60-frame 1000px gif doesn't pin ~240MB on
+// a phone. 320px still leaves 5× zoom headroom over a 64px "fit".
+const WORK_MAX_SIDE = 320;
 
 export function parseGifConfig(raw: unknown): GifSceneConfig {
   if (!raw || typeof raw !== "object") return defaultGifConfig();
@@ -64,13 +80,15 @@ export function parseGifConfig(raw: unknown): GifSceneConfig {
 }
 
 /**
- * Decode an uploaded GIF into a sequence of fixed-size RGBA frames
- * (4-byte stride; what the Rust/WASM renderer expects). gifuct-js
- * gives us patches per frame plus disposal/dims metadata; we
- * composite onto a working canvas to resolve disposal correctly,
- * downsample to PANEL_W × PANEL_H (centered, fit), then snapshot.
+ * Decode an uploaded GIF into composited full frames for the crop
+ * editor. gifuct-js gives us patches per frame plus disposal/dims
+ * metadata; we composite onto a working canvas at native size to
+ * resolve disposal correctly, then snapshot each frame (downscaled to
+ * at most WORK_MAX_SIDE) as a canvas the editor can draw.
  */
-async function decodeGif(file: File): Promise<GifSceneConfig> {
+async function compositeGif(
+  file: File,
+): Promise<{ source: CropSource; sourceFrameCount: number }> {
   const buf = await file.arrayBuffer();
   const gif = parseGIF(buf);
   const parsed: ParsedFrame[] = decompressFrames(gif, true);
@@ -80,30 +98,21 @@ async function decodeGif(file: File): Promise<GifSceneConfig> {
 
   const lsd = gif.lsd;
   // Working canvas at native gif size — gifuct frames are patches
-  // referencing a logical-screen-sized buffer. We composite into
-  // here, then downsample to the panel.
+  // referencing a logical-screen-sized buffer.
   const work = document.createElement("canvas");
   work.width = lsd.width;
   work.height = lsd.height;
-  const wctx = work.getContext("2d");
+  const wctx = work.getContext("2d", { willReadFrequently: true });
   if (!wctx) throw new Error("no 2d context");
   // Start fully transparent — gifuct's first frame may rely on
   // background-color disposal which leaves prior pixels in place.
   wctx.clearRect(0, 0, work.width, work.height);
 
-  // Down-sample target.
-  const ratio = Math.min(PANEL_W / lsd.width, PANEL_H / lsd.height);
-  const drawW = Math.max(1, Math.round(lsd.width * ratio));
-  const drawH = Math.max(1, Math.round(lsd.height * ratio));
-  const out = document.createElement("canvas");
-  out.width = drawW;
-  out.height = drawH;
-  const octx = out.getContext("2d");
-  if (!octx) throw new Error("no 2d context");
-  octx.imageSmoothingEnabled = true;
-  octx.imageSmoothingQuality = "high";
+  const shrink = Math.min(1, WORK_MAX_SIDE / Math.max(lsd.width, lsd.height));
+  const snapW = Math.max(1, Math.round(lsd.width * shrink));
+  const snapH = Math.max(1, Math.round(lsd.height * shrink));
 
-  const frames: GifFrame[] = [];
+  const frames: CropSource["frames"] = [];
   // Snapshot of the working canvas taken immediately BEFORE the
   // previous frame's patch was drawn. GIF disposal method 3
   // ("restore to previous") requires reverting to exactly that state
@@ -135,16 +144,14 @@ async function decodeGif(file: File): Promise<GifSceneConfig> {
     // type 3 ("restore to previous") must revert to.
     preDrawSnapshot = wctx.getImageData(0, 0, work.width, work.height);
 
-    // Paint this frame's patch.
+    // Paint this frame's patch. putImageData ignores transparency, so
+    // go through a temp canvas: gifuct's transparent pixels come
+    // through as alpha=0, which is what we want for compositing.
     const patch = new ImageData(
       new Uint8ClampedArray(frame.patch),
       frame.dims.width,
       frame.dims.height,
     );
-    // putImageData ignores transparency from the patch — gifuct's
-    // patch is already pre-multiplied, so transparent pixels come
-    // through as alpha=0 which is what we want for compositing.
-    // The simplest path: draw via a temp canvas.
     const patchCanvas = document.createElement("canvas");
     patchCanvas.width = frame.dims.width;
     patchCanvas.height = frame.dims.height;
@@ -153,30 +160,58 @@ async function decodeGif(file: File): Promise<GifSceneConfig> {
     pctx.putImageData(patch, 0, 0);
     wctx.drawImage(patchCanvas, frame.dims.left, frame.dims.top);
 
-    // Downsample to panel size. ImageData is RGBA already; the
-    // working canvas's transparent areas (gif disposal-to-background
-    // regions) come through as alpha=0, which the renderer treats
-    // as transparent on the LED matrix.
-    octx.clearRect(0, 0, drawW, drawH);
-    octx.drawImage(work, 0, 0, drawW, drawH);
-    const data = octx.getImageData(0, 0, drawW, drawH).data;
+    // Snapshot the composited frame. Transparent areas (disposal-to-
+    // background regions) stay alpha=0 through the crop, which the
+    // renderer treats as unlit on the LED matrix.
+    const snap = document.createElement("canvas");
+    snap.width = snapW;
+    snap.height = snapH;
+    const sctx = snap.getContext("2d");
+    if (!sctx) throw new Error("no 2d context");
+    sctx.imageSmoothingEnabled = true;
+    sctx.imageSmoothingQuality = "high";
+    sctx.drawImage(work, 0, 0, snapW, snapH);
 
-    // Bulk-copy the RGBA Uint8ClampedArray; Array.from is far faster
-    // than a per-byte assignment loop over ~16K elements per frame.
-    const bitmap = Array.from(data);
     // Per-frame delay: gifuct already converts the GIF's 1/100s units
     // to milliseconds (and substitutes 100ms for a missing delay).
     const delay_ms = Math.max(MIN_DELAY_MS, frame.delay ?? 100);
-    frames.push({ bitmap, delay_ms });
+    frames.push({ image: snap, delay_ms });
   }
 
   return {
-    width: drawW,
-    height: drawH,
-    frames,
-    speed: 1,
-    source: file.name,
-    source_frame_count: parsed.length,
+    source: { width: snapW, height: snapH, frames },
+    sourceFrameCount: parsed.length,
+  };
+}
+
+/**
+ * Run every composited frame through the editor's crop transform and
+ * pack the panel-res RGBA frames (4-byte stride; what the Rust/WASM
+ * renderer expects). The transparent margin is trimmed to the same
+ * centred bounds across all frames — the driver centres the block, so
+ * an untouched "fit" crop ships the same 64×N frames as before.
+ */
+function cropGif(
+  source: CropSource,
+  t: CropTransform,
+  meta: { name: string; sourceFrameCount: number; speed: number },
+): GifSceneConfig {
+  const { ctx } = makePanelCanvas();
+  const datas = source.frames.map((f) => {
+    drawCrop(ctx, f.image, source.width, source.height, t);
+    return ctx.getImageData(0, 0, PANEL_W, PANEL_H).data;
+  });
+  const b = centeredBounds(datas);
+  return {
+    width: b.width,
+    height: b.height,
+    frames: datas.map((d, i) => ({
+      bitmap: sliceBounds(d, b),
+      delay_ms: source.frames[i].delay_ms,
+    })),
+    speed: meta.speed,
+    source: meta.name,
+    source_frame_count: meta.sourceFrameCount,
   };
 }
 
@@ -211,23 +246,55 @@ export function GifComposer({
   // a single user gesture that shouldn't queue.
   const speedWriter = useDebouncedSetMode<GifSceneConfig>(panelId, "gif");
 
+  // The composited upload stays in memory for this session so the
+  // crop can be re-adjusted after applying without re-decoding.
+  const [upload, setUpload] = useState<{
+    id: number;
+    name: string;
+    source: CropSource;
+    sourceFrameCount: number;
+    lastCrop?: CropTransform;
+  } | null>(null);
+  const [editing, setEditing] = useState(false);
+
   const handleFile = async (file: File) => {
     setPhase("decode");
     setErr(null);
     try {
-      // Drop any staged speed write (the new file's decoded config
-      // supersedes it), then wait out any write already in flight —
-      // a slow speed write landing AFTER the upload's setMode would
-      // clobber the new gif with the old gif's frames.
+      const { source, sourceFrameCount } = await compositeGif(file);
+      setUpload({ id: Date.now(), name: file.name, source, sourceFrameCount });
+      setEditing(true);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPhase(null);
+    }
+  };
+
+  const handleApply = async (t: CropTransform) => {
+    if (!upload) return;
+    setPhase("transmit");
+    setErr(null);
+    try {
+      // Drop any staged speed write (the new crop supersedes it), then
+      // wait out any write already in flight — a slow speed write
+      // landing AFTER this setMode would clobber the new frames.
       speedWriter.cancel();
       await speedWriter.settle();
-      const next = await decodeGif(file);
-      setPhase("transmit");
+      // A fresh upload starts at native speed; re-cropping the same
+      // upload keeps whatever speed is dialled in.
+      const speed = upload.lastCrop ? draftSpeed : 1;
+      const next = cropGif(upload.source, t, {
+        name: upload.name,
+        sourceFrameCount: upload.sourceFrameCount,
+        speed,
+      });
       await panels.setMode.call(panelId, "gif", next);
-      // The decoded config resets speed to 1, but the draft's key
-      // (panelId:gif) doesn't change on upload — reset it manually so
-      // the fader doesn't keep showing the old gif's speed.
-      setDraftSpeed(1);
+      // The draft's key (panelId:gif) doesn't change on upload — reset
+      // it manually so the fader doesn't keep the old gif's speed.
+      setDraftSpeed(speed);
+      setUpload({ ...upload, lastCrop: t });
+      setEditing(false);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -264,16 +331,35 @@ export function GifComposer({
         busyLabel={phase === "transmit" ? "transmitting…" : "decoding…"}
         busy={phase != null}
         status={
-          hasFrames
-            ? `${config.source ?? "uploaded"} · ${config.width}×${config.height}`
-            : "no gif loaded"
+          editing && upload
+            ? `${upload.name} · ${upload.source.frames.length} frames · cropping`
+            : hasFrames
+              ? `${config.source ?? "uploaded"} · ${config.width}×${config.height}`
+              : "no gif loaded"
         }
         onFile={(file) => void handleFile(file)}
       />
 
       {err ? <Alert>err: {err}</Alert> : null}
 
-      {hasFrames ? (
+      {upload && editing ? (
+        <>
+          <div className="border-t border-dashed border-(--color-hairline)" />
+          <CropEditor
+            key={upload.id}
+            source={upload.source}
+            initial={upload.lastCrop}
+            busy={phase != null}
+            busyLabel="transmitting…"
+            onApply={(t) => void handleApply(t)}
+            onCancel={() => setEditing(false)}
+          />
+        </>
+      ) : upload ? (
+        <AdjustCropButton name={upload.name} onClick={() => setEditing(true)} />
+      ) : null}
+
+      {hasFrames && !editing ? (
         <>
           <div className="border-t border-dashed border-(--color-hairline)" />
 
